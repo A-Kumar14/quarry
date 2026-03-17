@@ -1,0 +1,19 @@
+# Web framework
+fastapi==0.115.5
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+slowapi==0.1.9
+
+# AI providers (at least one API key required — see .env.example)
+openai==1.95.1
+google-generativeai>=0.3.0
+
+# Web search + scraping
+ddgs>=0.1.0
+trafilatura>=1.12.0
+
+# Config
+python-dotenv==1.1.1
+
+# Production server
+gunicorn==23.0.0
