@@ -121,7 +121,7 @@ export default function PerspectivesTab({ query }) {
     setStatus('loading');
 
     fetch(
-      `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=top&limit=5`,
+      `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=relevance&limit=5&t=year`,
       { headers: { Accept: 'application/json' } }
     )
       .then(r => { if (!r.ok) throw new Error('non-2xx'); return r.json(); })

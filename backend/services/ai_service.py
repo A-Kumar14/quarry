@@ -36,9 +36,15 @@ class AIService:
             context_block = ""
             sources = []
 
+        live_scores = search_service.fetch_live_scores(query)
+        if live_scores:
+            context_block = live_scores + "\n\n" + context_block
+
         system_prompt = (
             "You are Ask — an AI research assistant. "
             "You have been given web search results below. Use them to answer the user's question. "
+            "If [LIVE SCORES — ESPN] data is present at the top of the context, treat it as the "
+            "most authoritative and up-to-date source for current match scores and status. "
             "You MUST cite sources using inline notation like [1], [2], [3] that correspond exactly "
             "to the numbered sources in the context. Be thorough and well-structured using Markdown.\n\n"
             "--- WEB CONTEXT ---\n"

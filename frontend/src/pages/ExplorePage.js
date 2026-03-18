@@ -1,13 +1,14 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect, lazy, Suspense } from 'react';
 import { Box, Typography, Skeleton, Tooltip, CircularProgress } from '@mui/material';
-import { Search, Globe, BookmarkPlus, RotateCcw, ExternalLink, RefreshCw, CornerDownRight, Link, Zap } from 'lucide-react';
+import { Search, Globe, BookmarkPlus, RotateCcw, ExternalLink, RefreshCw, CornerDownRight, Link, Zap, ChevronDown } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import GlassCard from '../components/GlassCard';
-import ComparisonView from '../components/ComparisonView';
-import PerspectivesTab from '../components/PerspectivesTab';
+import NewsTab from '../components/NewsTab';
+import ImagesTab from '../components/ImagesTab';
 import { getSourceQuality, QUALITY_COLOR } from '../utils/sourceQuality';
 import Toast from '../components/Toast';
+import { ScoutFigurine, ArchivistFigurine, WandererFigurine, floatIdleCSS } from '../components/PixelFigurines';
 
 const KnowledgeGraph = lazy(() => import('../components/KnowledgeGraph'));
 
@@ -207,10 +208,6 @@ function extractQuickSummary(answer) {
   return sentences.slice(0, 3);
 }
 
-function isVsQuery(query) {
-  return /\bvs\.?\b|\bversus\b/i.test(query);
-}
-
 function getFollowUps(query) {
   const q = query.trim();
   return [
@@ -227,118 +224,103 @@ function confidenceLevel(sourceCount) {
 }
 
 function QuickSummary({ answer, sources, isDeepSearch }) {
+  const [open, setOpen] = useState(false);
+
   const bullets = extractQuickSummary(answer);
   if (!bullets.length || answer.length < 300) return null;
 
   const { label, bg, border, color } = confidenceLevel(sources.length);
 
   return (
-    <GlassCard style={{
-      borderLeft: '3px solid var(--accent)',
-      padding: '14px 18px',
-      marginBottom: 16,
-      background: 'rgba(255, 255, 255, 0.70)',
-      position: 'relative',
-    }}>
-      
-      <div style={{ position: 'absolute', top: 10, right: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-        {isDeepSearch && (
-          <div style={{
-            padding:              '2px 8px',
-            borderRadius:         20,
-            fontSize:             10,
-            fontFamily:           'var(--font-family)',
-            fontWeight:           700,
-            letterSpacing:        '0.04em',
-            color:                '#b45309',
-            background:           'rgba(249,115,22,0.12)',
-            border:               '1px solid rgba(249,115,22,0.35)',
-            display:              'flex',
-            alignItems:           'center',
-            gap:                  3,
-          }}>
-            <Zap size={9} fill="#b45309" color="#b45309" /> Deep
-          </div>
-        )}
-        <div style={{
-          padding:              '2px 8px',
-          borderRadius:         20,
-          fontSize:             10,
-          fontFamily:           'var(--font-family)',
-          fontWeight:           600,
-          letterSpacing:        '0.04em',
-          color,
-          background:           bg,
-          backdropFilter:       'blur(8px)',
+    <div style={{ marginBottom: 14 }}>
+      {/* Collapsed trigger pill */}
+      <div
+        onClick={() => setOpen(o => !o)}
+        style={{
+          display:        'inline-flex',
+          alignItems:     'center',
+          gap:            6,
+          cursor:         'pointer',
+          padding:        '4px 10px 4px 8px',
+          borderRadius:   20,
+          border:         '1px solid var(--border)',
+          background:     'rgba(255,255,255,0.55)',
+          backdropFilter: 'blur(8px)',
           WebkitBackdropFilter: 'blur(8px)',
-          border:               `1px solid ${border}`,
+          userSelect:     'none',
+          marginBottom:   open ? 10 : 0,
+        }}
+      >
+        <span style={{
+          fontFamily: 'var(--font-family)', fontSize: '0.6rem', fontWeight: 700,
+          color: 'var(--accent)', letterSpacing: '0.09em', textTransform: 'uppercase',
+        }}>
+          Quick Summary
+        </span>
+        {isDeepSearch && (
+          <span style={{
+            display: 'flex', alignItems: 'center', gap: 2,
+            padding: '1px 6px', borderRadius: 20, fontSize: 9,
+            fontFamily: 'var(--font-family)', fontWeight: 700,
+            color: '#b45309', background: 'rgba(249,115,22,0.12)',
+            border: '1px solid rgba(249,115,22,0.35)',
+          }}>
+            <Zap size={8} fill="#b45309" color="#b45309" /> Deep
+          </span>
+        )}
+        <span style={{
+          padding: '1px 6px', borderRadius: 20, fontSize: 9,
+          fontFamily: 'var(--font-family)', fontWeight: 600,
+          color, background: bg, border: `1px solid ${border}`,
         }}>
           {label}
-        </div>
+        </span>
+        <ChevronDown
+          size={13}
+          color="var(--fg-dim)"
+          style={{ transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
+        />
       </div>
 
-      <div style={{
-        fontFamily: 'var(--font-family)', fontSize: '0.6rem', fontWeight: 700,
-        color: 'var(--accent)', letterSpacing: '0.09em', textTransform: 'uppercase',
-        marginBottom: 10,
-      }}>
-        Quick Summary
-      </div>
-      <ul style={{ paddingLeft: 18, margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {bullets.map((b, i) => (
-          <li key={i} style={{
-            fontFamily: 'var(--font-family)', fontSize: '0.85rem',
-            color: 'var(--fg-primary)', lineHeight: 1.55,
-          }}>
-            {b}
-          </li>
-        ))}
-      </ul>
-    </GlassCard>
+      {/* Expanded content */}
+      {open && (
+        <GlassCard style={{
+          borderLeft: '3px solid var(--accent)',
+          padding: '14px 18px',
+          background: 'rgba(255, 255, 255, 0.70)',
+        }}>
+          <ul style={{ paddingLeft: 18, margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {bullets.map((b, i) => (
+              <li key={i} style={{
+                fontFamily: 'var(--font-family)', fontSize: '0.85rem',
+                color: 'var(--fg-primary)', lineHeight: 1.55,
+              }}>
+                {b}
+              </li>
+            ))}
+          </ul>
+        </GlassCard>
+      )}
+    </div>
   );
 }
 
 function CollapsibleAnswer({ answer, streaming, sources }) {
-  const [expanded, setExpanded] = useState(false);
-
-  const paragraphs  = answer.split(/\n\n+/);
-  const isLong      = paragraphs.length > 4;
-  const displayText = !expanded && isLong ? paragraphs.slice(0, 4).join('\n\n') : answer;
-
   return (
-    <Box>
-      <Box sx={ANSWER_STYLES}>
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          components={{ a: ({ href, children }) => <CitationLink href={href} sources={sources}>{children}</CitationLink> }}
-        >
-          {displayText}
-        </ReactMarkdown>
-        {streaming && (
-          <Box component="span" sx={{
-            display: 'inline-block', width: 7, height: 15,
-            bgcolor: 'var(--accent)', borderRadius: '2px',
-            animation: 'blinkPulse 1s step-end infinite',
-            verticalAlign: 'text-bottom', ml: 0.5,
-          }} />
-        )}
-      </Box>
-
-      {isLong && (
-        <Box sx={{ mt: 1.5, display: 'flex', justifyContent: 'center' }}>
-          <Box
-            onClick={() => setExpanded(e => !e)}
-            sx={{
-              fontFamily: 'var(--font-family)', fontSize: '0.78rem',
-              color: 'var(--fg-secondary)', cursor: 'pointer',
-              border: '1px solid var(--border)', px: 2.5, py: 0.6,
-              borderRadius: '20px', transition: 'all 0.15s',
-              '&:hover': { borderColor: 'var(--accent)', color: 'var(--accent)' },
-            }}
-          >
-            {expanded ? '↑ Show less' : '↓ Show more'}
-          </Box>
-        </Box>
+    <Box sx={ANSWER_STYLES}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{ a: ({ href, children }) => <CitationLink href={href} sources={sources}>{children}</CitationLink> }}
+      >
+        {answer}
+      </ReactMarkdown>
+      {streaming && (
+        <Box component="span" sx={{
+          display: 'inline-block', width: 7, height: 15,
+          bgcolor: 'var(--accent)', borderRadius: '2px',
+          animation: 'blinkPulse 1s step-end infinite',
+          verticalAlign: 'text-bottom', ml: 0.5,
+        }} />
       )}
     </Box>
   );
@@ -439,13 +421,18 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
     <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 1.5 }}>
       
       {isFollowUp && (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Box sx={{ width: '2px', height: 20, bgcolor: 'var(--accent)', borderRadius: 1, flexShrink: 0 }} />
+        <Box sx={{
+          display: 'inline-flex', alignItems: 'center', gap: 0.75,
+          px: 1.25, py: 0.4, borderRadius: '20px',
+          background: 'rgba(0,0,0,0.05)',
+          border: '1px solid rgba(0,0,0,0.08)',
+          alignSelf: 'flex-start',
+        }}>
           <Typography sx={{
-            fontFamily: 'var(--font-family)', fontSize: '0.85rem',
-            fontWeight: 600, color: 'var(--fg-secondary)',
+            fontFamily: 'var(--font-family)', fontSize: '0.75rem',
+            color: 'var(--fg-dim)', fontWeight: 500,
           }}>
-            {question}
+            ↩ You asked: <span style={{ color: 'var(--fg-secondary)', fontWeight: 600 }}>{question}</span>
           </Typography>
         </Box>
       )}
@@ -533,7 +520,6 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
                       </Typography>
                     </Box>
                   )}
-                  {isVsQuery(question) && <ComparisonView query={question} />}
                   <QuickSummary answer={answer} sources={sources} isDeepSearch={isDeepSearch} />
                   <CollapsibleAnswer answer={answer} streaming={streaming} sources={sources} />
                 </>
@@ -549,8 +535,12 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
                 </Suspense>
               )}
 
-              {activeTab === 'perspectives' && (
-                <PerspectivesTab query={question} />
+              {activeTab === 'news' && (
+                <NewsTab query={question} />
+              )}
+
+              {activeTab === 'images' && (
+                <ImagesTab query={question} />
               )}
             </GlassCard>
           ) : (
@@ -666,14 +656,10 @@ function TabStrip({ active, onChange }) {
   );
   return (
     <Box sx={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', mb: 1.5 }}>
-      {tab('answer', 'Answer')}
+      {tab('answer', 'Result')}
       {tab('graph', 'Knowledge Graph')}
-      {tab('perspectives', (
-        <>
-          <span style={{ fontWeight: 800, fontSize: '0.72rem', color: '#ff4500', lineHeight: 1 }}>r/</span>
-          Perspectives
-        </>
-      ))}
+      {tab('news', 'News')}
+      {tab('images', 'Images')}
     </Box>
   );
 }
@@ -785,6 +771,7 @@ export default function ExplorePage() {
     } finally {
       setStreaming(false);
       setDeepLabel('');
+      setDeepMode(false);
     }
   }, []);
 
@@ -1004,8 +991,30 @@ export default function ExplorePage() {
             from { transform: rotate(0deg);   }
             to   { transform: rotate(360deg); }
           }
+          ${floatIdleCSS}
         `}</style>
+
+        {/* Pixel art figurines — corners only, pointer-events off, inside positioned home box */}
+        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, pointerEvents: 'none', overflow: 'hidden', zIndex: 0 }}>
+          {/* Bottom-left: Archivist + Scout */}
+          <div className="fig-left" style={{ position: 'absolute', bottom: 0, left: 24, display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+            <ArchivistFigurine />
+            <div style={{ transform: 'scale(0.85)', transformOrigin: 'bottom center' }}>
+              <ScoutFigurine />
+            </div>
+          </div>
+          {/* Bottom-right: Wanderer + Scout (mirrored) */}
+          <div className="fig-right" style={{ position: 'absolute', bottom: 0, right: 24, display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+            <div style={{ transform: 'scale(0.85)', transformOrigin: 'bottom center' }}>
+              <WandererFigurine />
+            </div>
+            <div style={{ transform: 'scaleX(-1)', transformOrigin: 'center' }}>
+              <ScoutFigurine />
+            </div>
+          </div>
+        </div>
       </Box>
+
       <Toast show={toast.show} message={toast.message} />
     </>
     );

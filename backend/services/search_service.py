@@ -74,6 +74,82 @@ def scrape_urls(urls: list[str], max_pages: int = 5) -> list[dict[str, str]]:
 
 # ── Context builder ───────────────────────────────────────────────────────────
 
+_SCORE_KEYWORDS = {'score', 'live', 'result', 'vs', 'match', 'game', 'playing', 'beat', 'won', 'goal', 'final'}
+
+_ESPN_LEAGUES = [
+    ('UEFA.CHAMPIONS',  'UEFA Champions League'),
+    ('UEFA.EUROPA',     'UEFA Europa League'),
+    ('eng.1',           'Premier League'),
+    ('esp.1',           'La Liga'),
+    ('ger.1',           'Bundesliga'),
+    ('ita.1',           'Serie A'),
+    ('fra.1',           'Ligue 1'),
+    ('usa.1',           'MLS'),
+]
+
+
+def fetch_live_scores(query: str) -> str:
+    """
+    Hit ESPN's free (no-auth) soccer scoreboard API and return a
+    pre-formatted string for injection into the LLM context.
+    Returns an empty string when the query doesn't look score-related
+    or no matching events are found.
+    """
+    import requests
+
+    q_lower = query.lower()
+    if not any(k in q_lower for k in _SCORE_KEYWORDS):
+        return ""
+
+    all_events: list[dict] = []
+    for league_id, league_name in _ESPN_LEAGUES:
+        try:
+            url = (
+                f"https://site.api.espn.com/apis/site/v2/sports/soccer"
+                f"/{league_id}/scoreboard"
+            )
+            r = requests.get(url, timeout=4, headers={"User-Agent": "Mozilla/5.0"})
+            if not r.ok:
+                continue
+            for event in r.json().get("events", []):
+                comps = event.get("competitions", [{}])
+                competitors = comps[0].get("competitors", []) if comps else []
+                status = event.get("status", {})
+                names = [c.get("team", {}).get("displayName", "") for c in competitors]
+                scores = [c.get("score", "?") for c in competitors]
+                all_events.append({
+                    "league":  league_name,
+                    "names":   names,
+                    "score":   " - ".join(scores),
+                    "state":   status.get("type", {}).get("description", ""),
+                    "clock":   status.get("displayClock", ""),
+                })
+        except Exception as exc:
+            logger.warning("fetch_live_scores.%s: %s", league_id, exc)
+
+    if not all_events:
+        return ""
+
+    # Prefer events whose team names appear in the query
+    def relevance(ev: dict) -> int:
+        return sum(
+            1 for name in ev["names"]
+            for word in name.lower().split()
+            if len(word) > 3 and word in q_lower
+        )
+
+    all_events.sort(key=relevance, reverse=True)
+    relevant = [e for e in all_events if relevance(e) > 0] or all_events[:5]
+
+    lines = ["[LIVE SCORES — ESPN]"]
+    for e in relevant[:6]:
+        detail = f" {e['clock']}" if e["clock"] else ""
+        teams  = " vs ".join(e["names"])
+        lines.append(f"{e['league']}: {teams} — {e['score']} [{e['state']}{detail}]")
+
+    return "\n".join(lines)
+
+
 def build_context(
     results: list[dict[str, str]],
     scraped: list[dict[str, str]],
