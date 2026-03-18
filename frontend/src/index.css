@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap');
 
 :root {
   --bg-primary: #EDEAE5;
@@ -52,6 +52,17 @@ html, body, #root {
 .home-radial-bg > * {
   position: relative;
   z-index: 1;
+}
+
+/* Figurine wrapper sits at the bottom of the home screen, above the radial gradient */
+.fig-wrapper {
+  position: absolute !important;
+  z-index: 2 !important;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  overflow: hidden;
 }
 
 @keyframes radialBreath {

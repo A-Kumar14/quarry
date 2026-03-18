@@ -1,25 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import GlassCard from './GlassCard';
+import Spinner from './Spinner';
 
 // Format large numbers: 12400 → "12.4k"
 function fmt(n) {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
-}
-
-function Spinner() {
-  return (
-    <>
-      <div style={{
-        width: 20, height: 20, borderRadius: '50%',
-        border: '2px solid var(--border)',
-        borderTopColor: 'var(--accent)',
-        animation: 'perspSpin 0.7s linear infinite',
-        margin: '0 auto',
-      }} />
-      <style>{`@keyframes perspSpin { to { transform: rotate(360deg); } }`}</style>
-    </>
-  );
 }
 
 function EmptyState() {

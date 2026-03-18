@@ -7,11 +7,81 @@ Markdown extraction from web pages.
 
 from __future__ import annotations
 
+import ipaddress
 import logging
+import re
 import concurrent.futures
 from typing import Any
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
+
+# ── Prompt injection sanitizer ─────────────────────────────────────────────────
+
+_INJECTION_PATTERNS = [
+    re.compile(r"ignore\s+(all\s+)?(previous|prior|above)\s+instructions?", re.IGNORECASE),
+    re.compile(r"you\s+are\s+(now\s+)?(a\s+|an\s+)?(different|new|another)", re.IGNORECASE),
+    re.compile(r"\[INST\]|\[/INST\]|<<SYS>>|<</SYS>>", re.IGNORECASE),
+    re.compile(r"<(system|user|assistant)>", re.IGNORECASE),
+    re.compile(r"(?m)^(system|assistant|user)\s*:", re.IGNORECASE),
+    re.compile(r"disregard\s+(all\s+)?previous", re.IGNORECASE),
+]
+
+
+def sanitize_scraped_content(text: str) -> str:
+    """Strip prompt injection patterns from scraped web content."""
+    for pattern in _INJECTION_PATTERNS:
+        text = pattern.sub("[removed]", text)
+    return text
+
+
+# ── SSRF guard ────────────────────────────────────────────────────────────────
+
+_PRIVATE_NETWORKS = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),   # link-local / cloud metadata
+    ipaddress.ip_network("0.0.0.0/8"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+]
+
+_BLOCKED_HOSTNAMES = {
+    "localhost",
+    "metadata.google.internal",
+    "instance-data",
+    "169.254.169.254",  # AWS metadata IP as hostname string
+}
+
+
+def is_safe_url(url: str) -> bool:
+    """Return True only if the URL is safe to scrape (no SSRF risk)."""
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+
+    if parsed.scheme not in ("http", "https"):
+        return False
+
+    host = parsed.hostname
+    if not host:
+        return False
+
+    if host.lower() in _BLOCKED_HOSTNAMES:
+        return False
+
+    try:
+        addr = ipaddress.ip_address(host)
+        for net in _PRIVATE_NETWORKS:
+            if addr in net:
+                return False
+    except ValueError:
+        pass  # Not an IP address — hostname is allowed
+
+    return True
 
 # ── DuckDuckGo search ──────────────────────────────────────────────────────────
 
@@ -61,7 +131,7 @@ def _scrape_one(url: str) -> dict[str, str] | None:
 
 def scrape_urls(urls: list[str], max_pages: int = 5) -> list[dict[str, str]]:
     """Scrape up to *max_pages* URLs in parallel. Returns [{url, markdown}]."""
-    targets = urls[:max_pages]
+    targets = [u for u in urls if is_safe_url(u)][:max_pages]
     scraped: list[dict[str, str]] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
         futures = {pool.submit(_scrape_one, url): url for url in targets}
@@ -175,7 +245,7 @@ def build_context(
         sources.append({"title": title, "url": url, "snippet": snippet})
         lines.append(f"[{idx}] **{title}**\nURL: {url}")
         if md:
-            lines.append(f"Content:\n{md}")
+            lines.append(f"Content:\n{sanitize_scraped_content(md)}")
         elif snippet:
             lines.append(f"Snippet: {snippet}")
         lines.append("")  # blank separator

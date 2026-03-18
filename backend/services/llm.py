@@ -70,6 +70,25 @@ class LLMService:
             return _env("GEMINI_CHAT_MODEL", "gemini-2.0-flash")
         return _env("OPENAI_CHAT_MODEL", "gpt-4o")
 
+    def complete(self, prompt: str, max_tokens: int = 150) -> str:
+        """Non-streaming single-turn completion. Returns the full response string."""
+        messages = [{"role": "user", "content": prompt}]
+        resolved = self.resolve_model(None)
+
+        if self._provider == "gemini" and not self._is_openrouter_model(resolved):
+            genai = self._get_genai()
+            gmodel = genai.GenerativeModel(model_name=resolved)
+            response = gmodel.generate_content(
+                prompt, generation_config={"max_output_tokens": max_tokens}
+            )
+            return getattr(response, "text", "") or ""
+
+        client = self._get_sync_client()
+        resp = client.chat.completions.create(
+            model=resolved, messages=messages, stream=False, max_tokens=max_tokens
+        )
+        return resp.choices[0].message.content or ""
+
     def stream_sync(
         self, messages: List[dict], model: Optional[str] = None
     ) -> Iterator[str]:

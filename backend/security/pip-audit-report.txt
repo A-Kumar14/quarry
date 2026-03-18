@@ -1,0 +1,53 @@
+pip-audit Security Report
+========================
+Generated: 2026-03-17
+Scope: backend/requirements.txt (direct + transitive deps)
+Tool: pip-audit (https://github.com/pypa/pip-audit)
+
+Command: pip-audit -r requirements.txt --format json
+
+--------------------------------------------------------------------------------
+VULNERABILITIES FOUND (2 packages, 4 CVEs)
+--------------------------------------------------------------------------------
+
+1. python-multipart 0.0.9
+   ├── CVE-2024-53981   fix: >=0.0.18
+   │   Malformed Content-Type headers could cause an infinite loop in the
+   │   multipart parser, enabling a DoS attack.
+   └── CVE-2026-24486   fix: >=0.0.22
+       Crafted multipart boundaries can bypass parsing limits.
+
+   ACTION TAKEN: Upgraded constraint in requirements.txt to >=0.0.22.
+
+2. starlette 0.41.3  [TRANSITIVE — pinned by fastapi==0.115.5]
+   ├── CVE-2025-54121   fix: >=0.47.2
+   │   Timing-based header leak in StaticFiles.
+   └── CVE-2025-62727   fix: >=0.49.1
+       Request smuggling via malformed Transfer-Encoding headers.
+
+   ACTION REQUIRED: Upgrade fastapi to a release that pulls starlette >=0.49.1.
+   The current pin (fastapi==0.115.5) constrains starlette to ~0.41.x.
+   Recommended: loosen the pin to fastapi>=0.115.5 and test with the latest
+   stable release (run `make test` before deploying).
+
+--------------------------------------------------------------------------------
+CLEAN PACKAGES (68)
+--------------------------------------------------------------------------------
+All other direct and transitive dependencies in requirements.txt reported
+zero known vulnerabilities at audit time.
+
+--------------------------------------------------------------------------------
+REMEDIATION STATUS
+--------------------------------------------------------------------------------
+Package              Old ver     New constraint   Status
+-------------------  ----------  ---------------  ------
+python-multipart     0.0.9       >=0.0.22         FIXED in requirements.txt
+starlette (trans.)   0.41.3      >=0.49.1         PENDING — requires fastapi bump
+
+--------------------------------------------------------------------------------
+NOTES
+--------------------------------------------------------------------------------
+* This audit covers only packages in backend/requirements.txt.
+  System-wide Python packages are not in scope.
+* Re-run `make security-check` after each dependency update.
+* CVE data sourced from PyPI Advisory Database (pypa/advisory-database).

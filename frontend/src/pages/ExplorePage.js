@@ -1,14 +1,16 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect, lazy, Suspense } from 'react';
 import { Box, Typography, Skeleton, Tooltip, CircularProgress } from '@mui/material';
-import { Search, Globe, BookmarkPlus, RotateCcw, ExternalLink, RefreshCw, CornerDownRight, Link, Zap, ChevronDown } from 'lucide-react';
+import { Search, BookmarkPlus, RotateCcw, ExternalLink, RefreshCw, CornerDownRight, Link, Zap, ChevronDown, FlaskConical } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import GlassCard from '../components/GlassCard';
 import NewsTab from '../components/NewsTab';
 import ImagesTab from '../components/ImagesTab';
+import PerspectivesTab from '../components/PerspectivesTab';
 import { getSourceQuality, QUALITY_COLOR } from '../utils/sourceQuality';
 import Toast from '../components/Toast';
-import { ScoutFigurine, ArchivistFigurine, WandererFigurine, floatIdleCSS } from '../components/PixelFigurines';
+import { ScoutFigurine, ArchivistFigurine, WandererFigurine, PixelWordmark, floatIdleCSS } from '../components/PixelFigurines';
 
 const KnowledgeGraph = lazy(() => import('../components/KnowledgeGraph'));
 
@@ -107,40 +109,32 @@ function SourceChip({ src, index }) {
 }
 
 const FALLBACK_SUGGESTIONS = [
-  'Latest breakthroughs in quantum computing',
-  'How does RAG work in AI systems?',
-  'Best open source LLMs in 2026',
-  'Explain transformer attention mechanisms',
-  'FastAPI vs Flask for production APIs',
-  'Top AI coding assistants compared',
+  { title: 'Latest breakthroughs in quantum computing' },
+  { title: 'How does RAG work in AI systems?' },
+  { title: 'Best open source LLMs in 2026' },
+  { title: 'Explain transformer attention mechanisms' },
+  { title: 'FastAPI vs Flask for production APIs' },
+  { title: 'Top AI coding assistants compared' },
 ];
 
-const GNEWS_KEY = process.env.REACT_APP_GNEWS_API_KEY;
-
 function useTrendingChips() {
-  const [chips,     setChips]     = useState(FALLBACK_SUGGESTIONS);
+  const [articles,  setArticles]  = useState(FALLBACK_SUGGESTIONS);
   const [trending,  setTrending]  = useState(false);
   const [spinning,  setSpinning]  = useState(false);
 
   const fetchTrending = useCallback(async () => {
-    if (!GNEWS_KEY) return;
     setSpinning(true);
     try {
-      const res  = await fetch(
-        `https://gnews.io/api/v4/top-headlines?lang=en&max=6&apikey=${GNEWS_KEY}`
-      );
-      if (!res.ok) throw new Error('gnews error');
+      const res  = await fetch(`${API}/explore/trending-news?max=6`);
+      if (!res.ok) throw new Error('trending error');
       const data = await res.json();
-      const titles = (data.articles || [])
-        .map(a => a.title?.slice(0, 60) || '')
-        .filter(Boolean)
-        .slice(0, 6);
-      if (titles.length >= 3) {
-        setChips(titles);
+      const arts = (data.articles || []).filter(a => a.title).slice(0, 6);
+      if (arts.length >= 3) {
+        setArticles(arts);
         setTrending(true);
       }
     } catch {
-      // silent fallback — keep existing chips
+      // silent fallback — keep existing articles
     } finally {
       setSpinning(false);
     }
@@ -148,7 +142,7 @@ function useTrendingChips() {
 
   useEffect(() => { fetchTrending(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { chips, trending, spinning, refetch: fetchTrending };
+  return { articles, trending, spinning, refetch: fetchTrending };
 }
 
 function extractGraphData(answer, sources) {
@@ -208,28 +202,77 @@ function extractQuickSummary(answer) {
   return sentences.slice(0, 3);
 }
 
-function getFollowUps(query) {
-  const q = query.trim();
-  return [
-    `Latest news on ${q}`,
-    `${q} explained simply`,
-    `Best resources for ${q}`,
-  ];
+
+// ── Citation linkifier ────────────────────────────────────────────────────────
+// The LLM outputs [1], [2] as plain text. Convert them to markdown links so
+// CitationLink receives an <a> element it can render as a numbered badge.
+function linkifyCitations(text, sources) {
+  return text.replace(/\[(\d+)\]/g, (match, num) => {
+    const src = sources[parseInt(num, 10) - 1];
+    return src?.url ? `[[${num}]](${src.url})` : match;
+  });
 }
 
-function confidenceLevel(sourceCount) {
-  if (sourceCount >= 6) return { label: 'High confidence', bg: 'rgba(34,197,94,0.15)',  border: 'rgba(34,197,94,0.35)',  color: '#15803d' };
-  if (sourceCount >= 3) return { label: 'Moderate',        bg: 'rgba(234,179,8,0.15)',  border: 'rgba(234,179,8,0.35)',  color: '#92400e' };
-  return                       { label: 'Limited sources', bg: 'rgba(249,115,22,0.13)', border: 'rgba(249,115,22,0.35)', color: '#9a3412' };
+// ── Visual query derivation ───────────────────────────────────────────────────
+// Strip question words so images are about the *subject*, not the question form.
+const QUESTION_STRIP = /^(what (?:is|are|was|were)|who (?:is|are|was|were)|how (?:does|do|is|are|to|can)|why (?:is|are|does|do|did)|when (?:is|are|did|was)|where (?:is|are|was)|which (?:is|are)|tell me (?:about|of)?|explain|describe|find|give me|show me|list (?:(?:the|of) )?)\s+(?:(?:the|a|an) )?/i;
+
+function deriveImageQuery(query, context = '') {
+  const stripped = query.trim().replace(QUESTION_STRIP, '').trim();
+  if (context) {
+    const contextCore = context.replace(QUESTION_STRIP, '').trim().split(' ').slice(0, 4).join(' ');
+    return `${contextCore} ${stripped}`.trim().slice(0, 80);
+  }
+  return stripped.slice(0, 80) || query.trim().slice(0, 80);
 }
 
-function QuickSummary({ answer, sources, isDeepSearch }) {
+// ── Inline image strip (3 photos in the Result tab) ──────────────────────────
+function InlineImages({ visualQuery }) {
+  const [photos, setPhotos] = useState([]);
+
+  useEffect(() => {
+    if (!visualQuery) return;
+    let cancelled = false;
+    fetch(`${API}/explore/images?q=${encodeURIComponent(visualQuery)}&page=0`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!cancelled && data?.images?.length) setPhotos(data.images.slice(0, 3));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [visualQuery]);
+
+  if (!photos.length) return null;
+
+  return (
+    <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+      {photos.map((photo, i) => (
+        <a
+          key={i}
+          href={photo.source || '#'}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ flex: 1, borderRadius: 10, overflow: 'hidden', display: 'block', textDecoration: 'none', flexShrink: 0 }}
+        >
+          <img
+            src={photo.image}
+            alt={photo.title || visualQuery}
+            onError={e => { e.target.parentElement.style.display = 'none'; }}
+            style={{ width: '100%', height: 100, objectFit: 'cover', display: 'block', transition: 'transform 0.2s' }}
+            onMouseEnter={e => { e.target.style.transform = 'scale(1.03)'; }}
+            onMouseLeave={e => { e.target.style.transform = 'scale(1)'; }}
+          />
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function QuickSummary({ answer, isDeepSearch }) {
   const [open, setOpen] = useState(false);
 
   const bullets = extractQuickSummary(answer);
   if (!bullets.length || answer.length < 300) return null;
-
-  const { label, bg, border, color } = confidenceLevel(sources.length);
 
   return (
     <div style={{ marginBottom: 14 }}>
@@ -268,13 +311,6 @@ function QuickSummary({ answer, sources, isDeepSearch }) {
             <Zap size={8} fill="#b45309" color="#b45309" /> Deep
           </span>
         )}
-        <span style={{
-          padding: '1px 6px', borderRadius: 20, fontSize: 9,
-          fontFamily: 'var(--font-family)', fontWeight: 600,
-          color, background: bg, border: `1px solid ${border}`,
-        }}>
-          {label}
-        </span>
         <ChevronDown
           size={13}
           color="var(--fg-dim)"
@@ -306,13 +342,14 @@ function QuickSummary({ answer, sources, isDeepSearch }) {
 }
 
 function CollapsibleAnswer({ answer, streaming, sources }) {
+  const linked = useMemo(() => linkifyCitations(answer, sources), [answer, sources]);
   return (
     <Box sx={ANSWER_STYLES}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{ a: ({ href, children }) => <CitationLink href={href} sources={sources}>{children}</CitationLink> }}
       >
-        {answer}
+        {linked}
       </ReactMarkdown>
       {streaming && (
         <Box component="span" sx={{
@@ -409,7 +446,7 @@ function FollowUpBar({ onSubmit, atMax }) {
   );
 }
 
-function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowUp, onNewSearch, isDeepSearch, deepLabel }) {
+function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowUp, onNewSearch, isDeepSearch, deepLabel, relatedSearches = [], loadingRelated = false, visualQuery = '' }) {
   const [activeTab, setActiveTab] = useState('answer');
 
   const graphData = useMemo(
@@ -449,8 +486,8 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
       
       <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, alignItems: 'flex-start' }}>
 
-        
-        <Box sx={{ width: { xs: '100%', md: '35%' }, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+
+        <Box sx={{ width: { xs: '100%', md: '35%' }, flexShrink: 0, display: activeTab === 'news' ? 'none' : 'flex', flexDirection: 'column', gap: 1.5 }}>
           {sources.length > 0 && (
             <GlassCard style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.55)' }}>
               <div style={{
@@ -466,7 +503,7 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
             </GlassCard>
           )}
 
-          {answer && (
+          {(answer || loadingRelated) && (relatedSearches.length > 0 || loadingRelated) && (
             <GlassCard style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.45)' }}>
               <div style={{
                 fontFamily: 'var(--font-family)', fontSize: '0.62rem', fontWeight: 700,
@@ -476,24 +513,29 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
                 Related searches
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                {getFollowUps(question).map(s => (
-                  <div
-                    key={s}
-                    onClick={() => onNewSearch(s)}
-                    style={{
-                      fontFamily: 'var(--font-family)', fontSize: '0.76rem',
-                      color: 'var(--fg-secondary)', padding: '5px 10px',
-                      borderRadius: 10, cursor: 'pointer',
-                      background: 'rgba(255,255,255,0.35)',
-                      backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
-                      border: '1px solid rgba(255,255,255,0.4)', transition: 'all 0.12s',
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.borderColor = 'rgba(249,115,22,0.3)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.color = 'var(--fg-secondary)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.4)'; }}
-                  >
-                    {s}
-                  </div>
-                ))}
+                {loadingRelated
+                  ? [0, 1, 2].map(i => (
+                      <Skeleton key={i} variant="rectangular" height={30} sx={{ borderRadius: '10px', bgcolor: 'var(--bg-tertiary)', width: `${75 + i * 8}%` }} />
+                    ))
+                  : relatedSearches.map(s => (
+                      <div
+                        key={s}
+                        onClick={() => onNewSearch(s)}
+                        style={{
+                          fontFamily: 'var(--font-family)', fontSize: '0.76rem',
+                          color: 'var(--fg-secondary)', padding: '5px 10px',
+                          borderRadius: 10, cursor: 'pointer',
+                          background: 'rgba(255,255,255,0.35)',
+                          backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
+                          border: '1px solid rgba(255,255,255,0.4)', transition: 'all 0.12s',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.borderColor = 'rgba(249,115,22,0.3)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.color = 'var(--fg-secondary)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.4)'; }}
+                      >
+                        {s}
+                      </div>
+                    ))
+                }
               </div>
             </GlassCard>
           )}
@@ -502,7 +544,10 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
         
         <Box sx={{ flex: 1, minWidth: 0 }}>
           {answer ? (
-            <GlassCard style={{ padding: '20px 22px', background: 'rgba(255,255,255,0.80)' }}>
+            <GlassCard style={{
+              padding: activeTab === 'news' ? '14px 16px 16px' : '20px 22px',
+              background: 'rgba(255,255,255,0.80)',
+            }}>
               <TabStrip active={activeTab} onChange={setActiveTab} />
 
               {activeTab === 'answer' && (
@@ -520,7 +565,8 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
                       </Typography>
                     </Box>
                   )}
-                  <QuickSummary answer={answer} sources={sources} isDeepSearch={isDeepSearch} />
+                  {visualQuery && <InlineImages visualQuery={visualQuery} />}
+                  <QuickSummary answer={answer} isDeepSearch={isDeepSearch} />
                   <CollapsibleAnswer answer={answer} streaming={streaming} sources={sources} />
                 </>
               )}
@@ -540,7 +586,11 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
               )}
 
               {activeTab === 'images' && (
-                <ImagesTab query={question} />
+                <ImagesTab query={visualQuery || question} />
+              )}
+
+              {activeTab === 'perspectives' && (
+                <PerspectivesTab query={question} />
               )}
             </GlassCard>
           ) : (
@@ -657,15 +707,17 @@ function TabStrip({ active, onChange }) {
   return (
     <Box sx={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', mb: 1.5 }}>
       {tab('answer', 'Result')}
-      {tab('graph', 'Knowledge Graph')}
       {tab('news', 'News')}
       {tab('images', 'Images')}
+      {tab('perspectives', 'Perspectives')}
+      {tab('graph', 'Knowledge Graph')}
     </Box>
   );
 }
 
 export default function ExplorePage() {
-  const { chips, trending, spinning, refetch } = useTrendingChips();
+  const navigate = useNavigate();
+  const { articles: trendingArticles, trending, spinning, refetch } = useTrendingChips();
 
   const [query,        setQuery]        = useState('');
   const [phase,        setPhase]        = useState('idle');
@@ -681,6 +733,9 @@ export default function ExplorePage() {
   const abortRef = useRef(null);
 
   const [followUpBlocks,  setFollowUpBlocks]  = useState([]);
+  const [relatedSearches, setRelatedSearches] = useState([]);
+  const [loadingRelated,  setLoadingRelated]  = useState(false);
+  const [visualQuery,     setVisualQuery]     = useState('');
   const followUpAbortRef = useRef(null);
   const lastBlockRef     = useRef(null);
   const submittedQueryRef = useRef('');
@@ -713,10 +768,15 @@ export default function ExplorePage() {
     setErrorMsg('');
     setStreaming(true);
     setFollowUpBlocks([]);
+    setRelatedSearches([]);
+    setLoadingRelated(false);
     setIsDeepSearch(false);
     setDeepLabel(isDeep ? '1/2' : '');
+    setVisualQuery(deriveImageQuery(q.trim()));
     submittedQueryRef.current = q.trim();
     if (followUpAbortRef.current) followUpAbortRef.current.abort();
+
+    let accumulatedAnswer = '';
 
     const readStream = async (queryStr, skipSources = false) => {
       const res = await fetch(`${API}/explore/search`, {
@@ -746,13 +806,14 @@ export default function ExplorePage() {
           try {
             const evt = JSON.parse(raw);
             if      (evt.type === 'sources' && !skipSources) setSources(evt.sources || []);
-            else if (evt.type === 'chunk')                   setAnswer(prev => prev + evt.text);
+            else if (evt.type === 'chunk')                   { accumulatedAnswer += evt.text; setAnswer(prev => prev + evt.text); }
             else if (evt.type === 'error')                   setErrorMsg(evt.text);
           } catch { /* ignore malformed sse */ }
         }
       }
     };
 
+    let searchSuccess = false;
     try {
       setPhase('results');
       await readStream(q.trim());
@@ -763,6 +824,7 @@ export default function ExplorePage() {
         await readStream(`${q.trim()} detailed analysis`, true);
         setIsDeepSearch(true);
       }
+      searchSuccess = true;
     } catch (err) {
       if (err.name !== 'AbortError') {
         setErrorMsg(err.message);
@@ -772,6 +834,18 @@ export default function ExplorePage() {
       setStreaming(false);
       setDeepLabel('');
       setDeepMode(false);
+      if (searchSuccess && accumulatedAnswer) {
+        setLoadingRelated(true);
+        fetch(`${API}/explore/related`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: q.trim(), answer_snippet: accumulatedAnswer.slice(0, 500) }),
+        })
+          .then(r => r.json())
+          .then(data => setRelatedSearches(data.related || []))
+          .catch(() => {})
+          .finally(() => setLoadingRelated(false));
+      }
     }
   }, []);
 
@@ -805,10 +879,13 @@ export default function ExplorePage() {
     followUpAbortRef.current = new AbortController();
 
     const blockId = `fu_${Date.now()}`;
+    const followUpVisualQuery = deriveImageQuery(followUpText, submittedQueryRef.current);
     setFollowUpBlocks(prev => [
       ...prev,
-      { id: blockId, question: followUpText, sources: [], answer: '', streaming: true, errorMsg: '' },
+      { id: blockId, question: followUpText, sources: [], answer: '', streaming: true, errorMsg: '', relatedSearches: [], loadingRelated: false, visualQuery: followUpVisualQuery },
     ]);
+
+    let blockAnswer = '';
 
     try {
       const res = await fetch(`${API}/explore/search`, {
@@ -844,7 +921,7 @@ export default function ExplorePage() {
           try {
             const evt = JSON.parse(raw);
             if      (evt.type === 'sources') update(b => ({ ...b, sources: evt.sources || [] }));
-            else if (evt.type === 'chunk')   update(b => ({ ...b, answer: b.answer + evt.text }));
+            else if (evt.type === 'chunk')   { blockAnswer += evt.text; update(b => ({ ...b, answer: b.answer + evt.text })); }
             else if (evt.type === 'error')   update(b => ({ ...b, errorMsg: evt.text }));
           } catch { /* ignore malformed sse */ }
         }
@@ -856,7 +933,17 @@ export default function ExplorePage() {
         );
       }
     } finally {
-      setFollowUpBlocks(prev => prev.map(b => b.id === blockId ? { ...b, streaming: false } : b));
+      setFollowUpBlocks(prev => prev.map(b => b.id === blockId ? { ...b, streaming: false, loadingRelated: !!blockAnswer, visualQuery: followUpVisualQuery } : b));
+      if (blockAnswer) {
+        fetch(`${API}/explore/related`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: followUpText, answer_snippet: blockAnswer.slice(0, 500) }),
+        })
+          .then(r => r.json())
+          .then(data => setFollowUpBlocks(prev => prev.map(b => b.id === blockId ? { ...b, relatedSearches: data.related || [], loadingRelated: false } : b)))
+          .catch(() => setFollowUpBlocks(prev => prev.map(b => b.id === blockId ? { ...b, loadingRelated: false } : b)));
+      }
     }
   }, [followUpBlocks.length]);
 
@@ -918,27 +1005,43 @@ export default function ExplorePage() {
         }}
       >
         
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-          <Box sx={{
-            width: 36, height: 36, borderRadius: '10px',
-            bgcolor: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5 }}>
+          <PixelWordmark pixelSize={10} gap={14} />
+          <Typography sx={{
+            fontFamily: 'var(--font-family)', fontSize: '0.75rem',
+            color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase',
           }}>
-            <Globe size={18} color="#FFF" strokeWidth={2} />
-          </Box>
-          <Box>
-            <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '1.2rem', fontWeight: 700, color: 'var(--fg-primary)', lineHeight: 1.1 }}>
-              Ask
-            </Typography>
-            <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.72rem', color: 'var(--fg-dim)' }}>
-              Web search · AI reasoning · Inline citations
-            </Typography>
-          </Box>
+            Web search · AI reasoning · Inline citations
+          </Typography>
         </Box>
 
         <SearchBar query={query} setQuery={setQuery} onSubmit={handleSubmit} deepMode={deepMode} onToggleDeep={() => setDeepMode(d => !d)} />
         {Controls}
 
-        
+        {/* Research entry point */}
+        <Box
+          onClick={() => navigate('/research')}
+          sx={{
+            display: 'flex', alignItems: 'center', gap: 0.75,
+            px: 1.5, py: 0.7,
+            borderRadius: '10px',
+            background: 'rgba(249,115,22,0.07)',
+            border: '1px solid rgba(249,115,22,0.2)',
+            cursor: 'pointer',
+            transition: 'background 0.15s, border-color 0.15s',
+            '&:hover': { background: 'rgba(249,115,22,0.13)', borderColor: 'rgba(249,115,22,0.4)' },
+          }}
+        >
+          <FlaskConical size={13} color="var(--accent)" />
+          <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent)', letterSpacing: '0.04em' }}>
+            Quarry Research
+          </Typography>
+          <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', color: 'var(--fg-dim)', ml: 0.25 }}>
+            — structured multi-phase deep dive
+          </Typography>
+        </Box>
+
+        {/* Section header */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.5 }}>
           {trending && (
             <Box sx={{
@@ -958,26 +1061,52 @@ export default function ExplorePage() {
           </Box>
         </Box>
 
-        
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, maxWidth: 680, justifyContent: 'center' }}>
-          {chips.map(s => (
+        {/* News panels grid */}
+        <Box sx={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: 1,
+          width: '100%',
+          maxWidth: 680,
+        }}>
+          {trendingArticles.map((art, i) => (
             <Box
-              key={s}
-              onClick={() => { setQuery(s); runSearch(s); }}
+              key={i}
+              onClick={() => { setQuery(art.title); runSearch(art.title); }}
               sx={{
-                fontFamily: 'var(--font-family)', fontSize: '0.75rem',
-                color: 'var(--fg-secondary)',
-                background:           'rgba(255, 255, 255, 0.35)',
-                backdropFilter:       'blur(8px)',
+                display: 'flex', flexDirection: 'column', gap: 0.4,
+                px: 1.25, py: 1,
+                borderRadius: '10px',
+                background: 'rgba(255,255,255,0.45)',
+                backdropFilter: 'blur(8px)',
                 WebkitBackdropFilter: 'blur(8px)',
-                border:               '1px solid rgba(255, 255, 255, 0.45)',
-                borderRadius:         '12px',
-                px: 1.5, py: 0.5, cursor: 'pointer',
-                transition: 'all 0.12s',
-                '&:hover': { background: 'rgba(255,255,255,0.55)', color: 'var(--fg-primary)', borderColor: 'rgba(249,115,22,0.3)' },
+                border: '1px solid rgba(255,255,255,0.5)',
+                cursor: 'pointer',
+                transition: 'border-color 0.15s, background 0.15s',
+                '&:hover': {
+                  background: 'rgba(255,255,255,0.65)',
+                  borderColor: 'rgba(249,115,22,0.3)',
+                },
               }}
             >
-              {s}
+              <Typography sx={{
+                fontFamily: 'var(--font-family)', fontSize: '0.75rem', fontWeight: 600,
+                color: 'var(--fg-primary)', lineHeight: 1.4,
+                display: '-webkit-box', WebkitLineClamp: 3,
+                WebkitBoxOrient: 'vertical', overflow: 'hidden',
+              }}>
+                {art.title}
+              </Typography>
+              {(art.source?.name || art.publishedAt) && (
+                <Typography sx={{
+                  fontFamily: 'var(--font-family)', fontSize: '0.65rem',
+                  color: 'var(--fg-dim)', mt: 'auto', pt: 0.5,
+                }}>
+                  {art.source?.name}
+                  {art.source?.name && art.publishedAt ? ' · ' : ''}
+                  {art.publishedAt ? new Date(art.publishedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''}
+                </Typography>
+              )}
             </Box>
           ))}
         </Box>
@@ -995,7 +1124,7 @@ export default function ExplorePage() {
         `}</style>
 
         {/* Pixel art figurines — corners only, pointer-events off, inside positioned home box */}
-        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, pointerEvents: 'none', overflow: 'hidden', zIndex: 0 }}>
+        <div className="fig-wrapper">
           {/* Bottom-left: Archivist + Scout */}
           <div className="fig-left" style={{ position: 'absolute', bottom: 0, left: 24, display: 'flex', alignItems: 'flex-end', gap: 8 }}>
             <ArchivistFigurine />
@@ -1087,6 +1216,9 @@ export default function ExplorePage() {
           onNewSearch={newSearch}
           isDeepSearch={isDeepSearch}
           deepLabel={deepLabel}
+          relatedSearches={relatedSearches}
+          loadingRelated={loadingRelated}
+          visualQuery={visualQuery}
         />
 
         
@@ -1101,6 +1233,9 @@ export default function ExplorePage() {
               errorMsg={block.errorMsg}
               isFollowUp={true}
               onNewSearch={newSearch}
+              relatedSearches={block.relatedSearches || []}
+              loadingRelated={block.loadingRelated || false}
+              visualQuery={block.visualQuery || ''}
             />
           </Box>
         ))}

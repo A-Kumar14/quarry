@@ -1,5 +1,102 @@
 import React from 'react';
 
+/* ── Pixel font glyph map (5 cols × 7 rows, 1=filled) ── */
+const GLYPHS = {
+  Q: [
+    [0,1,1,1,0],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,0,1,0,1],
+    [0,1,1,1,0],
+    [0,0,0,1,1],
+  ],
+  U: [
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [0,1,1,1,0],
+    [0,0,0,0,0],
+  ],
+  A: [
+    [0,1,1,1,0],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,1,1,1,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [0,0,0,0,0],
+  ],
+  R: [
+    [1,1,1,1,0],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,1,1,1,0],
+    [1,0,1,0,0],
+    [1,0,0,1,1],
+    [0,0,0,0,0],
+  ],
+  Y: [
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [0,1,0,1,0],
+    [0,0,1,0,0],
+    [0,0,1,0,0],
+    [0,0,1,0,0],
+    [0,0,0,0,0],
+  ],
+};
+
+/* ── QUARRY pixel-art wordmark ── */
+export function PixelWordmark({ pixelSize = 10, gap = 14, color = '#F97316', shadowColor = '#7C2D12' }) {
+  const word   = ['Q','U','A','R','R','Y'];
+  const ROWS   = 7;
+  const COLS   = 5;
+  const letterW = COLS * pixelSize;
+  const shadow  = 3;
+  const totalW  = word.length * letterW + (word.length - 1) * gap + shadow;
+  const totalH  = ROWS * pixelSize + shadow;
+
+  const rects = [];
+  ['shadow', 'main'].forEach(pass => {
+    const dx   = pass === 'shadow' ? shadow : 0;
+    const dy   = pass === 'shadow' ? shadow : 0;
+    const fill = pass === 'shadow' ? shadowColor : color;
+    word.forEach((ch, li) => {
+      const xBase = li * (letterW + gap);
+      (GLYPHS[ch] || []).forEach((row, ri) =>
+        row.forEach((on, ci) => {
+          if (!on) return;
+          rects.push(
+            <rect
+              key={`${pass}-${li}-${ri}-${ci}`}
+              x={xBase + ci * pixelSize + dx}
+              y={ri * pixelSize + dy}
+              width={pixelSize}
+              height={pixelSize}
+              fill={fill}
+            />
+          );
+        })
+      );
+    });
+  });
+
+  return (
+    <svg
+      width={totalW}
+      height={totalH}
+      viewBox={`0 0 ${totalW} ${totalH}`}
+      style={{ imageRendering: 'pixelated', display: 'block' }}
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      {rects}
+    </svg>
+  );
+}
+
 const ENABLE_FIGURINE_ANIMATION = true;
 
 export const floatIdleCSS = ENABLE_FIGURINE_ANIMATION
