@@ -13,7 +13,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from schemas import ExploreSearchRequest, RelatedSearchRequest, ResearchRequest
+from schemas import ExploreSearchRequest, RelatedSearchRequest, ResearchRequest, CiteRequest
 from services.registry import ai_service, llm_service
 from services import image_service
 from slowapi import Limiter
@@ -202,6 +202,44 @@ async def explore_research(request: Request, body: ResearchRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.post("/explore/cite")
+@limiter.limit("30/minute")
+async def explore_cite(request: Request, body: CiteRequest):
+    """Resolve citation metadata for a URL and return formatted citation."""
+    import asyncio
+    from services import citation_service
+
+    try:
+        result = await asyncio.to_thread(citation_service.cite, body.url, body.style)
+        return result
+    except Exception as exc:
+        logger.error("explore_cite.failed url=%s error=%s", body.url, exc)
+        raise HTTPException(status_code=500, detail="Citation lookup failed")
+
+
+@router.get("/explore/suggest")
+@limiter.limit("60/minute")
+async def explore_suggest(
+    request: Request,
+    q: str = Query(..., max_length=200),
+):
+    """Return search query suggestions via Datamuse."""
+    if not q.strip():
+        return {"suggestions": []}
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            r = await client.get(
+                "https://api.datamuse.com/sug",
+                params={"s": q.strip(), "max": 6},
+            )
+            if r.status_code == 200:
+                data = r.json()
+                return {"suggestions": [item["word"] for item in data if "word" in item]}
+    except Exception as exc:
+        logger.warning("explore_suggest.failed: %s", exc)
+    return {"suggestions": []}
 
 
 @router.get("/explore/images")

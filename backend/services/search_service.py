@@ -85,6 +85,15 @@ def is_safe_url(url: str) -> bool:
 
 # ── DuckDuckGo search ──────────────────────────────────────────────────────────
 
+def _decode_html_entities(text: str) -> str:
+    """Decode HTML entities (e.g. &#8217; → ', &amp; → &) in a string."""
+    try:
+        from html import unescape
+        return unescape(text)
+    except Exception:
+        return text
+
+
 def web_search(query: str, max_results: int = 8) -> list[dict[str, str]]:
     """Return a list of {title, url, snippet} dicts from DuckDuckGo."""
     try:
@@ -96,9 +105,9 @@ def web_search(query: str, max_results: int = 8) -> list[dict[str, str]]:
         with DDGS() as ddgs:
             for r in ddgs.text(query, max_results=max_results):
                 results.append({
-                    "title": r.get("title", ""),
+                    "title": _decode_html_entities(r.get("title", "")),
                     "url": r.get("href", r.get("link", "")),
-                    "snippet": r.get("body", r.get("description", "")),
+                    "snippet": _decode_html_entities(r.get("body", r.get("description", ""))),
                 })
         logger.info("web_search.ok query=%s count=%d", query, len(results))
         return results

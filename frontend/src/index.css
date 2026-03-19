@@ -1,18 +1,39 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300;1,9..40,400&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap');
 
 :root {
-  --bg-primary: #EDEAE5;
-  --bg-secondary: #F2EEE7;
-  --bg-tertiary: #E8E2D9;
-  --fg-primary: #111827;
-  --fg-secondary: #4B5563;
-  --fg-dim: #9CA3AF;
-  --accent: #F97316;
-  --accent-dim: rgba(249, 115, 22, 0.12);
-  --border: #E5E7EB;
-  --error: #DC2626;
-  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  --bg-primary:     #EDE8DF;
+  --bg-secondary:   #E5DDD0;
+  --bg-tertiary:    #DDD5C0;
+  --fg-primary:     #26180a;
+  --fg-secondary:   #5a4222;
+  --fg-dim:         rgba(80,58,22,0.42);
+  --accent:         #F97316;
+  --accent-dim:     rgba(249,115,22,0.12);
+  --blue:           #1e40af;
+  --blue-light:     #1e3a8a;
+  --blue-dim:       rgba(30,58,138,0.10);
+  --border:         rgba(175,150,105,0.18);
+  --error:          #DC2626;
+  --font-family:    'DM Sans', system-ui, sans-serif;
+  --font-serif:     'Playfair Display', Georgia, serif;
+  --font-mono:      'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+
+  /* Glass surface tokens */
+  --glass-bg:       rgba(255,250,235,0.22);
+  --glass-border-t: rgba(255,255,245,0.92);
+  --glass-border-l: rgba(255,252,238,0.72);
+  --glass-border-r: rgba(185,165,128,0.12);
+  --glass-border-b: rgba(178,158,120,0.12);
+  --glass-shadow:   0 8px 32px rgba(140,110,60,0.08), 0 2px 0 rgba(255,254,225,0.65) inset, 0 -1px 0 rgba(100,75,28,0.03) inset;
+
+  /* Glass button tokens */
+  --gbtn-bg:        rgba(255,250,232,0.32);
+  --gbtn-border-t:  rgba(255,255,235,0.95);
+  --gbtn-border-l:  rgba(255,252,225,0.75);
+  --gbtn-border-r:  rgba(180,160,120,0.12);
+  --gbtn-border-b:  rgba(175,152,112,0.12);
+  --gbtn-shadow:    0 3px 14px rgba(140,110,60,0.08), 0 1.5px 0 rgba(255,254,218,0.90) inset, 0 -1px 0 rgba(100,75,28,0.04) inset;
+  --gbtn-color:     #3a2c18;
 }
 
 *, *::before, *::after {
@@ -23,52 +44,13 @@
 
 html, body, #root {
   height: 100%;
-  background-color: var(--bg-primary);
+  background: linear-gradient(158deg, #EDE8DF 0%, #E5DDD0 40%, #DDD5C0 75%, #E8E2D5 100%) fixed;
+  background-attachment: fixed;
   color: var(--fg-primary);
   font-family: var(--font-family);
+  font-weight: 400;
 }
 
-/* ── Animated radial gradient home background ─────────────────────────────── */
-.home-radial-bg {
-  position: relative;
-  overflow: hidden;
-}
-
-.home-radial-bg::before {
-  content: '';
-  position: absolute;
-  inset: -25%;
-  background: radial-gradient(
-    ellipse 55% 55% at 50% 50%,
-    rgba(249, 115, 22, 0.10) 0%,
-    rgba(251, 191, 36, 0.07) 35%,
-    rgba(250, 247, 242, 0.00) 70%
-  );
-  animation: radialBreath 7s ease-in-out infinite;
-  pointer-events: none;
-  z-index: 0;
-}
-
-.home-radial-bg > * {
-  position: relative;
-  z-index: 1;
-}
-
-/* Figurine wrapper sits at the bottom of the home screen, above the radial gradient */
-.fig-wrapper {
-  position: absolute !important;
-  z-index: 2 !important;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-@keyframes radialBreath {
-  0%, 100% { transform: scale(1)     translateY(0);   opacity: 0.7; }
-  50%       { transform: scale(1.22) translateY(-3%); opacity: 1;   }
-}
 
 /* ── Cursor blink ─────────────────────────────────────────────────────────── */
 @keyframes blinkPulse {
@@ -79,4 +61,16 @@ html, body, #root {
 @keyframes slideInRight {
   from { opacity: 0; transform: translateX(14px); }
   to   { opacity: 1; transform: translateX(0);    }
+}
+
+/* ── Trending pulse ───────────────────────────────────────────────────────── */
+@keyframes trendingPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: .4; transform: scale(.75); }
+}
+
+/* ── Spin ─────────────────────────────────────────────────────────────────── */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }

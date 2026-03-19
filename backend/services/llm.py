@@ -107,6 +107,33 @@ class LLMService:
             if text:
                 yield text
 
+    def chat_sync(
+        self, messages: List[dict], model: Optional[str] = None, timeout: int = 15
+    ) -> str:
+        """Non-streaming multi-turn completion. Returns the full response string."""
+        resolved = self.resolve_model(model)
+
+        if self._provider == "gemini" and not self._is_openrouter_model(resolved):
+            genai = self._get_genai()
+            sys_msg = next((m["content"] for m in messages if m["role"] == "system"), "")
+            user_msgs = [m["content"] for m in messages if m["role"] in ("user", "assistant")]
+            gmodel = genai.GenerativeModel(
+                model_name=resolved,
+                system_instruction=sys_msg if sys_msg else None,
+            )
+            query = user_msgs[-1] if user_msgs else ""
+            response = gmodel.generate_content(
+                query, stream=False, generation_config={"max_output_tokens": 2048}
+            )
+            return getattr(response, "text", "") or ""
+
+        client = self._get_sync_client()
+        response = client.chat.completions.create(
+            model=resolved, messages=messages, stream=False,
+            max_tokens=2048, timeout=timeout,
+        )
+        return response.choices[0].message.content or ""
+
     def _get_sync_client(self):
         if self._sync_client is None:
             import openai

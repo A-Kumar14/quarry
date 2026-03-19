@@ -2,10 +2,34 @@
 services/ai_service.py — Search-Augmented Generation for the Ask app.
 """
 
+import json
 import logging
 import re
 
 logger = logging.getLogger(__name__)
+
+CONTRADICTION_SYSTEM_PROMPT = """You are a fact-checking assistant. You will be given content from multiple web sources about the same topic. Your job is to identify factual contradictions — cases where two or more sources make clearly conflicting factual claims about the same subject.
+
+Rules:
+- Only flag real factual contradictions (e.g. Source A says X happened in 2019, Source B says 2021). Do not flag differences in opinion, emphasis, or framing.
+- Each contradiction must name at least two sources by their [N] index number.
+- If sources largely agree or there is insufficient content to detect contradictions, return an empty contradictions array.
+- Respond ONLY with valid JSON. No preamble, no markdown fences, no explanation outside the JSON.
+
+Return this exact JSON shape:
+{
+  "contradictions": [
+    {
+      "topic": "short label for what is being disputed (max 8 words)",
+      "summary": "one sentence explaining the disagreement",
+      "claims": [
+        { "source_index": 1, "source_title": "...", "claim": "what this source says" },
+        { "source_index": 2, "source_title": "...", "claim": "what this source says" }
+      ]
+    }
+  ],
+  "consensus": "one sentence about what all sources agree on (or empty string if nothing notable)"
+}"""
 
 RESEARCH_SYSTEM_PROMPT = """You are **Quarry Research** — a dedicated, multi-turn research assistant embedded inside the Quarry app.
 
@@ -122,6 +146,92 @@ class AIService:
             self._llm = llm_service
         return self._llm
 
+    @staticmethod
+    def _is_research_query(query: str) -> bool:
+        """
+        Return False for sports, live scores, current events, and simple lookup
+        queries where contradiction detection adds no value.
+        """
+        q = query.lower()
+        live_signals = {
+            # sports / scores
+            " vs ", " v ", " vs.", "score", "scores", "scoreline", "result",
+            "match", "game", "goals", "goal", "fixture", "kickoff", "kick-off",
+            "standings", "table", "lineup", "line-up", "transfer", "signing",
+            "champion", "champions league", "premier league", "la liga", "serie a",
+            "bundesliga", "ligue 1", "nba", "nfl", "mlb", "nhl", "ufc", "f1",
+            # live / current events
+            "today", "tonight", "right now", "live", "latest", "breaking",
+            "just in", "this week", "yesterday", "this morning", "right now",
+            "current", "ongoing", "happening",
+            # weather / finance / crypto
+            "weather", "forecast", "temperature",
+            "stock price", "share price", "crypto", "bitcoin", "ethereum",
+        }
+        return not any(signal in q for signal in live_signals)
+
+    def detect_contradictions(self, sources: list[dict], scraped: list[dict]) -> dict:
+        """
+        Analyse sources for factual contradictions via a non-streaming LLM call.
+        Always returns a dict; never raises.
+        """
+        if not sources:
+            return {"contradictions": [], "consensus": ""}
+
+        parts = []
+        for i, src in enumerate(sources, start=1):
+            markdown = next(
+                (s["markdown"] for s in scraped if s["url"] == src["url"]), None
+            )
+            content = markdown[:1500] if markdown else src.get("snippet", "")
+            parts.append(
+                f"[{i}] {src['title']}\n"
+                f"URL: {src['url']}\n"
+                f"Content: {content}\n\n---\n"
+            )
+
+        user_msg = "\n".join(parts)[:12000]
+
+        if not user_msg.strip():
+            return {"contradictions": [], "consensus": ""}
+
+        messages = [
+            {"role": "system", "content": CONTRADICTION_SYSTEM_PROMPT},
+            {"role": "user", "content": user_msg},
+        ]
+
+        try:
+            llm = self._get_llm()
+            raw = llm.chat_sync(messages, timeout=15)
+
+            # Strip markdown fences if present
+            raw = raw.strip()
+            if raw.startswith("```"):
+                raw = raw.lstrip("`").lstrip("json").strip()
+                raw = raw.rstrip("`").strip()
+
+            data = json.loads(raw)
+
+            if (
+                not isinstance(data, dict)
+                or "contradictions" not in data
+                or not isinstance(data["contradictions"], list)
+            ):
+                raise ValueError("invalid shape")
+
+            for item in data["contradictions"]:
+                if not all(k in item for k in ("topic", "summary", "claims")):
+                    raise ValueError("invalid shape")
+                if not isinstance(item["claims"], list):
+                    raise ValueError("invalid shape")
+
+            data.setdefault("consensus", "")
+            return data
+
+        except Exception as exc:
+            logger.error("detect_contradictions.failed: %s", exc)
+            return {"contradictions": [], "consensus": "", "error": True}
+
     def explore_the_web(self, query: str):
         """
         Search-Augmented Generation streaming generator.
@@ -132,6 +242,7 @@ class AIService:
 
         sources: list[dict] = []
 
+        scraped: list[dict] = []
         try:
             results = search_service.web_search(query, max_results=8)
             urls = [r["url"] for r in results if r.get("url")]
@@ -147,10 +258,15 @@ class AIService:
             context_block = live_scores + "\n\n" + context_block
 
         system_prompt = (
-            "You are Ask — an AI research assistant. "
+            "You are Quarry — an AI research assistant. "
             "You have been given web search results below. Use them to answer the user's question. "
             "If [LIVE SCORES — ESPN] data is present at the top of the context, treat it as the "
             "most authoritative and up-to-date source for current match scores and status. "
+            "IMPORTANT: Before answering, verify the search results are actually relevant to the "
+            "user's query. If the sources are clearly about a different topic (e.g. the user asks "
+            "about cooking but results are about politics), say: \"I couldn't find relevant results "
+            "for your query. The search returned unrelated content. Please try rephrasing your "
+            "question.\" — do NOT answer using irrelevant sources. "
             "You MUST cite sources using inline notation like [1], [2], [3] that correspond exactly "
             "to the numbered sources in the context. Be thorough and well-structured using Markdown.\n\n"
             "--- WEB CONTEXT ---\n"
@@ -180,6 +296,19 @@ class AIService:
         except Exception as exc:
             logger.error("explore_the_web.stream_failed: %s", exc)
             yield f"data: {_json.dumps({'type': 'error', 'text': str(exc)})}\n\n"
+            yield "data: [DONE]\n\n"
+
+        # Second pass: contradiction detection — research queries only
+        if self._is_research_query(query):
+            try:
+                contradictions_data = self.detect_contradictions(sources, scraped)
+                yield f"data: {_json.dumps({'type': 'contradictions', 'data': contradictions_data})}\n\n"
+            except Exception as exc:
+                logger.error("explore_the_web.contradictions_emit_failed: %s", exc)
+                yield f"data: {_json.dumps({'type': 'contradictions', 'data': {'contradictions': [], 'consensus': ''}})}\n\n"
+        else:
+            # Not a research query — signal frontend to hide the tab
+            yield f"data: {_json.dumps({'type': 'contradictions', 'data': None})}\n\n"
 
     def research_session(self, messages: list[dict], message: str):
         """

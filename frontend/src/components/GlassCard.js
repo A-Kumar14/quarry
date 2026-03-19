@@ -1,12 +1,15 @@
 import React from 'react';
 
 export const glassStyle = {
-  background: 'rgba(255, 255, 255, 0.15)',
-  backdropFilter: 'blur(12px)',
-  WebkitBackdropFilter: 'blur(12px)',
-  border: '1px solid rgba(255, 255, 255, 0.25)',
-  borderRadius: 16,
-  boxShadow: '0 4px 24px rgba(0, 0, 0, 0.06)',
+  background: 'var(--glass-bg)',
+  backdropFilter: 'blur(40px) saturate(200%) brightness(1.08)',
+  WebkitBackdropFilter: 'blur(40px) saturate(200%) brightness(1.08)',
+  borderRadius: 18,
+  borderTop: '1px solid var(--glass-border-t)',
+  borderLeft: '1px solid var(--glass-border-l)',
+  borderRight: '1px solid var(--glass-border-r)',
+  borderBottom: '1px solid var(--glass-border-b)',
+  boxShadow: 'var(--glass-shadow)',
 };
 
 export default function GlassCard({ children, style, className, ...props }) {
