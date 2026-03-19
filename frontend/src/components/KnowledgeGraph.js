@@ -127,7 +127,7 @@ export default function KnowledgeGraph({ nodes = [], links = [], onNodeClick }) 
     // Canvas label truncated; full title in DOM tooltip
     const fontSize = Math.min(12 / globalScale, 5);
     if (globalScale > 0.5 || node.type === 'query') {
-      ctx.font         = `600 ${fontSize}px Inter, sans-serif`;
+      ctx.font         = `600 ${fontSize}px 'DM Sans', system-ui, sans-serif`;
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle    = '#111827';
@@ -244,10 +244,10 @@ export default function KnowledgeGraph({ nodes = [], links = [], onNodeClick }) 
               position:             'absolute',
               bottom:               10,
               right:                10,
-              background:           'rgba(255,255,255,0.62)',
-              backdropFilter:       'blur(8px)',
-              WebkitBackdropFilter: 'blur(8px)',
-              border:               '1px solid rgba(255,255,255,0.45)',
+              background:           'rgba(255,250,235,0.75)',
+              backdropFilter:       'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              border:               '1px solid rgba(255,252,225,0.60)',
               borderRadius:         8,
               padding:              '4px 5px 5px',
               zIndex:               10,
@@ -274,10 +274,13 @@ export default function KnowledgeGraph({ nodes = [], links = [], onNodeClick }) 
           <div style={{
             width:                220,
             flexShrink:           0,
-            background:           'rgba(255, 255, 255, 0.82)',
-            backdropFilter:       'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)',
-            border:               '1px solid rgba(255, 255, 255, 0.35)',
+            background:           'rgba(255,250,235,0.88)',
+            backdropFilter:       'blur(24px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+            borderTop:            '1px solid rgba(255,255,235,0.90)',
+            borderLeft:           '1px solid rgba(255,252,225,0.70)',
+            borderRight:          '1px solid rgba(185,165,128,0.18)',
+            borderBottom:         '1px solid rgba(178,158,120,0.18)',
             borderRadius:         12,
             boxShadow:            '0 4px 24px rgba(0, 0, 0, 0.07)',
             padding:              16,

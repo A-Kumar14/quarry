@@ -56,3 +56,16 @@ class ResearchMessage(BaseModel):
 class ResearchRequest(BaseModel):
     messages: list[ResearchMessage] = Field(default_factory=list, max_length=100)
     message: str = Field("", max_length=2000)
+
+
+class CiteRequest(BaseModel):
+    url: str = Field(..., max_length=2000)
+    style: str = Field("apa", pattern="^(apa|mla|chicago|bibtex)$")
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, v: str) -> str:
+        v = v.strip()
+        if not v.startswith(("http://", "https://")):
+            raise ValueError("url must start with http:// or https://")
+        return v

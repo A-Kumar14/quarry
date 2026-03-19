@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Box, Typography } from '@mui/material';
-import { ArrowLeft, Send } from 'lucide-react';
+import { ArrowLeft, Send, History } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import GlassCard from '../components/GlassCard';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -16,19 +16,63 @@ const PHASES = [
   { n: 5, label: 'Wrap-up'    },
 ];
 
+const GLASS_BTN_ACCENT = {
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+  padding: '7px 16px', borderRadius: 999, cursor: 'pointer',
+  background: 'linear-gradient(158deg, rgba(249,115,22,0.90) 0%, rgba(217,79,10,0.96) 100%)',
+  borderTop: '1px solid rgba(255,185,115,0.75)',
+  borderLeft: '1px solid rgba(255,165,100,0.52)',
+  borderRight: '1px solid rgba(152,50,0,0.22)',
+  borderBottom: '1px solid rgba(152,50,0,0.28)',
+  boxShadow: '0 4px 16px rgba(249,115,22,0.32), 0 1.5px 0 rgba(255,205,148,0.68) inset, 0 -1px 0 rgba(130,40,0,0.18) inset',
+  color: '#fff', fontFamily: 'var(--font-family)', fontSize: 13, fontWeight: 500,
+  letterSpacing: '0.02em', whiteSpace: 'nowrap', transition: 'all 0.14s ease',
+};
+
 const MD_STYLES = {
-  '& p':              { fontFamily: 'var(--font-family)', fontSize: '0.9rem', lineHeight: 1.72, color: 'var(--fg-primary)', my: 0.5 },
-  '& h1,& h2,& h3':  { fontFamily: 'var(--font-family)', fontWeight: 700, color: 'var(--fg-primary)', mt: 1.5, mb: 0.5 },
-  '& h2':             { fontSize: '0.95rem' },
-  '& h3':             { fontSize: '0.85rem' },
+  '& p':              { fontFamily: 'var(--font-family)', fontWeight: 300, fontSize: '0.93rem', lineHeight: 1.80, color: 'var(--fg-primary)', my: 0.5 },
+  '& h1,& h2,& h3':  { fontFamily: 'var(--font-serif)', fontWeight: 600, color: 'var(--fg-primary)', mt: 1.5, mb: 0.5 },
+  '& h2':             { fontSize: '0.97rem' },
+  '& h3':             { fontSize: '0.88rem' },
   '& ul,& ol':        { pl: 2.5, my: 0.5 },
-  '& li':             { fontSize: '0.9rem', lineHeight: 1.65, mb: 0.25, color: 'var(--fg-primary)' },
-  '& strong':         { fontWeight: 700, color: 'var(--fg-primary)' },
+  '& li':             { fontSize: '0.93rem', fontWeight: 300, lineHeight: 1.80, mb: 0.25, color: 'var(--fg-primary)' },
+  '& strong':         { fontWeight: 600, color: 'var(--fg-primary)' },
   '& code':           { fontFamily: 'var(--font-mono)', fontSize: '0.82rem', bgcolor: 'var(--bg-tertiary)', px: '5px', py: '1px', borderRadius: '4px' },
   '& pre':            { bgcolor: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', p: 1.5, overflowX: 'auto', '& code': { bgcolor: 'transparent' } },
   '& blockquote':     { borderLeft: '3px solid var(--accent)', pl: 1.5, ml: 0, color: 'var(--fg-secondary)', fontStyle: 'italic' },
   '& hr':             { border: 'none', borderTop: '1px solid var(--border)', my: 1.5 },
 };
+
+/* ── Session persistence helpers ─────────────────────────────────────────── */
+
+function genUUID() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxx-xxxx-4xxx-yxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : ((r & 0x3) | 0x8)).toString(16);
+  });
+}
+
+function saveSession(id, messages, phase, topic) {
+  const data = {
+    id, messages, phase,
+    topic: topic || 'Untitled session',
+    updatedAt: Date.now(),
+    createdAt: JSON.parse(localStorage.getItem(`quarry_session_${id}`) || '{}').createdAt || Date.now(),
+  };
+  localStorage.setItem(`quarry_session_${id}`, JSON.stringify(data));
+
+  // Maintain index
+  const index = JSON.parse(localStorage.getItem('quarry_sessions_index') || '[]');
+  if (!index.includes(id)) {
+    localStorage.setItem('quarry_sessions_index', JSON.stringify([id, ...index]));
+  }
+}
+
+function loadSession(id) {
+  try { return JSON.parse(localStorage.getItem(`quarry_session_${id}`)); }
+  catch { return null; }
+}
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 
@@ -47,11 +91,25 @@ function stripSessionState(text) {
   return text.replace(/<!--\s*SESSION_STATE[\s\S]*?-->/g, '').trimEnd();
 }
 
+function extractTopic(messages) {
+  // Look for SESSION_STATE topic in assistant messages
+  for (const m of [...messages].reverse()) {
+    if (m.role === 'assistant') {
+      const state = parseSessionState(m.content);
+      if (state?.topic && state.topic !== '[topic]') return state.topic;
+    }
+  }
+  // Fallback: use second user message (first real answer after phase 1 q1)
+  const userMsgs = messages.filter(m => m.role === 'user' && m.content.trim());
+  if (userMsgs.length >= 2) return userMsgs[1].content.slice(0, 60);
+  return null;
+}
+
 /* ── Phase tracker ───────────────────────────────────────────────────────── */
 
 function PhaseTracker({ current }) {
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0, py: 1.25, px: 3, borderBottom: '1px solid var(--border)', bgcolor: 'var(--bg-primary)' }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0, py: 1.25, px: 3, borderBottom: '1px solid var(--border)', bgcolor: 'transparent' }}>
       {PHASES.map((p, i) => (
         <React.Fragment key={p.n}>
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.4 }}>
@@ -113,7 +171,7 @@ function AssistantBubble({ content, streaming }) {
   return (
     <Box sx={{ display: 'flex', justifyContent: 'flex-start', mb: 1.5 }}>
       <Box sx={{ maxWidth: '82%' }}>
-        <GlassCard style={{ padding: '14px 18px', background: 'rgba(255,255,255,0.75)' }}>
+        <GlassCard style={{ padding: '14px 18px' }}>
           <Box sx={MD_STYLES}>
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {stripSessionState(content)}
@@ -149,22 +207,14 @@ function InputBar({ onSubmit, disabled }) {
   return (
     <Box sx={{
       borderTop: '1px solid var(--border)',
-      bgcolor: 'var(--bg-primary)',
+      bgcolor: 'transparent',
       px: 3, py: 1.5,
     }}>
       <Box sx={{
         display: 'flex', alignItems: 'center', gap: 1.25,
-        px: 2, py: 1.1,
-        borderRadius: '14px',
-        background: 'rgba(255,255,255,0.15)',
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
-        border: '1px solid rgba(255,255,255,0.30)',
-        boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
-        '&:focus-within': {
-          boxShadow: '0 4px 24px rgba(0,0,0,0.06), 0 0 0 3px var(--accent-dim)',
-          borderColor: 'rgba(249,115,22,0.35)',
-        },
+        borderBottom: '1px solid var(--border)',
+        pb: 0.75,
+        '&:focus-within': { borderBottomColor: 'var(--accent)' },
       }}>
         <input
           ref={ref}
@@ -177,24 +227,23 @@ function InputBar({ onSubmit, disabled }) {
           style={{
             flex: 1, border: 'none', outline: 'none',
             background: 'transparent',
-            fontSize: '0.9rem', fontFamily: 'var(--font-family)',
+            fontSize: '0.9rem', fontFamily: 'var(--font-family)', fontWeight: 300,
             color: 'var(--fg-primary)', padding: '4px 0',
             opacity: disabled ? 0.5 : 1,
           }}
         />
-        <Box
+        <button
           onClick={submit}
-          sx={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            width: 30, height: 30, borderRadius: '8px', flexShrink: 0,
-            bgcolor: disabled || !text.trim() ? 'var(--bg-tertiary)' : 'var(--accent)',
-            color: disabled || !text.trim() ? 'var(--fg-dim)' : '#fff',
+          disabled={disabled || !text.trim()}
+          style={{
+            ...GLASS_BTN_ACCENT,
+            opacity: disabled || !text.trim() ? 0.4 : 1,
             cursor: disabled || !text.trim() ? 'default' : 'pointer',
-            transition: 'all 0.15s',
           }}
         >
-          <Send size={14} />
-        </Box>
+          <Send size={13} />
+          Send
+        </button>
       </Box>
     </Box>
   );
@@ -204,12 +253,44 @@ function InputBar({ onSubmit, disabled }) {
 
 export default function ResearchPage() {
   const navigate = useNavigate();
-  const [messages,     setMessages]     = useState([]);   // { id, role, content, streaming }
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Session ID — from URL or newly generated
+  const sessionIdRef = useRef(null);
+  if (!sessionIdRef.current) {
+    const fromUrl = searchParams.get('session');
+    sessionIdRef.current = fromUrl || genUUID();
+  }
+
+  const [messages,     setMessages]     = useState([]);
   const [streaming,    setStreaming]     = useState(false);
   const [currentPhase, setCurrentPhase] = useState(1);
   const abortRef  = useRef(null);
   const bottomRef = useRef(null);
   const initiated = useRef(false);
+
+  // On mount: restore from localStorage if session exists, or start fresh
+  useEffect(() => {
+    const id = sessionIdRef.current;
+    // Put session ID in URL without triggering navigation
+    setSearchParams({ session: id }, { replace: true });
+
+    const saved = loadSession(id);
+    if (saved && saved.messages?.length > 0) {
+      setMessages(saved.messages);
+      setCurrentPhase(saved.phase || 1);
+      // Session already has content — don't auto-init
+      initiated.current = true;
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Persist on every messages/phase change (skip empty initial state)
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const id = sessionIdRef.current;
+    const topic = extractTopic(messages);
+    saveSession(id, messages, currentPhase, topic);
+  }, [messages, currentPhase]);
 
   // Auto-scroll on new content
   useEffect(() => {
@@ -217,12 +298,11 @@ export default function ResearchPage() {
   }, [messages]);
 
   const sendMessage = useCallback(async (userText, isInit = false) => {
-    // Add user bubble (skip for auto-init)
     if (!isInit) {
       setMessages(prev => [...prev, { id: Date.now(), role: 'user', content: userText }]);
     }
 
-    // Build history from settled messages (strip state comments, skip streaming placeholders)
+    // Build history from settled messages
     const history = messages
       .filter(m => !m.streaming)
       .map(m => ({ role: m.role, content: stripSessionState(m.content) }));
@@ -265,15 +345,15 @@ export default function ResearchPage() {
             const evt = JSON.parse(raw);
             if (evt.type === 'chunk') {
               accumulated += evt.text;
+              const snap = accumulated;
               setMessages(prev => prev.map(m =>
-                m.id === assistantId ? { ...m, content: accumulated } : m
+                m.id === assistantId ? { ...m, content: snap } : m
               ));
             }
           } catch { /* ignore parse errors */ }
         }
       }
 
-      // Parse phase from SESSION_STATE
       const state = parseSessionState(accumulated);
       if (state?.phase) setCurrentPhase(parseInt(state.phase, 10));
 
@@ -289,7 +369,7 @@ export default function ResearchPage() {
     }
   }, [messages]);
 
-  // Auto-start Phase 1 on mount
+  // Auto-start Phase 1 on mount (only for new sessions)
   useEffect(() => {
     if (!initiated.current) {
       initiated.current = true;
@@ -298,13 +378,15 @@ export default function ResearchPage() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', bgcolor: 'var(--bg-primary)' }}>
+    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', bgcolor: 'transparent' }}>
 
       {/* Header */}
       <Box sx={{
         display: 'flex', alignItems: 'center', gap: 1.5,
         px: 3, py: 1.25,
-        bgcolor: 'var(--bg-primary)',
+        background: 'rgba(237,232,223,0.72)',
+        backdropFilter: 'blur(20px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(20px) saturate(180%)',
         borderBottom: '1px solid var(--border)',
         position: 'sticky', top: 0, zIndex: 20,
       }}>
@@ -322,18 +404,33 @@ export default function ResearchPage() {
         </Box>
         <Box sx={{ width: '1px', height: 16, bgcolor: 'var(--border)' }} />
         <Typography sx={{
-          fontFamily: 'var(--font-family)', fontSize: '0.82rem', fontWeight: 700,
-          color: 'var(--fg-primary)', letterSpacing: '0.06em', textTransform: 'uppercase',
+          fontFamily: 'var(--font-serif)', fontSize: '1.05rem', fontWeight: 600,
+          color: 'var(--fg-primary)', letterSpacing: '-0.01em',
         }}>
           Quarry Research
         </Typography>
-        <Box sx={{
-          ml: 'auto', px: 1, py: 0.25, borderRadius: '6px',
-          bgcolor: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.25)',
-          fontFamily: 'var(--font-family)', fontSize: '0.62rem', fontWeight: 700,
-          color: 'var(--accent)', letterSpacing: '0.08em', textTransform: 'uppercase',
-        }}>
-          Phase {currentPhase} · {PHASES[currentPhase - 1]?.label}
+        <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box
+            onClick={() => navigate('/research/sessions')}
+            sx={{
+              display: 'flex', alignItems: 'center', gap: 0.5,
+              px: 1, py: 0.4, borderRadius: '7px', cursor: 'pointer',
+              color: 'var(--fg-dim)', fontFamily: 'var(--font-family)',
+              fontSize: '0.72rem', fontWeight: 500,
+              transition: 'all 0.15s',
+              '&:hover': { color: 'var(--fg-primary)', bgcolor: 'var(--bg-tertiary)' },
+            }}
+          >
+            <History size={13} /> Sessions
+          </Box>
+          <Box sx={{
+            px: 1, py: 0.25, borderRadius: '6px',
+            bgcolor: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.25)',
+            fontFamily: 'var(--font-family)', fontSize: '0.62rem', fontWeight: 700,
+            color: 'var(--accent)', letterSpacing: '0.08em', textTransform: 'uppercase',
+          }}>
+            Phase {currentPhase} · {PHASES[currentPhase - 1]?.label}
+          </Box>
         </Box>
       </Box>
 
