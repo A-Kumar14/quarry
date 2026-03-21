@@ -21,9 +21,15 @@ function getSaved() {
   try { return JSON.parse(localStorage.getItem('quarry_saved') || '[]'); }
   catch { return []; }
 }
-function addSaved(query, excerpt) {
+function addSaved(query, excerpt, fullAnswer) {
   const items = getSaved();
-  const entry = { id: Date.now().toString(), query, excerpt: excerpt.slice(0, 200), savedAt: Date.now() };
+  const entry = {
+    id: Date.now().toString(),
+    query,
+    excerpt: excerpt.slice(0, 200),
+    answer: (fullAnswer || '').slice(0, 8000),
+    savedAt: Date.now(),
+  };
   localStorage.setItem('quarry_saved', JSON.stringify([...items.filter(i => i.query !== query), entry]));
 }
 
@@ -1197,7 +1203,7 @@ export default function ExplorePage() {
     URL.revokeObjectURL(url);
     // Persist to localStorage
     const firstPara = answer.replace(/^#+\s+.+$/gm, '').replace(/\*\*/g, '').replace(/\[(\d+)\]/g, '').replace(/\n+/g, ' ').trim().slice(0, 200);
-    addSaved(query, firstPara);
+    addSaved(query, firstPara, answer);
     setSaved(true);
   }, [answer, query]);
 
