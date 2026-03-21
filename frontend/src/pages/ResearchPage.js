@@ -249,8 +249,18 @@ function InputBar({ onSubmit, disabled, artifacts, onAttach, onRemoveArtifact, p
     }
   };
 
+  const canSend = !disabled && text.trim().length > 0;
+
   return (
-    <Box sx={{ borderTop: '1px solid var(--border)', bgcolor: 'transparent', px: 3, py: 1.5, position: 'relative' }}>
+    <Box sx={{
+      position: 'relative',
+      background: 'rgba(237,232,223,0.92)',
+      backdropFilter: 'blur(20px) saturate(180%)',
+      WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+      borderTop: '1px solid var(--border)',
+      boxShadow: '0 -6px 24px rgba(140,110,60,0.08)',
+      px: 3, py: 1.5,
+    }}>
 
       {showArtifacts && (
         <ArtifactsPanel
@@ -260,97 +270,131 @@ function InputBar({ onSubmit, disabled, artifacts, onAttach, onRemoveArtifact, p
         />
       )}
 
-      {artifacts.length > 0 && !showArtifacts && (
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 0.75 }}>
-          {artifacts.map((art, i) => (
-            <Box key={i} sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.3, borderRadius: 999, border: '1px solid rgba(249,115,22,0.3)', background: 'rgba(249,115,22,0.07)', cursor: 'pointer' }} onClick={() => setShowArtifacts(true)}>
-              <FileText size={10} style={{ color: 'var(--accent)' }} />
-              <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.63rem', color: 'var(--accent)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {art.filename}
-              </Typography>
-              <Box onClick={e => { e.stopPropagation(); onRemoveArtifact(i); }} sx={{ display: 'flex', cursor: 'pointer' }}>
-                <X size={9} style={{ color: 'var(--accent)' }} />
+      {/* Centred inner wrapper to align with message thread */}
+      <Box sx={{ maxWidth: 760, mx: 'auto' }}>
+
+        {/* Attached file pills */}
+        {artifacts.length > 0 && !showArtifacts && (
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 0.75 }}>
+            {artifacts.map((art, i) => (
+              <Box key={i} sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.3, borderRadius: 999, border: '1px solid rgba(249,115,22,0.3)', background: 'rgba(249,115,22,0.07)', cursor: 'pointer' }} onClick={() => setShowArtifacts(true)}>
+                <FileText size={10} style={{ color: 'var(--accent)' }} />
+                <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.63rem', color: 'var(--accent)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {art.filename}
+                </Typography>
+                <Box onClick={e => { e.stopPropagation(); onRemoveArtifact(i); }} sx={{ display: 'flex', cursor: 'pointer' }}>
+                  <X size={9} style={{ color: 'var(--accent)' }} />
+                </Box>
               </Box>
-            </Box>
-          ))}
-        </Box>
-      )}
-
-      <Box sx={{
-        display: 'flex', alignItems: 'center', gap: 1.25,
-        borderBottom: '1px solid var(--border)', pb: 0.75,
-        '&:focus-within': { borderBottomColor: 'var(--accent)' },
-      }}>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept={ALLOWED_EXTS.map(e => e).join(',')}
-          style={{ display: 'none' }}
-          onChange={handleFileChange}
-        />
-        <Box
-          onClick={() => !disabled && !uploading && fileInputRef.current?.click()}
-          sx={{
-            display: 'flex', alignItems: 'center', cursor: disabled || uploading ? 'default' : 'pointer',
-            opacity: disabled || uploading ? 0.4 : artifacts.length > 0 ? 1 : 0.55,
-            color: artifacts.length > 0 ? 'var(--accent)' : 'var(--fg-dim)',
-            transition: 'all 0.13s', flexShrink: 0,
-            '&:hover': { opacity: disabled || uploading ? 0.4 : 1 },
-          }}
-        >
-          {uploading
-            ? <Box sx={{ width: 14, height: 14, border: '2px solid var(--border)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'researchSpin 0.7s linear infinite' }} />
-            : <Paperclip size={14} />
-          }
-        </Box>
-
-        <input
-          value={text}
-          onChange={e => setText(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }}
-          placeholder={placeholder || (disabled ? 'Waiting for response…' : 'Ask anything about your research…')}
-          disabled={disabled}
-          autoComplete="off"
-          style={{
-            flex: 1, border: 'none', outline: 'none',
-            background: 'transparent',
-            fontSize: '0.9rem', fontFamily: 'var(--font-family)', fontWeight: 300,
-            color: 'var(--fg-primary)', padding: '4px 0',
-            opacity: disabled ? 0.5 : 1,
-          }}
-        />
-
-        {artifacts.length > 0 && (
-          <Box
-            onClick={() => setShowArtifacts(v => !v)}
-            sx={{ display: 'flex', alignItems: 'center', gap: 0.4, px: 0.9, py: 0.3, borderRadius: 999, cursor: 'pointer', border: '1px solid rgba(249,115,22,0.3)', background: 'rgba(249,115,22,0.08)', flexShrink: 0 }}
-          >
-            <Layers size={10} style={{ color: 'var(--accent)' }} />
-            <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.60rem', fontWeight: 700, color: 'var(--accent)' }}>
-              {artifacts.length}
-            </Typography>
+            ))}
           </Box>
         )}
 
-        <button
-          onClick={submit}
-          disabled={disabled || !text.trim()}
-          style={{
-            ...GLASS_BTN_ACCENT,
-            opacity: disabled || !text.trim() ? 0.4 : 1,
-            cursor: disabled || !text.trim() ? 'default' : 'pointer',
-          }}
-        >
-          <Send size={13} />
-          Send
-        </button>
-      </Box>
+        {/* Pill input container */}
+        <Box sx={{
+          display: 'flex', alignItems: 'center', gap: 1,
+          borderRadius: '12px',
+          border: '1px solid var(--border)',
+          background: 'rgba(255,252,245,0.70)',
+          px: 1.25, py: 0.75,
+          boxShadow: '0 1px 4px rgba(140,110,60,0.06)',
+          transition: 'box-shadow 0.18s, border-color 0.18s',
+          '&:focus-within': {
+            borderColor: 'rgba(249,115,22,0.35)',
+            boxShadow: '0 2px 10px rgba(249,115,22,0.08), 0 0 0 3px var(--accent-dim)',
+          },
+        }}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={ALLOWED_EXTS.join(',')}
+            style={{ display: 'none' }}
+            onChange={handleFileChange}
+          />
 
-      {uploadErr && (
-        <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', color: 'var(--error)', mt: 0.5 }}>
-          {uploadErr}
-        </Typography>
-      )}
+          {/* Paperclip — visually balanced */}
+          <Box
+            onClick={() => !disabled && !uploading && fileInputRef.current?.click()}
+            sx={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 30, height: 30, borderRadius: '8px', flexShrink: 0,
+              cursor: disabled || uploading ? 'default' : 'pointer',
+              color: artifacts.length > 0 ? 'var(--accent)' : 'var(--fg-dim)',
+              opacity: disabled || uploading ? 0.35 : artifacts.length > 0 ? 1 : 0.60,
+              transition: 'all 0.13s',
+              '&:hover': { opacity: disabled || uploading ? 0.35 : 1, bgcolor: 'rgba(0,0,0,0.04)', borderRadius: '8px' },
+            }}
+          >
+            {uploading
+              ? <Box sx={{ width: 13, height: 13, border: '2px solid var(--border)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'researchSpin 0.7s linear infinite' }} />
+              : <Paperclip size={14} />
+            }
+          </Box>
+
+          <input
+            value={text}
+            onChange={e => setText(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }}
+            placeholder={placeholder || (disabled ? 'Waiting for response…' : 'Ask anything about your research…')}
+            disabled={disabled}
+            autoComplete="off"
+            style={{
+              flex: 1, border: 'none', outline: 'none',
+              background: 'transparent',
+              fontSize: '0.9rem', fontFamily: 'var(--font-family)', fontWeight: 300,
+              color: 'var(--fg-primary)', padding: '5px 4px',
+              opacity: disabled ? 0.5 : 1,
+            }}
+          />
+
+          {artifacts.length > 0 && (
+            <Box
+              onClick={() => setShowArtifacts(v => !v)}
+              sx={{ display: 'flex', alignItems: 'center', gap: 0.4, px: 0.9, py: 0.3, borderRadius: 999, cursor: 'pointer', border: '1px solid rgba(249,115,22,0.3)', background: 'rgba(249,115,22,0.08)', flexShrink: 0 }}
+            >
+              <Layers size={10} style={{ color: 'var(--accent)' }} />
+              <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.60rem', fontWeight: 700, color: 'var(--accent)' }}>
+                {artifacts.length}
+              </Typography>
+            </Box>
+          )}
+
+          {/* Send button — pressed inset look when active */}
+          <button
+            onClick={submit}
+            disabled={!canSend}
+            style={{
+              ...GLASS_BTN_ACCENT,
+              padding: '6px 14px',
+              opacity: canSend ? 1 : 0.35,
+              cursor: canSend ? 'pointer' : 'default',
+              flexShrink: 0,
+            }}
+            onMouseDown={e => {
+              if (!canSend) return;
+              e.currentTarget.style.boxShadow = 'inset 0 2px 6px rgba(0,0,0,0.22), 0 1px 0 rgba(255,205,148,0.30) inset';
+              e.currentTarget.style.transform = 'translateY(1px)';
+            }}
+            onMouseUp={e => {
+              e.currentTarget.style.boxShadow = GLASS_BTN_ACCENT.boxShadow;
+              e.currentTarget.style.transform = 'none';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.boxShadow = GLASS_BTN_ACCENT.boxShadow;
+              e.currentTarget.style.transform = 'none';
+            }}
+          >
+            <Send size={12} />
+            Send
+          </button>
+        </Box>
+
+        {uploadErr && (
+          <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', color: 'var(--error)', mt: 0.5, pl: 0.5 }}>
+            {uploadErr}
+          </Typography>
+        )}
+      </Box>
     </Box>
   );
 }
@@ -359,36 +403,71 @@ function InputBar({ onSubmit, disabled, artifacts, onAttach, onRemoveArtifact, p
 
 function WelcomeScreen({ onSuggestion }) {
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, px: 3, py: 6, textAlign: 'center' }}>
-      <Typography sx={{
-        fontFamily: 'var(--font-serif)', fontSize: '1.6rem', fontWeight: 600,
-        color: 'var(--fg-primary)', letterSpacing: '-0.02em', mb: 0.75,
-      }}>
-        Quarry Research
-      </Typography>
-      <Typography sx={{
-        fontFamily: 'var(--font-family)', fontSize: '0.88rem', fontWeight: 300,
-        color: 'var(--fg-secondary)', mb: 3.5, maxWidth: 420,
-      }}>
-        Ask anything — outline a paper, explore a topic, compare sources, or get writing help.
-      </Typography>
+    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, px: 3, pt: 7, pb: 5 }}>
 
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: 'center', maxWidth: 560 }}>
+      {/* Hero — generous vertical breathing room */}
+      <Box sx={{ textAlign: 'center', mb: 5 }}>
+        {/* Tiny rule above */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, justifyContent: 'center' }}>
+          <Box sx={{ width: 32, height: '1px', bgcolor: 'var(--fg-primary)', opacity: 0.10 }} />
+          <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.5rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.22em', textTransform: 'uppercase' }}>
+            Research Assistant
+          </Typography>
+          <Box sx={{ width: 32, height: '1px', bgcolor: 'var(--fg-primary)', opacity: 0.10 }} />
+        </Box>
+
+        <Typography sx={{
+          fontFamily: 'var(--font-serif)', fontSize: { xs: '2rem', sm: '2.4rem' }, fontWeight: 600,
+          color: 'var(--fg-primary)', letterSpacing: '-0.02em', lineHeight: 1.15, mb: 1.5,
+        }}>
+          Quarry Research
+        </Typography>
+
+        {/* Rule below title */}
+        <Box sx={{ height: '1px', bgcolor: 'var(--fg-primary)', opacity: 0.08, maxWidth: 200, mx: 'auto', mb: 1.75 }} />
+
+        <Typography sx={{
+          fontFamily: 'var(--font-family)', fontSize: '0.9rem', fontWeight: 300,
+          color: 'rgba(61,47,30,0.60)',
+          maxWidth: 400, mx: 'auto', lineHeight: 1.65,
+          fontStyle: 'italic',
+        }}>
+          Outline a paper, explore a topic, compare sources, or get writing help — one conversation at a time.
+        </Typography>
+      </Box>
+
+      {/* Staggered 2-column suggestion cards */}
+      <Box sx={{
+        display: 'grid',
+        gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+        gap: 1,
+        width: '100%',
+        maxWidth: 600,
+        alignItems: 'start',
+      }}>
         {SUGGESTIONS.map((s, i) => (
           <Box
             key={i}
             onClick={() => onSuggestion(s)}
             sx={{
-              px: 1.5, py: 0.85,
+              px: 1.75, py: 1.25,
               borderRadius: '10px',
-              border: '1px solid var(--border)',
-              background: 'rgba(255,252,242,0.55)',
+              border: '1px solid rgba(0,0,0,0.05)',
+              background: 'rgba(255,252,242,0.60)',
               cursor: 'pointer',
-              transition: 'all 0.13s',
-              '&:hover': { borderColor: 'var(--accent)', background: 'rgba(249,115,22,0.05)' },
+              transition: 'all 0.15s ease',
+              '&:hover': {
+                background: 'rgba(0,0,0,0.04)',
+                borderColor: 'rgba(249,115,22,0.25)',
+                transform: 'translateY(-1px)',
+                boxShadow: '0 3px 10px rgba(140,110,60,0.08)',
+              },
             }}
           >
-            <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.78rem', fontWeight: 400, color: 'var(--fg-secondary)', lineHeight: 1.4, textAlign: 'left' }}>
+            <Typography sx={{
+              fontFamily: 'var(--font-family)', fontSize: '0.78rem', fontWeight: 400,
+              color: 'var(--fg-secondary)', lineHeight: 1.45, textAlign: 'left',
+            }}>
               {s}
             </Typography>
           </Box>
@@ -541,64 +620,66 @@ export default function ResearchPage() {
 
       {/* Header */}
       <Box sx={{
-        display: 'flex', alignItems: 'center', gap: 1.5,
-        px: 3, py: 1.25,
-        background: 'rgba(237,232,223,0.72)',
+        background: 'rgba(237,232,223,0.82)',
         backdropFilter: 'blur(20px) saturate(180%)',
         WebkitBackdropFilter: 'blur(20px) saturate(180%)',
         borderBottom: '1px solid var(--border)',
         position: 'sticky', top: 0, zIndex: 20,
+        px: 3, py: 1.25,
       }}>
-        <Box
-          onClick={() => navigate('/')}
-          sx={{
-            display: 'flex', alignItems: 'center', gap: 0.5,
-            cursor: 'pointer', color: 'var(--fg-dim)',
-            fontFamily: 'var(--font-family)', fontSize: '0.78rem',
-            transition: 'color 0.15s',
-            '&:hover': { color: 'var(--fg-primary)' },
-          }}
-        >
-          <ArrowLeft size={15} /> Back
-        </Box>
-        <Box sx={{ width: '1px', height: 16, bgcolor: 'var(--border)' }} />
-        <Typography sx={{
-          fontFamily: 'var(--font-serif)', fontSize: '1.05rem', fontWeight: 600,
-          color: 'var(--fg-primary)', letterSpacing: '-0.01em',
-        }}>
-          Quarry Research
-        </Typography>
-        <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
-          {messages.length > 2 && (
+        {/* Inner container aligned with card content */}
+        <Box sx={{ maxWidth: 760, mx: 'auto', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <Box
+            onClick={() => navigate('/')}
+            sx={{
+              display: 'flex', alignItems: 'center', gap: 0.5,
+              cursor: 'pointer', color: 'var(--fg-dim)',
+              fontFamily: 'var(--font-family)', fontSize: '0.78rem',
+              transition: 'color 0.15s', flexShrink: 0,
+              '&:hover': { color: 'var(--fg-primary)' },
+            }}
+          >
+            <ArrowLeft size={15} /> Back
+          </Box>
+          <Box sx={{ width: '1px', height: 16, bgcolor: 'var(--border)', flexShrink: 0 }} />
+          <Typography sx={{
+            fontFamily: 'var(--font-serif)', fontSize: '1.05rem', fontWeight: 600,
+            color: 'var(--fg-primary)', letterSpacing: '-0.01em', flex: 1,
+          }}>
+            Quarry Research
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {messages.length > 2 && (
+              <Box
+                onClick={exportSession}
+                sx={{
+                  display: 'flex', alignItems: 'center', gap: 0.5,
+                  px: 1, py: 0.4, borderRadius: '7px', cursor: 'pointer',
+                  color: exported ? '#16a34a' : 'var(--fg-dim)', fontFamily: 'var(--font-family)',
+                  fontSize: '0.72rem', fontWeight: 500,
+                  transition: 'all 0.15s',
+                  '&:hover': { color: 'var(--fg-primary)', bgcolor: 'var(--bg-tertiary)' },
+                }}
+              >
+                <Download size={13} /> {exported ? 'Exported!' : 'Export'}
+              </Box>
+            )}
             <Box
-              onClick={exportSession}
+              onClick={() => navigate('/research/sessions')}
               sx={{
                 display: 'flex', alignItems: 'center', gap: 0.5,
                 px: 1, py: 0.4, borderRadius: '7px', cursor: 'pointer',
-                color: exported ? '#16a34a' : 'var(--fg-dim)', fontFamily: 'var(--font-family)',
+                color: 'var(--fg-dim)', fontFamily: 'var(--font-family)',
                 fontSize: '0.72rem', fontWeight: 500,
                 transition: 'all 0.15s',
                 '&:hover': { color: 'var(--fg-primary)', bgcolor: 'var(--bg-tertiary)' },
               }}
             >
-              <Download size={13} /> {exported ? 'Exported!' : 'Export'}
+              <History size={13} /> Sessions
             </Box>
-          )}
-          <Box
-            onClick={() => navigate('/research/sessions')}
-            sx={{
-              display: 'flex', alignItems: 'center', gap: 0.5,
-              px: 1, py: 0.4, borderRadius: '7px', cursor: 'pointer',
-              color: 'var(--fg-dim)', fontFamily: 'var(--font-family)',
-              fontSize: '0.72rem', fontWeight: 500,
-              transition: 'all 0.15s',
-              '&:hover': { color: 'var(--fg-primary)', bgcolor: 'var(--bg-tertiary)' },
-            }}
-          >
-            <History size={13} /> Sessions
-          </Box>
-          <Box onClick={() => navigate('/settings')} sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', opacity: 0.4, '&:hover': { opacity: 0.85 }, transition: 'opacity 0.14s' }}>
-            <Settings size={14} color="var(--fg-dim)" />
+            <Box onClick={() => navigate('/settings')} sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', opacity: 0.4, '&:hover': { opacity: 0.85 }, transition: 'opacity 0.14s' }}>
+              <Settings size={14} color="var(--fg-dim)" />
+            </Box>
           </Box>
         </Box>
       </Box>
