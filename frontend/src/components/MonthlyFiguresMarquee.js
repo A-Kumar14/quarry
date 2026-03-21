@@ -151,7 +151,7 @@ export default function MonthlyFiguresMarquee() {
       width:           '100%',
       overflow:        'hidden',
       position:        'relative',
-      opacity:         0.38,
+      opacity:         0.30,
       maskImage:       'linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%)',
       WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%)',
     }}>
