@@ -167,31 +167,35 @@ export default function MonthlyFiguresMarquee() {
         onMouseLeave={e => { e.currentTarget.style.animationPlayState = 'running'; }}
       >
         {items.map((item, idx) => (
-          <span key={idx} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+          <span key={idx} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            {/* Date — heavy mono weight so it scans fast */}
             <span style={{
               fontFamily:    'var(--font-mono, monospace)',
               fontSize:      '0.52rem',
-              fontWeight:    600,
-              letterSpacing: '0.06em',
+              fontWeight:    700,
+              letterSpacing: '0.08em',
               color:         item.isCurrent ? 'var(--accent, #f97316)' : 'var(--fg-dim, #9a8570)',
               whiteSpace:    'nowrap',
             }}>
               {item.month} {item.date}
             </span>
+            {/* Label — lighter weight to contrast with date */}
             <span style={{
               fontFamily:  'var(--font-family, sans-serif)',
               fontSize:    '0.52rem',
-              fontWeight:  400,
+              fontWeight:  300,
               color:       'var(--fg-dim, #9a8570)',
               whiteSpace:  'nowrap',
+              opacity:     0.80,
             }}>
               {item.label}
             </span>
+            {/* Diamond — wider margin for breathing room */}
             <span style={{
-              color:   'var(--fg-dim, #9a8570)',
-              fontSize: '0.4rem',
-              opacity: 0.4,
-              margin:  '0 10px',
+              color:    'var(--fg-dim, #9a8570)',
+              fontSize: '0.38rem',
+              opacity:  0.35,
+              margin:   '0 14px',
             }}>
               ◆
             </span>

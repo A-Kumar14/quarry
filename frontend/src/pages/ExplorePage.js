@@ -980,11 +980,11 @@ function HomeSearchBar({ query, setQuery, onSubmit, deepMode, onToggleDeep }) {
           WebkitBackdropFilter: 'blur(28px) saturate(180%) brightness(1.06)',
           borderTop: '1px solid var(--gbtn-border-t)',
           borderLeft: '1px solid var(--gbtn-border-l)',
-          borderRight: '1px solid var(--gbtn-border-r)',
-          borderBottom: '1px solid var(--gbtn-border-b)',
-          boxShadow: 'var(--gbtn-shadow)',
+          borderRight: '1px solid rgba(140,110,60,0.22)',
+          borderBottom: '1px solid rgba(140,110,60,0.28)',
+          boxShadow: '0 3px 14px rgba(140,110,60,0.13), 0 1px 4px rgba(0,0,0,0.06), 0 2px 0 rgba(255,254,218,0.72) inset',
           transition: 'box-shadow 0.2s',
-          '&:focus-within': { boxShadow: '0 6px 28px rgba(140,110,60,0.10), 0 2px 0 rgba(255,254,218,0.80) inset, 0 0 0 3px var(--accent-dim)' },
+          '&:focus-within': { boxShadow: '0 6px 28px rgba(140,110,60,0.16), 0 2px 0 rgba(255,254,218,0.80) inset, 0 0 0 3px var(--accent-dim)' },
         }}
       >
         <Search size={17} style={{ color: 'var(--fg-dim)', flexShrink: 0 }} strokeWidth={2} />
@@ -1369,19 +1369,19 @@ export default function ExplorePage() {
 
                   {/* Text */}
                   <Box sx={{ p: '8px 10px 10px', flex: 1, display: 'flex', flexDirection: 'column', gap: 0.4 }}>
-                    {/* Source label — editorial uppercase */}
+                    {/* Source label — editorial uppercase, dimmed to be clearly secondary */}
                     {art.source?.name && (
                       <Typography sx={{
-                        fontFamily: 'var(--font-family)', fontSize: '0.625rem', fontWeight: 600,
+                        fontFamily: 'var(--font-family)', fontSize: '0.58rem', fontWeight: 600,
                         color: 'var(--fg-dim)', letterSpacing: '0.10em', textTransform: 'uppercase',
-                        lineHeight: 1,
+                        lineHeight: 1, opacity: 0.65,
                       }}>
                         {art.source.name}
                       </Typography>
                     )}
-                    {/* Headline — leading-snug so text isn't cramped */}
+                    {/* Headline — clear focal point */}
                     <Typography sx={{
-                      fontFamily: 'var(--font-family)', fontSize: '0.75rem', fontWeight: 500,
+                      fontFamily: 'var(--font-family)', fontSize: '0.8rem', fontWeight: 600,
                       color: 'var(--fg-primary)', lineHeight: 1.4,
                       display: '-webkit-box', WebkitLineClamp: 3,
                       WebkitBoxOrient: 'vertical', overflow: 'hidden',
@@ -1408,16 +1408,16 @@ export default function ExplorePage() {
               boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
               transition: 'all 0.18s ease',
               '&:hover': {
-                borderColor: 'rgba(249,115,22,0.35)',
-                boxShadow: '0 4px 16px rgba(249,115,22,0.10)',
-                transform: 'translateY(-1px)',
+                borderColor: 'rgba(249,115,22,0.38)',
+                boxShadow: '0 6px 20px rgba(249,115,22,0.13), 0 2px 6px rgba(0,0,0,0.06)',
+                transform: 'translateY(-2px)',
               },
             }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Box sx={{ width: 30, height: 30, borderRadius: '8px', bgcolor: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <FlaskConical size={15} color="var(--accent)" />
+                <Box sx={{ width: 34, height: 34, borderRadius: '9px', bgcolor: 'rgba(249,115,22,0.10)', border: '1px solid rgba(249,115,22,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <FlaskConical size={17} color="var(--accent)" />
                 </Box>
-                <Box sx={{ color: 'var(--fg-dim)', opacity: 0.4, fontSize: '0.9rem' }}>›</Box>
+                <Box sx={{ color: 'var(--fg-dim)', opacity: 0.45, fontSize: '1rem' }}>›</Box>
               </Box>
               <Box>
                 <Typography sx={{ fontFamily: 'var(--font-serif)', fontSize: '0.88rem', fontWeight: 600, color: 'var(--fg-primary)', lineHeight: 1.2 }}>
@@ -1440,16 +1440,16 @@ export default function ExplorePage() {
               boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
               transition: 'all 0.18s ease',
               '&:hover': {
-                borderColor: 'rgba(249,115,22,0.40)',
-                boxShadow: '0 4px 16px rgba(249,115,22,0.12)',
-                transform: 'translateY(-1px)',
+                borderColor: 'rgba(249,115,22,0.42)',
+                boxShadow: '0 6px 20px rgba(249,115,22,0.15), 0 2px 6px rgba(0,0,0,0.06)',
+                transform: 'translateY(-2px)',
               },
             }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Box sx={{ width: 30, height: 30, borderRadius: '8px', bgcolor: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <TrendingUp size={15} color="var(--accent)" />
+                <Box sx={{ width: 34, height: 34, borderRadius: '9px', bgcolor: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <TrendingUp size={17} color="var(--accent)" />
                 </Box>
-                <Box sx={{ color: 'var(--fg-dim)', opacity: 0.4, fontSize: '0.9rem' }}>›</Box>
+                <Box sx={{ color: 'var(--fg-dim)', opacity: 0.45, fontSize: '1rem' }}>›</Box>
               </Box>
               <Box>
                 <Typography sx={{ fontFamily: 'var(--font-serif)', fontSize: '0.88rem', fontWeight: 600, color: 'var(--fg-primary)', lineHeight: 1.2 }}>
