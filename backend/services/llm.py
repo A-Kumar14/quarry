@@ -100,7 +100,7 @@ class LLMService:
 
         client = self._get_sync_client()
         stream = client.chat.completions.create(
-            model=resolved, messages=messages, stream=True, max_tokens=2048
+            model=resolved, messages=messages, stream=True, max_tokens=1000
         )
         for chunk in stream:
             text = getattr(chunk.choices[0].delta, "content", None) or ""
@@ -123,14 +123,14 @@ class LLMService:
             )
             query = user_msgs[-1] if user_msgs else ""
             response = gmodel.generate_content(
-                query, stream=False, generation_config={"max_output_tokens": 2048}
+                query, stream=False, generation_config={"max_output_tokens": 1000}
             )
             return getattr(response, "text", "") or ""
 
         client = self._get_sync_client()
         response = client.chat.completions.create(
             model=resolved, messages=messages, stream=False,
-            max_tokens=2048, timeout=timeout,
+            max_tokens=1000, timeout=timeout,
         )
         return response.choices[0].message.content or ""
 
@@ -177,7 +177,7 @@ class LLMService:
         )
         query = user_msgs[-1] if user_msgs else ""
         response = gmodel.generate_content(
-            query, stream=True, generation_config={"max_output_tokens": 2048}
+            query, stream=True, generation_config={"max_output_tokens": 1000}
         )
         for chunk in response:
             text = getattr(chunk, "text", "") or ""

@@ -63,8 +63,8 @@ function CitationCard({ source, style }) {
     }
   };
 
-  // Reset citation when style changes
-  React.useEffect(() => { setCitation(null); setExpanded(false); }, [style]);
+  // Reset citation when style or source changes
+  React.useEffect(() => { setCitation(null); setExpanded(false); }, [style, source.url]);
 
   const domain = (() => {
     try { return new URL(source.url).hostname.replace('www.', ''); }

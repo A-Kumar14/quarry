@@ -6,13 +6,15 @@ const LIGHT_BG = 'linear-gradient(158deg, #EDE8DF 0%, #E5DDD0 40%, #DDD5C0 75%, 
 const DARK_BG  = 'linear-gradient(158deg, #1c1814 0%, #221d17 40%, #2a2318 75%, #1f1b14 100%)';
 
 export function DarkModeProvider({ children }) {
-  const [dark, setDark] = useState(() => localStorage.getItem('quarry_dark') === '1');
+  const [dark, setDark] = useState(() => {
+    try { return localStorage.getItem('quarry_dark') === '1'; } catch { return false; }
+  });
 
   useEffect(() => {
     // Sync CSS variable classes so var(--fg-primary) etc update
     document.body.classList.toggle('dark', dark);
     document.documentElement.classList.toggle('dark', dark);
-    localStorage.setItem('quarry_dark', dark ? '1' : '0');
+    try { localStorage.setItem('quarry_dark', dark ? '1' : '0'); } catch { /* private mode */ }
   }, [dark]);
 
   return (
