@@ -967,14 +967,14 @@ function HomeSearchBar({ query, setQuery, onSubmit, deepMode, onToggleDeep }) {
   }, [showSugg]);
 
   return (
-    <Box ref={wrapperRef} sx={{ width: '100%', maxWidth: 640, position: 'relative' }}>
+    <Box ref={wrapperRef} sx={{ width: '100%', maxWidth: 660, position: 'relative' }}>
       <Box
         component="form"
         onSubmit={e => { e.preventDefault(); setShowSugg(false); onSubmit(); }}
         sx={{
           width: '100%',
           display: 'flex', alignItems: 'center', gap: 1.25,
-          borderRadius: '12px', px: 2, py: 1.1,
+          borderRadius: '12px', px: 2.25, py: 1.35,
           background: 'var(--gbtn-bg)',
           backdropFilter: 'blur(28px) saturate(180%) brightness(1.06)',
           WebkitBackdropFilter: 'blur(28px) saturate(180%) brightness(1.06)',
@@ -1276,7 +1276,15 @@ export default function ExplorePage() {
 
           {/* ── Calendar marquee ── */}
           {settings.showCalendar && (
-            <Box sx={{ width: '100vw', maxWidth: '100vw', mx: 'auto' }}>
+            <Box sx={{
+              width: '100vw', maxWidth: '100vw', mx: 'auto',
+              py: 0.85,
+              background: 'rgba(210,200,185,0.28)',
+              backdropFilter: 'blur(8px)',
+              WebkitBackdropFilter: 'blur(8px)',
+              borderBottom: '1px solid rgba(0,0,0,0.07)',
+              borderTop: '1px solid rgba(255,255,255,0.35)',
+            }}>
               <MonthlyFiguresMarquee />
             </Box>
           )}
@@ -1390,8 +1398,8 @@ export default function ExplorePage() {
             </Box>
           </Box>
 
-          {/* Primary CTAs — 2-column side by side */}
-          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, mt: 2, width: '100%' }}>
+          {/* Primary CTAs — 2-column side by side, aligned with news grid */}
+          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, mt: 0.5, width: '100%', maxWidth: 640 }}>
 
             {/* Quarry Research */}
             <Box onClick={() => navigate('/research')} sx={{

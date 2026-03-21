@@ -151,7 +151,7 @@ export default function MonthlyFiguresMarquee() {
       width:           '100%',
       overflow:        'hidden',
       position:        'relative',
-      opacity:         0.30,
+      opacity:         0.55,
       maskImage:       'linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%)',
       WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%)',
     }}>
@@ -168,25 +168,24 @@ export default function MonthlyFiguresMarquee() {
       >
         {items.map((item, idx) => (
           <span key={idx} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-            {/* Date — heavy mono weight so it scans fast */}
+            {/* Date — maximum weight for instant scanning */}
             <span style={{
               fontFamily:    'var(--font-mono, monospace)',
-              fontSize:      '0.52rem',
-              fontWeight:    700,
+              fontSize:      '0.54rem',
+              fontWeight:    800,
               letterSpacing: '0.08em',
-              color:         item.isCurrent ? 'var(--accent, #f97316)' : 'var(--fg-dim, #9a8570)',
+              color:         item.isCurrent ? 'var(--accent, #f97316)' : 'var(--fg-primary, #3d2f1e)',
               whiteSpace:    'nowrap',
             }}>
               {item.month} {item.date}
             </span>
-            {/* Label — lighter weight to contrast with date */}
+            {/* Label — readable contrast, clearly secondary */}
             <span style={{
               fontFamily:  'var(--font-family, sans-serif)',
               fontSize:    '0.52rem',
-              fontWeight:  300,
-              color:       'var(--fg-dim, #9a8570)',
+              fontWeight:  400,
+              color:       'var(--fg-secondary, #6b5744)',
               whiteSpace:  'nowrap',
-              opacity:     0.80,
             }}>
               {item.label}
             </span>
