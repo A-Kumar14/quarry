@@ -74,3 +74,50 @@ html, body, #root {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
 }
+
+/* ── Dark mode — deep charcoal theme ─────────────────────────────────────── */
+body.dark,
+html.dark {
+  /* Override the hardcoded light gradient from html/body/root rule */
+  background: transparent !important;
+}
+
+.dark {
+  /* Backgrounds — elevation via lightness (closer = lighter in dark mode) */
+  --bg-primary:   #0d1117;
+  --bg-secondary: #131920;
+  --bg-tertiary:  #1c2333;
+
+  /* Text */
+  --fg-primary:   #e6edf3;
+  --fg-secondary: #8b949e;
+  --fg-dim:       rgba(139,148,158,0.55);
+
+  /* Accents — slightly brighter orange to pop on dark bg */
+  --accent:       #fb923c;
+  --accent-dim:   rgba(251,146,60,0.15);
+  --blue:         #60a5fa;
+  --blue-light:   #3b82f6;
+  --blue-dim:     rgba(96,165,250,0.12);
+
+  /* Borders — subtle white ghost borders */
+  --border:       rgba(255,255,255,0.08);
+  --error:        #f87171;
+
+  /* Glass surface — dark glass elevation */
+  --glass-bg:       rgba(255,255,255,0.04);
+  --glass-border-t: rgba(255,255,255,0.10);
+  --glass-border-l: rgba(255,255,255,0.07);
+  --glass-border-r: rgba(0,0,0,0.25);
+  --glass-border-b: rgba(0,0,0,0.25);
+  --glass-shadow:   0 8px 32px rgba(0,0,0,0.40), 0 2px 0 rgba(255,255,255,0.05) inset, 0 -1px 0 rgba(0,0,0,0.30) inset;
+
+  /* Glass button tokens */
+  --gbtn-bg:        rgba(255,255,255,0.06);
+  --gbtn-border-t:  rgba(255,255,255,0.12);
+  --gbtn-border-l:  rgba(255,255,255,0.08);
+  --gbtn-border-r:  rgba(0,0,0,0.20);
+  --gbtn-border-b:  rgba(0,0,0,0.20);
+  --gbtn-shadow:    0 3px 14px rgba(0,0,0,0.30), 0 1.5px 0 rgba(255,255,255,0.07) inset, 0 -1px 0 rgba(0,0,0,0.20) inset;
+  --gbtn-color:     #e6edf3;
+}
