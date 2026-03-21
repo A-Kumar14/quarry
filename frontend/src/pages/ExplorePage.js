@@ -250,10 +250,13 @@ function useTrendingChips() {
   const [trending, setTrending] = useState(false);
   const [spinning, setSpinning] = useState(false);
 
-  const fetchTrending = useCallback(async () => {
+  const fetchTrending = useCallback(async (force = false) => {
     setSpinning(true);
     try {
-      const res  = await fetch(`${API}/explore/trending-news?max=6`);
+      const url = force
+        ? `${API}/explore/trending-news?max=6&force=true`
+        : `${API}/explore/trending-news?max=6`;
+      const res  = await fetch(url);
       if (!res.ok) throw new Error('trending error');
       const data = await res.json();
       const arts = (data.articles || []).filter(a => a.title).slice(0, 6);
@@ -263,7 +266,7 @@ function useTrendingChips() {
   }, []);
 
   useEffect(() => { fetchTrending(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  return { articles, trending, spinning, refetch: fetchTrending };
+  return { articles, trending, spinning, refetch: () => fetchTrending(true) };
 }
 
 // ── Bento row helpers ─────────────────────────────────────────────────────────

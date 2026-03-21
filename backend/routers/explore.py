@@ -118,6 +118,7 @@ async def explore_news(
 async def explore_trending_news(
     request: Request,
     max: int = Query(6, ge=1, le=10),
+    force: bool = Query(False),
 ):
     """Proxy GNews top-headlines server-side."""
     gnews_key = os.getenv("GNEWS_API_KEY", "")
@@ -125,9 +126,10 @@ async def explore_trending_news(
         raise HTTPException(status_code=503, detail="News service not configured")
 
     cache_key = f"trending:{max}"
-    cached = _news_cache.get(cache_key)
-    if cached and time.time() - cached["ts"] < _NEWS_CACHE_TTL:
-        return cached["data"]
+    if not force:
+        cached = _news_cache.get(cache_key)
+        if cached and time.time() - cached["ts"] < _NEWS_CACHE_TTL:
+            return cached["data"]
 
     url = f"https://gnews.io/api/v4/top-headlines?lang=en&max={max}&apikey={gnews_key}"
     try:
