@@ -77,8 +77,9 @@ html, body, #root {
 
 /* ── Dark mode — deep charcoal theme ─────────────────────────────────────── */
 body.dark,
-html.dark {
-  /* Override the hardcoded light gradient from html/body/root rule */
+html.dark,
+html.dark #root {
+  /* DarkModeProvider wrapper handles the gradient — these must be transparent */
   background: transparent !important;
 }
 
