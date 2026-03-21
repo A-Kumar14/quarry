@@ -1009,7 +1009,7 @@ function HomeSearchBar({ query, setQuery, onSubmit, deepMode, onToggleDeep }) {
           Deep
         </Box>
         {query && (
-          <Box component="button" type="submit" sx={{ border: 'none', bgcolor: 'var(--accent)', color: '#FFF', fontFamily: 'var(--font-family)', fontSize: '0.8rem', fontWeight: 500, px: 1.75, py: 0.6, borderRadius: 999, cursor: 'pointer', flexShrink: 0, transition: 'opacity 0.12s', '&:hover': { opacity: 0.88 } }}>
+          <Box component="button" type="submit" sx={{ border: 'none', bgcolor: 'var(--accent)', color: '#FFF', fontFamily: 'var(--font-family)', fontSize: '0.8rem', fontWeight: 500, px: 1.75, py: 0.6, borderRadius: '8px', cursor: 'pointer', flexShrink: 0, transition: 'opacity 0.12s', '&:hover': { opacity: 0.88 } }}>
             Search
           </Box>
         )}
@@ -1276,7 +1276,7 @@ export default function ExplorePage() {
 
           {/* ── Calendar marquee ── */}
           {settings.showCalendar && (
-            <Box sx={{ width: '100vw', maxWidth: 720, mx: 'auto' }}>
+            <Box sx={{ width: '100vw', maxWidth: '100vw', mx: 'auto' }}>
               <MonthlyFiguresMarquee />
             </Box>
           )}
@@ -1319,7 +1319,7 @@ export default function ExplorePage() {
           <HomeSearchBar query={query} setQuery={setQuery} onSubmit={handleSubmit} deepMode={deepMode} onToggleDeep={() => setDeepMode(d => !d)} />
 
           {/* Trending news cards */}
-          <Box sx={{ width: '100%', maxWidth: 640, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+          <Box sx={{ width: '100%', maxWidth: 680, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
               <Box sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: isTrending ? 'var(--accent)' : 'var(--fg-dim)', flexShrink: 0, animation: isTrending ? 'trendingPulse 1.4s ease-in-out infinite' : 'none' }} />
               <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.55rem', fontWeight: 500, color: 'var(--fg-dim)', letterSpacing: '0.10em', textTransform: 'uppercase' }}>
@@ -1330,22 +1330,23 @@ export default function ExplorePage() {
               </Box>
             </Box>
 
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, width: '100%' }}>
+            {/* 2-col on md, 3-col only on very wide screens */}
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', xl: 'repeat(3, 1fr)' }, gap: 1, width: '100%' }}>
               {trendingArticles.slice(0, 6).map((art, i) => (
                 <Box
                   key={i}
                   onClick={() => newSearch(art.title)}
                   sx={{
                     borderRadius: '12px', overflow: 'hidden', cursor: 'pointer',
-                    border: '1px solid var(--border)',
+                    border: '1px solid rgba(0,0,0,0.05)',
                     background: 'var(--gbtn-bg)',
                     backdropFilter: 'blur(12px)',
-                    transition: 'all 0.16s',
+                    transition: 'all 0.20s ease',
                     display: 'flex', flexDirection: 'column',
                     '&:hover': {
-                      borderColor: 'rgba(249,115,22,0.35)',
+                      borderColor: 'rgba(249,115,22,0.30)',
                       transform: 'translateY(-1px)',
-                      boxShadow: '0 4px 16px rgba(140,110,60,0.12)',
+                      boxShadow: '0 4px 14px rgba(140,110,60,0.10)',
                     },
                   }}
                 >
@@ -1367,18 +1368,21 @@ export default function ExplorePage() {
                   )}
 
                   {/* Text */}
-                  <Box sx={{ p: '8px 10px 10px', flex: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                  <Box sx={{ p: '8px 10px 10px', flex: 1, display: 'flex', flexDirection: 'column', gap: 0.4 }}>
+                    {/* Source label — editorial uppercase */}
                     {art.source?.name && (
                       <Typography sx={{
-                        fontFamily: 'var(--font-family)', fontSize: '0.5rem', fontWeight: 600,
-                        color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase',
+                        fontFamily: 'var(--font-family)', fontSize: '0.625rem', fontWeight: 600,
+                        color: 'var(--fg-dim)', letterSpacing: '0.10em', textTransform: 'uppercase',
+                        lineHeight: 1,
                       }}>
                         {art.source.name}
                       </Typography>
                     )}
+                    {/* Headline — leading-snug so text isn't cramped */}
                     <Typography sx={{
-                      fontFamily: 'var(--font-family)', fontSize: '0.72rem', fontWeight: 500,
-                      color: 'var(--fg-primary)', lineHeight: 1.3,
+                      fontFamily: 'var(--font-family)', fontSize: '0.75rem', fontWeight: 500,
+                      color: 'var(--fg-primary)', lineHeight: 1.4,
                       display: '-webkit-box', WebkitLineClamp: 3,
                       WebkitBoxOrient: 'vertical', overflow: 'hidden',
                     }}>
@@ -1391,12 +1395,12 @@ export default function ExplorePage() {
           </Box>
 
           {/* Primary CTAs — 2-column side by side */}
-          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, mt: 2, width: '100%' }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.875, mt: 1.5, width: '100%' }}>
 
             {/* Quarry Research */}
             <Box onClick={() => navigate('/research')} sx={{
-              display: 'flex', flexDirection: 'column', gap: 1,
-              px: 2, py: 1.5,
+              display: 'flex', flexDirection: 'column', gap: 0.75,
+              px: 1.75, py: 1.1,
               borderRadius: '12px',
               border: '1px solid rgba(0,0,0,0.10)',
               background: 'linear-gradient(135deg, rgba(255,252,245,0.9) 0%, rgba(248,243,232,0.8) 100%)',
@@ -1410,16 +1414,16 @@ export default function ExplorePage() {
               },
             }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Box sx={{ width: 36, height: 36, borderRadius: '10px', bgcolor: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <FlaskConical size={18} color="var(--accent)" />
+                <Box sx={{ width: 30, height: 30, borderRadius: '8px', bgcolor: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <FlaskConical size={15} color="var(--accent)" />
                 </Box>
-                <Box sx={{ color: 'var(--fg-dim)', opacity: 0.4, fontSize: '1rem' }}>›</Box>
+                <Box sx={{ color: 'var(--fg-dim)', opacity: 0.4, fontSize: '0.9rem' }}>›</Box>
               </Box>
               <Box>
-                <Typography sx={{ fontFamily: 'var(--font-serif)', fontSize: '0.92rem', fontWeight: 600, color: 'var(--fg-primary)', lineHeight: 1.2 }}>
+                <Typography sx={{ fontFamily: 'var(--font-serif)', fontSize: '0.88rem', fontWeight: 600, color: 'var(--fg-primary)', lineHeight: 1.2 }}>
                   Quarry Research
                 </Typography>
-                <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', fontWeight: 300, color: 'var(--fg-secondary)', mt: 0.3, lineHeight: 1.4 }}>
+                <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.66rem', fontWeight: 300, color: 'var(--fg-secondary)', mt: 0.2, lineHeight: 1.4 }}>
                   AI research assistant for papers, topics & citations
                 </Typography>
               </Box>
@@ -1427,8 +1431,8 @@ export default function ExplorePage() {
 
             {/* Finance Terminal */}
             <Box onClick={() => navigate('/finance')} sx={{
-              display: 'flex', flexDirection: 'column', gap: 1,
-              px: 2, py: 1.5,
+              display: 'flex', flexDirection: 'column', gap: 0.75,
+              px: 1.75, py: 1.1,
               borderRadius: '12px',
               border: '1px solid rgba(0,0,0,0.10)',
               background: 'linear-gradient(135deg, rgba(255,248,235,0.95) 0%, rgba(254,242,220,0.85) 100%)',
@@ -1442,16 +1446,16 @@ export default function ExplorePage() {
               },
             }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Box sx={{ width: 36, height: 36, borderRadius: '10px', bgcolor: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <TrendingUp size={18} color="var(--accent)" />
+                <Box sx={{ width: 30, height: 30, borderRadius: '8px', bgcolor: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <TrendingUp size={15} color="var(--accent)" />
                 </Box>
-                <Box sx={{ color: 'var(--fg-dim)', opacity: 0.4, fontSize: '1rem' }}>›</Box>
+                <Box sx={{ color: 'var(--fg-dim)', opacity: 0.4, fontSize: '0.9rem' }}>›</Box>
               </Box>
               <Box>
-                <Typography sx={{ fontFamily: 'var(--font-serif)', fontSize: '0.92rem', fontWeight: 600, color: 'var(--fg-primary)', lineHeight: 1.2 }}>
+                <Typography sx={{ fontFamily: 'var(--font-serif)', fontSize: '0.88rem', fontWeight: 600, color: 'var(--fg-primary)', lineHeight: 1.2 }}>
                   Finance Terminal
                 </Typography>
-                <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', fontWeight: 300, color: 'var(--fg-secondary)', mt: 0.3, lineHeight: 1.4 }}>
+                <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.66rem', fontWeight: 300, color: 'var(--fg-secondary)', mt: 0.2, lineHeight: 1.4 }}>
                   Live prices, charts & market AI with QFL commands
                 </Typography>
               </Box>
