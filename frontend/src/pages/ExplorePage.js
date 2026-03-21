@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { Box, Typography, Skeleton, Tooltip, CircularProgress } from '@mui/material';
-import { Search, BookmarkPlus, ExternalLink, Zap, FlaskConical, CornerDownRight, MoreHorizontal, ArrowUpRight, TrendingUp, RefreshCw, Settings } from 'lucide-react';
+import { Search, BookmarkPlus, ExternalLink, Zap, FlaskConical, CornerDownRight, MoreHorizontal, ArrowUpRight, TrendingUp, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -1492,11 +1492,6 @@ export default function ExplorePage() {
             </Box>
           ); })()}
 
-          {/* Settings link */}
-          <Box onClick={() => navigate('/settings')} sx={{ display: 'flex', alignItems: 'center', gap: 0.6, mt: 0.5, cursor: 'pointer', opacity: 0.38, '&:hover': { opacity: 0.75 }, transition: 'opacity 0.15s' }}>
-            <Settings size={11} color="var(--fg-dim)" />
-            <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.65rem', color: 'var(--fg-dim)' }}>Settings</Typography>
-          </Box>
 
           <style>{`
             @keyframes spin { from{transform:rotate(0)} to{transform:rotate(360deg)} }
