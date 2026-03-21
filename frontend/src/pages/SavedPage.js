@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Box, Typography } from '@mui/material';
 import { ArrowLeft, Trash2, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import GlassCard from '../components/GlassCard';
+import { useTopOffset } from '../SettingsContext';
 
 function getSavedSearches() {
   try { return JSON.parse(localStorage.getItem('quarry_saved') || '[]'); }
@@ -10,21 +11,18 @@ function getSavedSearches() {
 }
 
 export default function SavedPage() {
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
+  const topOffset = useTopOffset();
   const [items, setItems] = useState(getSavedSearches);
-
-  useEffect(() => {
-    setItems(getSavedSearches());
-  }, []);
 
   const remove = (id) => {
     const updated = items.filter(i => i.id !== id);
-    localStorage.setItem('quarry_saved', JSON.stringify(updated));
+    try { localStorage.setItem('quarry_saved', JSON.stringify(updated)); } catch { /* private mode */ }
     setItems(updated);
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', px: 3, py: 3 }}>
+    <Box sx={{ minHeight: '100vh', px: 3, py: 3, paddingTop: `${topOffset}px` }}>
       <Box sx={{ maxWidth: 720, mx: 'auto' }}>
 
         {/* Header */}

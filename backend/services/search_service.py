@@ -94,7 +94,7 @@ def _decode_html_entities(text: str) -> str:
         return text
 
 
-def web_search(query: str, max_results: int = 8) -> list[dict[str, str]]:
+def web_search(query: str, max_results: int = 5) -> list[dict[str, str]]:
     """Return a list of {title, url, snippet} dicts from DuckDuckGo."""
     try:
         try:
@@ -103,7 +103,7 @@ def web_search(query: str, max_results: int = 8) -> list[dict[str, str]]:
             from duckduckgo_search import DDGS
         results: list[dict[str, str]] = []
         with DDGS() as ddgs:
-            for r in ddgs.text(query, max_results=max_results):
+            for r in ddgs.text(query, max_results=max_results, timeout=8):
                 results.append({
                     "title": _decode_html_entities(r.get("title", "")),
                     "url": r.get("href", r.get("link", "")),
@@ -121,7 +121,7 @@ def _scrape_one(url: str) -> dict[str, str] | None:
     """Fetch a URL and return clean Markdown, or None on failure."""
     try:
         import trafilatura
-        downloaded = trafilatura.fetch_url(url)
+        downloaded = trafilatura.fetch_url(url, no_ssl=False, timeout=4)
         if not downloaded:
             return None
         text = trafilatura.extract(
@@ -132,22 +132,25 @@ def _scrape_one(url: str) -> dict[str, str] | None:
         )
         if not text:
             return None
-        # Truncate to ~3 000 chars to keep context manageable
-        return {"url": url, "markdown": text[:3000]}
+        # Truncate to 2 000 chars — enough context, less to send to the LLM
+        return {"url": url, "markdown": text[:2000]}
     except Exception as exc:
         logger.warning("scrape.failed url=%s: %s", url, exc)
         return None
 
-def scrape_urls(urls: list[str], max_pages: int = 5) -> list[dict[str, str]]:
+def scrape_urls(urls: list[str], max_pages: int = 3) -> list[dict[str, str]]:
     """Scrape up to *max_pages* URLs in parallel. Returns [{url, markdown}]."""
     targets = [u for u in urls if is_safe_url(u)][:max_pages]
     scraped: list[dict[str, str]] = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
         futures = {pool.submit(_scrape_one, url): url for url in targets}
-        for future in concurrent.futures.as_completed(futures, timeout=15):
-            result = future.result()
-            if result:
-                scraped.append(result)
+        for future in concurrent.futures.as_completed(futures, timeout=8):
+            try:
+                result = future.result()
+                if result:
+                    scraped.append(result)
+            except Exception:
+                pass
     logger.info("scrape.done scraped=%d attempted=%d", len(scraped), len(targets))
     return scraped
 
@@ -180,31 +183,42 @@ def fetch_live_scores(query: str) -> str:
     if not any(k in q_lower for k in _SCORE_KEYWORDS):
         return ""
 
-    all_events: list[dict] = []
-    for league_id, league_name in _ESPN_LEAGUES:
+    def _fetch_league(league_id: str, league_name: str) -> list[dict]:
         try:
             url = (
                 f"https://site.api.espn.com/apis/site/v2/sports/soccer"
                 f"/{league_id}/scoreboard"
             )
-            r = requests.get(url, timeout=4, headers={"User-Agent": "Mozilla/5.0"})
+            r = requests.get(url, timeout=3, headers={"User-Agent": "Mozilla/5.0"})
             if not r.ok:
-                continue
+                return []
+            events = []
             for event in r.json().get("events", []):
                 comps = event.get("competitions", [{}])
                 competitors = comps[0].get("competitors", []) if comps else []
                 status = event.get("status", {})
                 names = [c.get("team", {}).get("displayName", "") for c in competitors]
                 scores = [c.get("score", "?") for c in competitors]
-                all_events.append({
-                    "league":  league_name,
-                    "names":   names,
-                    "score":   " - ".join(scores),
-                    "state":   status.get("type", {}).get("description", ""),
-                    "clock":   status.get("displayClock", ""),
+                events.append({
+                    "league": league_name,
+                    "names":  names,
+                    "score":  " - ".join(scores),
+                    "state":  status.get("type", {}).get("description", ""),
+                    "clock":  status.get("displayClock", ""),
                 })
+            return events
         except Exception as exc:
             logger.warning("fetch_live_scores.%s: %s", league_id, exc)
+            return []
+
+    all_events: list[dict] = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(_ESPN_LEAGUES)) as pool:
+        futures = {pool.submit(_fetch_league, lid, lname): lid for lid, lname in _ESPN_LEAGUES}
+        for future in concurrent.futures.as_completed(futures, timeout=4):
+            try:
+                all_events.extend(future.result())
+            except Exception:
+                pass
 
     if not all_events:
         return ""

@@ -195,25 +195,27 @@ export default function NewsTab({ query }) {
   const [articles,     setArticles]     = useState([]);
   const [status,       setStatus]       = useState('loading');
   const [visibleCount, setVisibleCount] = useState(8);
+  const [retry,        setRetry]        = useState(0);
 
-  const load = () => {
+  useEffect(() => {
+    let cancelled = false;
     setStatus('loading');
     setArticles([]);
     setVisibleCount(8);
     fetch(`${API}/explore/news?q=${encodeURIComponent(query)}&max=10`)
       .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then(data => {
+        if (cancelled) return;
         const arts = data.articles || [];
         setArticles(arts);
         setStatus(arts.length ? 'done' : 'empty');
       })
-      .catch(() => setStatus('error'));
-  };
-
-  useEffect(() => { load(); }, [query]); // eslint-disable-line react-hooks/exhaustive-deps
+      .catch(() => { if (!cancelled) setStatus('error'); });
+    return () => { cancelled = true; };
+  }, [query, retry]);
 
   if (status === 'loading') return <div style={{ padding: '40px 0' }}><Spinner /></div>;
-  if (status === 'error')   return <ErrorState onRetry={load} />;
+  if (status === 'error')   return <ErrorState onRetry={() => setRetry(r => r + 1)} />;
   if (status === 'empty' || articles.length === 0) {
     return (
       <div style={{ padding: '40px 0', textAlign: 'center', fontFamily: F, fontSize: '0.875rem', color: '#70757a' }}>

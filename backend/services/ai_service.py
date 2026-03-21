@@ -31,92 +31,25 @@ Return this exact JSON shape:
   "consensus": "one sentence about what all sources agree on (or empty string if nothing notable)"
 }"""
 
-RESEARCH_SYSTEM_PROMPT = """You are **Quarry Research** — a dedicated, multi-turn research assistant embedded inside the Quarry app.
+RESEARCH_SYSTEM_PROMPT = """You are **Quarry Research** — a conversational AI research assistant. You help students, researchers, and professionals with any aspect of research: finding information, explaining concepts, reviewing literature, outlining papers, comparing sources, analyzing arguments, drafting content, and citing properly.
 
-You are NOT a general-purpose chatbot. Your sole purpose is to guide the user through a structured, end-to-end research session: understanding their context, scoping their topic, searching the web, synthesizing findings, and delivering a final research output.
+Be direct, thorough, and genuinely useful. Adapt your depth to the question — a quick answer for a simple question, a structured response for a complex research task. Never pad responses with unnecessary preamble or summaries.
 
-## PHASE SYSTEM
+## Guidelines
 
-You operate in exactly five sequential phases. Complete each phase fully before advancing. Never skip a phase.
+- Use markdown formatting (headers, bullet lists, bold) to make longer responses readable and well-structured.
+- When asked to outline, draft, or summarize something, produce a concrete, usable result — not just advice on how to do it.
+- Cite evidence and acknowledge uncertainty when making factual claims. Do not fabricate sources or statistics.
+- When the user asks follow-up questions, build naturally on prior turns without re-explaining what was already said.
 
-### PHASE 1 — ONBOARDING
-Ask the user the following questions **one at a time**, waiting for their answer before asking the next.
+## Uploaded documents
 
-**Question 1 — Research Level:**
-"Welcome to Quarry Research. Before we dive in, I have a few quick questions to tailor this session for you. First — what level is this research for?"
-Options: High School / Undergraduate / Graduate / Professional / Personal
-
-**Question 2 — Topic:**
-"Got it. What's the topic or question you'd like to research today?"
-
-**Question 3 — Output Goal:**
-"And what do you want to walk away with at the end of this session?"
-Options: A summary / A structured report / A literature review / A list of key sources / An answer to a specific question / Something else
-
-Once all three answers are collected, summarize them and ask: "Does this sound right, or would you like to adjust anything before we begin?" Only advance to Phase 2 after confirmation.
-
-### PHASE 2 — SCOPE DEFINITION
-1. Propose 3–4 focused sub-questions that together cover the topic.
-2. Ask the user to confirm, remove, or add sub-questions.
-3. Once approved, generate a Research Brief:
-
-```
-RESEARCH BRIEF
-━━━━━━━━━━━━━━
-Topic: [topic]
-Level: [level]
-Goal: [output goal]
-Key Questions:
-  1. [sub-question 1]
-  2. [sub-question 2]
-  3. [sub-question 3]
-```
-
-Advance to Phase 3 immediately after showing the brief.
-
-### PHASE 3 — ACTIVE RESEARCH
-Research one sub-question at a time. For each:
-1. Announce what you are searching for.
-2. Synthesize findings in prose appropriate to the user's level.
-3. Cite sources inline using [1], [2], [3] notation.
-4. End with a follow-up prompt or transition to the next sub-question.
-After each sub-question ask: "I've covered question [N]. Ready to move to [next], or go deeper here?"
-
-### PHASE 4 — SYNTHESIS
-Produce the output matching the user's chosen goal. Always include at the top:
-```
-RESEARCH SESSION SUMMARY
-━━━━━━━━━━━━━━━━━━━━━━━━
-Topic: [topic]
-Level: [level]
-Sources consulted: [N]
-Sub-questions covered: [N]
-```
-After delivering, ask if they want adjustments.
-
-### PHASE 5 — WRAP-UP
-Offer: Export (clean Markdown) / New topic / Go deeper / Done.
-
-## BEHAVIORAL RULES
-- Match tone to level. Be warm for High School, precise for Graduate+.
-- Never re-explain prior turns unless asked. Never reprint the Research Brief after Phase 2.
-- Always cite. Never make unsourced factual claims in Phase 3 or 4.
-- Flag low-quality sources (blogs, forums) explicitly.
-- Never generate fictional citations.
-
-## SESSION STATE BLOCK
-At the end of every response in Phases 2–4, append this as an HTML comment (invisible to user):
-```
-<!-- SESSION_STATE
-phase: [1|2|3|4|5]
-level: [level]
-topic: [short topic label]
-goal: [output goal]
-sub_questions_total: [N]
-sub_questions_done: [N]
-sources_cited: [N]
--->
-```"""
+If the user has attached a document, apply these rules strictly:
+1. Read the document's actual content carefully before responding.
+2. Only reference the document if its content **genuinely and directly** relates to what the user is asking.
+3. If the document is about a different subject, say so clearly and honestly — e.g. "This document covers X, which is unrelated to your question about Y."
+4. **Never fabricate a connection** between the document and the user's question.
+5. **Never claim** the document is relevant when it is not."""
 
 
 def sanitize_sse_chunk(text: str) -> str:
@@ -239,14 +172,15 @@ class AIService:
         """
         import json as _json
         from services import search_service
+        from services import finance_service
 
         sources: list[dict] = []
 
         scraped: list[dict] = []
         try:
-            results = search_service.web_search(query, max_results=8)
+            results = search_service.web_search(query, max_results=5)
             urls = [r["url"] for r in results if r.get("url")]
-            scraped = search_service.scrape_urls(urls, max_pages=5)
+            scraped = search_service.scrape_urls(urls, max_pages=3)
             context_block, sources = search_service.build_context(results, scraped)
         except Exception as exc:
             logger.error("explore_the_web.search_failed: %s", exc)
@@ -257,11 +191,44 @@ class AIService:
         if live_scores:
             context_block = live_scores + "\n\n" + context_block
 
+        # ── Finance mode: inject live price data ──────────────────────────────
+        stock_data = None
+        is_fin, ticker = finance_service.is_finance_query(query)
+        if is_fin and ticker:
+            try:
+                stock_data = finance_service.get_quote(ticker)
+                if stock_data:
+                    news_items = finance_service.get_company_news(ticker)
+                    stock_data["news"] = news_items
+                    sign = "+" if stock_data["change"] >= 0 else ""
+                    news_text = "\n".join(
+                        f"- {n['title']}" + (f" ({n['publisher']})" if n.get("publisher") else "")
+                        for n in news_items[:3]
+                    ) or "No recent headlines available."
+                    finance_block = (
+                        f"[LIVE FINANCE DATA — {stock_data['ticker']}]\n"
+                        f"Company: {stock_data['name']}\n"
+                        f"Price: ${stock_data['price']:,.2f}  "
+                        f"Change: {sign}{stock_data['change']:.2f} ({sign}{stock_data['changePct']:.2f}%)\n"
+                        f"Recent News:\n{news_text}\n"
+                    )
+                    context_block = finance_block + "\n\n" + context_block
+            except Exception as exc:
+                logger.error("explore_the_web.finance_inject_failed: %s", exc)
+
+        # ── Build system prompt ───────────────────────────────────────────────
+        finance_instruction = (
+            "If [LIVE FINANCE DATA] is present at the top of the context, use it as the "
+            "authoritative source for current price and change. Lead your answer with a brief "
+            "price/performance summary before providing analysis. "
+        ) if stock_data else ""
+
         system_prompt = (
             "You are Quarry — an AI research assistant. "
             "You have been given web search results below. Use them to answer the user's question. "
             "If [LIVE SCORES — ESPN] data is present at the top of the context, treat it as the "
             "most authoritative and up-to-date source for current match scores and status. "
+            + finance_instruction +
             "IMPORTANT: Before answering, verify the search results are actually relevant to the "
             "user's query. If the sources are clearly about a different topic (e.g. the user asks "
             "about cooking but results are about politics), say: \"I couldn't find relevant results "
@@ -284,6 +251,9 @@ class AIService:
                     src["favicon"] = ""
             yield f"data: {_json.dumps({'type': 'sources', 'sources': sources})}\n\n"
 
+        if stock_data:
+            yield f"data: {_json.dumps({'type': 'stock', 'data': stock_data})}\n\n"
+
         try:
             messages = [
                 {"role": "system", "content": system_prompt},
@@ -298,30 +268,51 @@ class AIService:
             yield f"data: {_json.dumps({'type': 'error', 'text': str(exc)})}\n\n"
             yield "data: [DONE]\n\n"
 
-        # Second pass: contradiction detection — research queries only
-        if self._is_research_query(query):
-            try:
-                contradictions_data = self.detect_contradictions(sources, scraped)
-                yield f"data: {_json.dumps({'type': 'contradictions', 'data': contradictions_data})}\n\n"
-            except Exception as exc:
-                logger.error("explore_the_web.contradictions_emit_failed: %s", exc)
-                yield f"data: {_json.dumps({'type': 'contradictions', 'data': {'contradictions': [], 'consensus': ''}})}\n\n"
+        # Contradiction detection — run in a thread with a short deadline so it
+        # never adds more than ~5 s of tail latency to the stream.
+        if self._is_research_query(query) and sources:
+            import concurrent.futures as _cf
+            with _cf.ThreadPoolExecutor(max_workers=1) as _pool:
+                _fut = _pool.submit(self.detect_contradictions, sources, scraped)
+                try:
+                    contradictions_data = _fut.result(timeout=6)
+                except Exception:
+                    contradictions_data = {"contradictions": [], "consensus": ""}
+            yield f"data: {_json.dumps({'type': 'contradictions', 'data': contradictions_data})}\n\n"
         else:
-            # Not a research query — signal frontend to hide the tab
             yield f"data: {_json.dumps({'type': 'contradictions', 'data': None})}\n\n"
 
-    def research_session(self, messages: list[dict], message: str):
+    def research_session(self, messages: list[dict], message: str, file_context: str | None = None):
         """
         Multi-turn research assistant. Accepts conversation history and the new user message.
+        file_context is extracted text from user-uploaded files — passed separately so it
+        never inflates the validated message field.
         Yields SSE-formatted strings.
         """
         import json as _json
         llm = self._get_llm()
 
-        trigger = message.strip() if message.strip() else "Begin the research session. Start with Phase 1, Question 1."
+        trigger = message.strip()
+        if not trigger:
+            return  # nothing to respond to — caller should not send empty messages
+
+        # If the user attached a file, append its content to the system prompt so the
+        # LLM has the full document as background context without polluting chat history.
+        system = RESEARCH_SYSTEM_PROMPT
+        if file_context and file_context.strip():
+            system += (
+                "\n\n## ATTACHED DOCUMENT (user-uploaded)\n"
+                "The user has attached the following document. Rules for using it:\n"
+                "1. Read its actual content carefully before responding.\n"
+                "2. Only reference it if its content GENUINELY and DIRECTLY relates to the current research topic.\n"
+                "3. If the document is about a different subject than the research topic, tell the user clearly and honestly — e.g. 'This document is about X, which does not relate to your research on Y.'\n"
+                "4. NEVER fabricate or invent a connection between the document and the research topic.\n"
+                "5. NEVER claim the document supports the research topic if it does not.\n\n"
+                f"{file_context.strip()}\n\n## END OF ATTACHED DOCUMENT"
+            )
 
         full_messages = [
-            {"role": "system", "content": RESEARCH_SYSTEM_PROMPT},
+            {"role": "system", "content": system},
             *[{"role": m["role"], "content": m["content"]} for m in messages],
             {"role": "user", "content": trigger},
         ]
@@ -333,3 +324,51 @@ class AIService:
         except Exception as exc:
             logger.error("research_session.stream_failed: %s", exc)
             yield f"data: {_json.dumps({'type': 'error', 'text': 'An error occurred. Please try again.'})}\n\n"
+
+    def generate_outline(self, query: str, context: str):
+        """
+        Generate a structured academic paper outline for the given topic.
+        Yields SSE-formatted strings.
+        """
+        import json as _json
+        llm = self._get_llm()
+
+        system = (
+            "You are an academic writing assistant. Generate a clear, detailed outline "
+            "for an academic research paper based on the topic and any provided context.\n\n"
+            "Structure your response in this exact format using markdown:\n\n"
+            "# Paper Outline: [descriptive title]\n\n"
+            "## Abstract\n- [2–3 bullets: key claim, method, contribution]\n\n"
+            "## 1. Introduction\n- Background and motivation\n- Problem statement\n"
+            "- Research objectives\n- [1–2 topic-specific bullets]\n\n"
+            "## 2. Literature Review\n- [4–5 specific themes/debates from existing research]\n\n"
+            "## 3. Methodology\n- Research approach\n- Data sources and collection\n"
+            "- Analysis method\n- [1–2 topic-specific bullets]\n\n"
+            "## 4. Results / Findings\n- [4–5 concrete result areas to cover]\n\n"
+            "## 5. Discussion\n- Interpretation of findings\n- Comparison to prior literature\n"
+            "- Implications\n- Limitations\n\n"
+            "## 6. Conclusion\n- Summary of contributions\n- Future research directions\n\n"
+            "## References\n- [Suggested source types: journals, conference papers, books, reports]\n\n"
+            "Be specific to the topic. Each section must have 3–5 actionable bullets."
+        )
+
+        user_parts = [f'Research topic: "{query}"']
+        if context.strip():
+            user_parts.append(f"Research context/findings:\n{context[:2000]}")
+        user_parts.append("Generate the paper outline now.")
+        user_msg = "\n\n".join(user_parts)
+
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user",   "content": user_msg},
+        ]
+
+        try:
+            for text in llm.stream_sync(messages):
+                safe = sanitize_sse_chunk(text)
+                if safe:
+                    yield f"data: {_json.dumps({'type': 'chunk', 'text': safe})}\n\n"
+            yield "data: [DONE]\n\n"
+        except Exception as exc:
+            logger.error("generate_outline.stream_failed: %s", exc)
+            yield f"data: {_json.dumps({'type': 'error', 'text': 'Outline generation failed. Please try again.'})}\n\n"

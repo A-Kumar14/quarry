@@ -1,20 +1,13 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Box, Typography } from '@mui/material';
-import { ArrowLeft, Send, History } from 'lucide-react';
+import { ArrowLeft, Send, History, Settings, Download, Paperclip, X, FileText, Layers } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import GlassCard from '../components/GlassCard';
+import { useTopOffset } from '../SettingsContext';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-
-const PHASES = [
-  { n: 1, label: 'Onboarding' },
-  { n: 2, label: 'Scope'      },
-  { n: 3, label: 'Research'   },
-  { n: 4, label: 'Synthesis'  },
-  { n: 5, label: 'Wrap-up'    },
-];
 
 const GLASS_BTN_ACCENT = {
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5,
@@ -43,6 +36,17 @@ const MD_STYLES = {
   '& hr':             { border: 'none', borderTop: '1px solid var(--border)', my: 1.5 },
 };
 
+/* ── Suggestion chips shown on the welcome screen ──────────────────────────── */
+
+const SUGGESTIONS = [
+  'Outline a research paper on machine learning fairness',
+  'What are the key arguments for and against universal basic income?',
+  'Summarize the current state of research on CRISPR gene editing',
+  'Compare qualitative and quantitative research methods',
+  'Help me write a literature review section',
+  'What citation style should I use for a psychology paper?',
+];
+
 /* ── Session persistence helpers ─────────────────────────────────────────── */
 
 function genUUID() {
@@ -53,16 +57,15 @@ function genUUID() {
   });
 }
 
-function saveSession(id, messages, phase, topic) {
+function saveSession(id, messages, topic) {
   const data = {
-    id, messages, phase,
+    id, messages,
     topic: topic || 'Untitled session',
     updatedAt: Date.now(),
     createdAt: JSON.parse(localStorage.getItem(`quarry_session_${id}`) || '{}').createdAt || Date.now(),
   };
   localStorage.setItem(`quarry_session_${id}`, JSON.stringify(data));
 
-  // Maintain index
   const index = JSON.parse(localStorage.getItem('quarry_sessions_index') || '[]');
   if (!index.includes(id)) {
     localStorage.setItem('quarry_sessions_index', JSON.stringify([id, ...index]));
@@ -74,87 +77,28 @@ function loadSession(id) {
   catch { return null; }
 }
 
-/* ── Helpers ─────────────────────────────────────────────────────────────── */
-
-function parseSessionState(text) {
-  const m = text.match(/<!--\s*SESSION_STATE\s*([\s\S]*?)-->/);
-  if (!m) return null;
-  const state = {};
-  for (const line of m[1].split('\n')) {
-    const kv = line.match(/^\s*([\w_]+)\s*:\s*(.+?)\s*$/);
-    if (kv) state[kv[1]] = kv[2];
-  }
-  return state;
-}
-
-function stripSessionState(text) {
-  return text.replace(/<!--\s*SESSION_STATE[\s\S]*?-->/g, '').trimEnd();
-}
-
 function extractTopic(messages) {
-  // Look for SESSION_STATE topic in assistant messages
-  for (const m of [...messages].reverse()) {
-    if (m.role === 'assistant') {
-      const state = parseSessionState(m.content);
-      if (state?.topic && state.topic !== '[topic]') return state.topic;
-    }
-  }
-  // Fallback: use second user message (first real answer after phase 1 q1)
-  const userMsgs = messages.filter(m => m.role === 'user' && m.content.trim());
-  if (userMsgs.length >= 2) return userMsgs[1].content.slice(0, 60);
-  return null;
-}
-
-/* ── Phase tracker ───────────────────────────────────────────────────────── */
-
-function PhaseTracker({ current }) {
-  return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0, py: 1.25, px: 3, borderBottom: '1px solid var(--border)', bgcolor: 'transparent' }}>
-      {PHASES.map((p, i) => (
-        <React.Fragment key={p.n}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.4 }}>
-            <Box sx={{
-              width: 26, height: 26,
-              borderRadius: '50%',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '0.65rem', fontWeight: 700, fontFamily: 'var(--font-family)',
-              transition: 'all 0.2s',
-              ...(p.n < current
-                ? { bgcolor: 'var(--accent)', color: '#fff' }
-                : p.n === current
-                  ? { bgcolor: 'var(--accent)', color: '#fff', boxShadow: '0 0 0 3px rgba(249,115,22,0.2)' }
-                  : { bgcolor: 'var(--bg-tertiary)', color: 'var(--fg-dim)', border: '1px solid var(--border)' }
-              ),
-            }}>
-              {p.n < current ? '✓' : p.n}
-            </Box>
-            <Typography sx={{
-              fontFamily: 'var(--font-family)', fontSize: '0.58rem', fontWeight: 600,
-              letterSpacing: '0.05em', textTransform: 'uppercase',
-              color: p.n <= current ? 'var(--accent)' : 'var(--fg-dim)',
-              transition: 'color 0.2s',
-            }}>
-              {p.label}
-            </Typography>
-          </Box>
-          {i < PHASES.length - 1 && (
-            <Box sx={{
-              flex: 1, height: '1px', mx: 0.5, mb: 2,
-              bgcolor: p.n < current ? 'var(--accent)' : 'var(--border)',
-              transition: 'background-color 0.3s',
-            }} />
-          )}
-        </React.Fragment>
-      ))}
-    </Box>
-  );
+  const first = messages.find(m => m.role === 'user' && m.content?.trim());
+  return first ? first.content.slice(0, 60) : null;
 }
 
 /* ── Message bubbles ─────────────────────────────────────────────────────── */
 
-function UserBubble({ content }) {
+function UserBubble({ content, attachments }) {
   return (
-    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1.5 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', mb: 1.5, gap: 0.5 }}>
+      {attachments?.length > 0 && (
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 0.5, maxWidth: '72%' }}>
+          {attachments.map((a, i) => (
+            <Box key={i} sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.35, borderRadius: '8px', border: '1px solid rgba(249,115,22,0.3)', background: 'rgba(249,115,22,0.08)' }}>
+              <FileText size={10} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+              <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.63rem', color: 'var(--accent)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {a.filename}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+      )}
       <Box sx={{
         maxWidth: '72%', px: 1.75, py: 1.1,
         bgcolor: 'var(--accent)', color: '#fff',
@@ -173,9 +117,7 @@ function AssistantBubble({ content, streaming }) {
       <Box sx={{ maxWidth: '82%' }}>
         <GlassCard style={{ padding: '14px 18px' }}>
           <Box sx={MD_STYLES}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {stripSessionState(content)}
-            </ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
           </Box>
           {streaming && (
             <Box component="span" sx={{
@@ -191,37 +133,182 @@ function AssistantBubble({ content, streaming }) {
   );
 }
 
+const ALLOWED_EXTS = ['.pdf', '.docx', '.txt', '.md', '.csv'];
+
+/* ── Artifacts panel ─────────────────────────────────────────────────────── */
+
+function ArtifactsPanel({ artifacts, onRemove, onClose }) {
+  return (
+    <Box sx={{
+      position: 'absolute', bottom: '100%', left: 0, right: 0,
+      background: 'rgba(237,232,223,0.97)', backdropFilter: 'blur(16px)',
+      WebkitBackdropFilter: 'blur(16px)',
+      borderTop: '1px solid var(--border)', zIndex: 10,
+      maxHeight: 280, overflowY: 'auto',
+      '&::-webkit-scrollbar': { width: 3 },
+      '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(175,150,105,0.28)', borderRadius: 2 },
+    }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 3, py: 1, borderBottom: '1px solid var(--border)' }}>
+        <Layers size={12} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+        <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.62rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.10em', textTransform: 'uppercase', flex: 1 }}>
+          Attached Files ({artifacts.length})
+        </Typography>
+        <Box onClick={onClose} sx={{ cursor: 'pointer', opacity: 0.5, '&:hover': { opacity: 1 }, lineHeight: 1 }}>
+          <X size={13} color="var(--fg-secondary)" />
+        </Box>
+      </Box>
+      <Box sx={{ px: 3, py: 1.25, display: 'flex', flexDirection: 'column', gap: 1 }}>
+        {artifacts.length === 0 ? (
+          <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.78rem', color: 'var(--fg-dim)', fontStyle: 'italic', py: 1 }}>
+            No files attached yet. Use the paperclip button to attach a file.
+          </Typography>
+        ) : artifacts.map((art, i) => (
+          <Box key={i} sx={{
+            display: 'flex', alignItems: 'flex-start', gap: 1.25,
+            p: '10px 12px', borderRadius: '10px',
+            border: '1px solid var(--border)', background: 'rgba(255,252,242,0.6)',
+          }}>
+            <FileText size={14} style={{ color: 'var(--accent)', flexShrink: 0, marginTop: 2 }} />
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.82rem', fontWeight: 600, color: 'var(--fg-primary)', mb: 0.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {art.filename}
+              </Typography>
+              <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.65rem', color: 'var(--fg-dim)' }}>
+                {art.chars.toLocaleString()} chars extracted{art.truncated ? ' (truncated to 12,000)' : ''}
+              </Typography>
+              <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', color: 'var(--fg-secondary)', mt: 0.5, lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                {art.text.slice(0, 120)}…
+              </Typography>
+            </Box>
+            <Box onClick={() => onRemove(i)} sx={{ p: 0.4, cursor: 'pointer', borderRadius: '5px', color: 'var(--fg-dim)', flexShrink: 0, transition: 'all 0.12s', '&:hover': { color: '#dc2626', bgcolor: 'rgba(220,38,38,0.08)' } }}>
+              <X size={11} />
+            </Box>
+          </Box>
+        ))}
+      </Box>
+    </Box>
+  );
+}
+
 /* ── Input bar ───────────────────────────────────────────────────────────── */
 
-function InputBar({ onSubmit, disabled }) {
-  const [text, setText] = useState('');
-  const ref = useRef(null);
+function InputBar({ onSubmit, disabled, artifacts, onAttach, onRemoveArtifact, placeholder }) {
+  const [text,          setText]         = useState('');
+  const [uploading,     setUploading]     = useState(false);
+  const [uploadErr,     setUploadErr]     = useState('');
+  const [showArtifacts, setShowArtifacts] = useState(false);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    if (artifacts.length === 0) setShowArtifacts(false);
+  }, [artifacts.length]);
 
   const submit = () => {
     const t = text.trim();
     if (!t || disabled) return;
     setText('');
-    onSubmit(t);
+    onSubmit(t, artifacts);
+  };
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!fileInputRef.current) return;
+    fileInputRef.current.value = '';
+    if (!file) return;
+
+    const ext = '.' + file.name.split('.').pop().toLowerCase();
+    if (!ALLOWED_EXTS.includes(ext)) {
+      setUploadErr(`Unsupported type. Use: ${ALLOWED_EXTS.join(', ')}`);
+      setTimeout(() => setUploadErr(''), 3500);
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadErr('File too large. Max 10 MB.');
+      setTimeout(() => setUploadErr(''), 3500);
+      return;
+    }
+
+    setUploading(true);
+    setUploadErr('');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch(`${API}/explore/parse-file`, { method: 'POST', body: formData });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      onAttach(data);
+      setShowArtifacts(true);
+    } catch (err) {
+      setUploadErr(err.message || 'Upload failed.');
+      setTimeout(() => setUploadErr(''), 3500);
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
-    <Box sx={{
-      borderTop: '1px solid var(--border)',
-      bgcolor: 'transparent',
-      px: 3, py: 1.5,
-    }}>
+    <Box sx={{ borderTop: '1px solid var(--border)', bgcolor: 'transparent', px: 3, py: 1.5, position: 'relative' }}>
+
+      {showArtifacts && (
+        <ArtifactsPanel
+          artifacts={artifacts}
+          onRemove={onRemoveArtifact}
+          onClose={() => setShowArtifacts(false)}
+        />
+      )}
+
+      {artifacts.length > 0 && !showArtifacts && (
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 0.75 }}>
+          {artifacts.map((art, i) => (
+            <Box key={i} sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.3, borderRadius: 999, border: '1px solid rgba(249,115,22,0.3)', background: 'rgba(249,115,22,0.07)', cursor: 'pointer' }} onClick={() => setShowArtifacts(true)}>
+              <FileText size={10} style={{ color: 'var(--accent)' }} />
+              <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.63rem', color: 'var(--accent)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {art.filename}
+              </Typography>
+              <Box onClick={e => { e.stopPropagation(); onRemoveArtifact(i); }} sx={{ display: 'flex', cursor: 'pointer' }}>
+                <X size={9} style={{ color: 'var(--accent)' }} />
+              </Box>
+            </Box>
+          ))}
+        </Box>
+      )}
+
       <Box sx={{
         display: 'flex', alignItems: 'center', gap: 1.25,
-        borderBottom: '1px solid var(--border)',
-        pb: 0.75,
+        borderBottom: '1px solid var(--border)', pb: 0.75,
         '&:focus-within': { borderBottomColor: 'var(--accent)' },
       }}>
         <input
-          ref={ref}
+          ref={fileInputRef}
+          type="file"
+          accept={ALLOWED_EXTS.map(e => e).join(',')}
+          style={{ display: 'none' }}
+          onChange={handleFileChange}
+        />
+        <Box
+          onClick={() => !disabled && !uploading && fileInputRef.current?.click()}
+          sx={{
+            display: 'flex', alignItems: 'center', cursor: disabled || uploading ? 'default' : 'pointer',
+            opacity: disabled || uploading ? 0.4 : artifacts.length > 0 ? 1 : 0.55,
+            color: artifacts.length > 0 ? 'var(--accent)' : 'var(--fg-dim)',
+            transition: 'all 0.13s', flexShrink: 0,
+            '&:hover': { opacity: disabled || uploading ? 0.4 : 1 },
+          }}
+        >
+          {uploading
+            ? <Box sx={{ width: 14, height: 14, border: '2px solid var(--border)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'researchSpin 0.7s linear infinite' }} />
+            : <Paperclip size={14} />
+          }
+        </Box>
+
+        <input
           value={text}
           onChange={e => setText(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }}
-          placeholder={disabled ? 'Waiting for response…' : 'Type your response…'}
+          placeholder={placeholder || (disabled ? 'Waiting for response…' : 'Ask anything about your research…')}
           disabled={disabled}
           autoComplete="off"
           style={{
@@ -232,6 +319,19 @@ function InputBar({ onSubmit, disabled }) {
             opacity: disabled ? 0.5 : 1,
           }}
         />
+
+        {artifacts.length > 0 && (
+          <Box
+            onClick={() => setShowArtifacts(v => !v)}
+            sx={{ display: 'flex', alignItems: 'center', gap: 0.4, px: 0.9, py: 0.3, borderRadius: 999, cursor: 'pointer', border: '1px solid rgba(249,115,22,0.3)', background: 'rgba(249,115,22,0.08)', flexShrink: 0 }}
+          >
+            <Layers size={10} style={{ color: 'var(--accent)' }} />
+            <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.60rem', fontWeight: 700, color: 'var(--accent)' }}>
+              {artifacts.length}
+            </Typography>
+          </Box>
+        )}
+
         <button
           onClick={submit}
           disabled={disabled || !text.trim()}
@@ -245,6 +345,55 @@ function InputBar({ onSubmit, disabled }) {
           Send
         </button>
       </Box>
+
+      {uploadErr && (
+        <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', color: 'var(--error)', mt: 0.5 }}>
+          {uploadErr}
+        </Typography>
+      )}
+    </Box>
+  );
+}
+
+/* ── Welcome screen ──────────────────────────────────────────────────────── */
+
+function WelcomeScreen({ onSuggestion }) {
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, px: 3, py: 6, textAlign: 'center' }}>
+      <Typography sx={{
+        fontFamily: 'var(--font-serif)', fontSize: '1.6rem', fontWeight: 600,
+        color: 'var(--fg-primary)', letterSpacing: '-0.02em', mb: 0.75,
+      }}>
+        Quarry Research
+      </Typography>
+      <Typography sx={{
+        fontFamily: 'var(--font-family)', fontSize: '0.88rem', fontWeight: 300,
+        color: 'var(--fg-secondary)', mb: 3.5, maxWidth: 420,
+      }}>
+        Ask anything — outline a paper, explore a topic, compare sources, or get writing help.
+      </Typography>
+
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: 'center', maxWidth: 560 }}>
+        {SUGGESTIONS.map((s, i) => (
+          <Box
+            key={i}
+            onClick={() => onSuggestion(s)}
+            sx={{
+              px: 1.5, py: 0.85,
+              borderRadius: '10px',
+              border: '1px solid var(--border)',
+              background: 'rgba(255,252,242,0.55)',
+              cursor: 'pointer',
+              transition: 'all 0.13s',
+              '&:hover': { borderColor: 'var(--accent)', background: 'rgba(249,115,22,0.05)' },
+            }}
+          >
+            <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.78rem', fontWeight: 400, color: 'var(--fg-secondary)', lineHeight: 1.4, textAlign: 'left' }}>
+              {s}
+            </Typography>
+          </Box>
+        ))}
+      </Box>
     </Box>
   );
 }
@@ -252,60 +401,57 @@ function InputBar({ onSubmit, disabled }) {
 /* ── Main page ───────────────────────────────────────────────────────────── */
 
 export default function ResearchPage() {
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
+  const topOffset = useTopOffset();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // Session ID — from URL or newly generated
   const sessionIdRef = useRef(null);
   if (!sessionIdRef.current) {
     const fromUrl = searchParams.get('session');
     sessionIdRef.current = fromUrl || genUUID();
   }
 
-  const [messages,     setMessages]     = useState([]);
-  const [streaming,    setStreaming]     = useState(false);
-  const [currentPhase, setCurrentPhase] = useState(1);
-  const abortRef  = useRef(null);
-  const bottomRef = useRef(null);
-  const initiated = useRef(false);
+  const [messages,  setMessages]  = useState([]);
+  const [streaming, setStreaming] = useState(false);
+  const [exported,  setExported]  = useState(false);
+  const [artifacts, setArtifacts] = useState([]);
+  const abortRef    = useRef(null);
+  const bottomRef   = useRef(null);
+  const messagesRef = useRef([]);
 
-  // On mount: restore from localStorage if session exists, or start fresh
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
+
   useEffect(() => {
     const id = sessionIdRef.current;
-    // Put session ID in URL without triggering navigation
     setSearchParams({ session: id }, { replace: true });
 
     const saved = loadSession(id);
     if (saved && saved.messages?.length > 0) {
       setMessages(saved.messages);
-      setCurrentPhase(saved.phase || 1);
-      // Session already has content — don't auto-init
-      initiated.current = true;
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Persist on every messages/phase change (skip empty initial state)
   useEffect(() => {
     if (messages.length === 0) return;
     const id = sessionIdRef.current;
-    const topic = extractTopic(messages);
-    saveSession(id, messages, currentPhase, topic);
-  }, [messages, currentPhase]);
+    saveSession(id, messages, extractTopic(messages));
+  }, [messages]);
 
-  // Auto-scroll on new content
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const sendMessage = useCallback(async (userText, isInit = false) => {
-    if (!isInit) {
-      setMessages(prev => [...prev, { id: Date.now(), role: 'user', content: userText }]);
-    }
+  const sendMessage = useCallback(async (userText, fileArtifacts = []) => {
+    const attachments = fileArtifacts.map(a => ({ filename: a.filename }));
+    setMessages(prev => [...prev, { id: Date.now(), role: 'user', content: userText, attachments }]);
 
-    // Build history from settled messages
-    const history = messages
+    const history = messagesRef.current
       .filter(m => !m.streaming)
-      .map(m => ({ role: m.role, content: stripSessionState(m.content) }));
+      .map(m => ({ role: m.role, content: m.content }));
+
+    const fileContext = fileArtifacts.length > 0
+      ? fileArtifacts.map(a => `[File: ${a.filename}]\n${a.text}`).join('\n\n---\n\n')
+      : null;
 
     if (abortRef.current) abortRef.current.abort();
     abortRef.current = new AbortController();
@@ -320,7 +466,7 @@ export default function ResearchPage() {
       const res = await fetch(`${API}/explore/research`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ messages: history, message: isInit ? '' : userText }),
+        body:    JSON.stringify({ messages: history, message: userText, file_context: fileContext }),
         signal:  abortRef.current.signal,
       });
 
@@ -353,10 +499,6 @@ export default function ResearchPage() {
           } catch { /* ignore parse errors */ }
         }
       }
-
-      const state = parseSessionState(accumulated);
-      if (state?.phase) setCurrentPhase(parseInt(state.phase, 10));
-
     } catch (err) {
       if (err.name !== 'AbortError') {
         accumulated = 'Something went wrong. Please try again.';
@@ -367,18 +509,35 @@ export default function ResearchPage() {
       ));
       setStreaming(false);
     }
-  }, [messages]);
-
-  // Auto-start Phase 1 on mount (only for new sessions)
-  useEffect(() => {
-    if (!initiated.current) {
-      initiated.current = true;
-      sendMessage('', true);
-    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const exportSession = () => {
+    const topic = extractTopic(messages) || 'Research Session';
+    const date  = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const lines = [`# ${topic}`, `*Quarry Research — Exported ${date}*`, ''];
+
+    for (const msg of messages) {
+      if (msg.role === 'user') {
+        lines.push(`**You:** ${msg.content}`, '');
+      } else if (msg.role === 'assistant' && msg.content?.trim()) {
+        lines.push(msg.content.trim(), '');
+      }
+    }
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${topic.slice(0, 50).replace(/[^a-z0-9]/gi, '-').toLowerCase()}.md`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    setExported(true);
+    setTimeout(() => setExported(false), 2500);
+  };
+
+  const isEmpty = messages.length === 0;
+
   return (
-    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', bgcolor: 'transparent' }}>
+    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', bgcolor: 'transparent', paddingTop: `${topOffset}px` }}>
 
       {/* Header */}
       <Box sx={{
@@ -410,6 +569,21 @@ export default function ResearchPage() {
           Quarry Research
         </Typography>
         <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
+          {messages.length > 2 && (
+            <Box
+              onClick={exportSession}
+              sx={{
+                display: 'flex', alignItems: 'center', gap: 0.5,
+                px: 1, py: 0.4, borderRadius: '7px', cursor: 'pointer',
+                color: exported ? '#16a34a' : 'var(--fg-dim)', fontFamily: 'var(--font-family)',
+                fontSize: '0.72rem', fontWeight: 500,
+                transition: 'all 0.15s',
+                '&:hover': { color: 'var(--fg-primary)', bgcolor: 'var(--bg-tertiary)' },
+              }}
+            >
+              <Download size={13} /> {exported ? 'Exported!' : 'Export'}
+            </Box>
+          )}
           <Box
             onClick={() => navigate('/research/sessions')}
             sx={{
@@ -423,46 +597,38 @@ export default function ResearchPage() {
           >
             <History size={13} /> Sessions
           </Box>
-          <Box sx={{
-            px: 1, py: 0.25, borderRadius: '6px',
-            bgcolor: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.25)',
-            fontFamily: 'var(--font-family)', fontSize: '0.62rem', fontWeight: 700,
-            color: 'var(--accent)', letterSpacing: '0.08em', textTransform: 'uppercase',
-          }}>
-            Phase {currentPhase} · {PHASES[currentPhase - 1]?.label}
+          <Box onClick={() => navigate('/settings')} sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', opacity: 0.4, '&:hover': { opacity: 0.85 }, transition: 'opacity 0.14s' }}>
+            <Settings size={14} color="var(--fg-dim)" />
           </Box>
         </Box>
       </Box>
 
-      {/* Phase tracker */}
-      <PhaseTracker current={currentPhase} />
-
-      {/* Message thread */}
-      <Box sx={{ flex: 1, overflowY: 'auto', px: 3, py: 2.5 }}>
-        <Box sx={{ maxWidth: 760, mx: 'auto', display: 'flex', flexDirection: 'column' }}>
-
-          {messages.length === 0 && (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-              <Box sx={{
-                width: 20, height: 20, borderRadius: '50%',
-                border: '2px solid var(--border)', borderTopColor: 'var(--accent)',
-                animation: 'researchSpin 0.7s linear infinite',
-              }} />
+      {/* Message thread or welcome screen */}
+      <Box sx={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+        {isEmpty ? (
+          <WelcomeScreen onSuggestion={s => sendMessage(s, [])} />
+        ) : (
+          <Box sx={{ px: 3, py: 2.5 }}>
+            <Box sx={{ maxWidth: 760, mx: 'auto', display: 'flex', flexDirection: 'column' }}>
+              {messages.map(msg =>
+                msg.role === 'user'
+                  ? <UserBubble key={msg.id} content={msg.content} attachments={msg.attachments} />
+                  : <AssistantBubble key={msg.id} content={msg.content} streaming={msg.streaming} />
+              )}
+              <div ref={bottomRef} />
             </Box>
-          )}
-
-          {messages.map(msg =>
-            msg.role === 'user'
-              ? <UserBubble key={msg.id} content={msg.content} />
-              : <AssistantBubble key={msg.id} content={msg.content} streaming={msg.streaming} />
-          )}
-
-          <div ref={bottomRef} />
-        </Box>
+          </Box>
+        )}
       </Box>
 
       {/* Input */}
-      <InputBar onSubmit={text => sendMessage(text)} disabled={streaming} />
+      <InputBar
+        onSubmit={(text, arts) => { sendMessage(text, arts); setArtifacts([]); }}
+        disabled={streaming}
+        artifacts={artifacts}
+        onAttach={art => setArtifacts(prev => [...prev, art])}
+        onRemoveArtifact={idx => setArtifacts(prev => prev.filter((_, i) => i !== idx))}
+      />
 
       <style>{`
         @keyframes blinkPulse  { 50% { opacity: 0; } }

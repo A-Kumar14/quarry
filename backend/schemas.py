@@ -56,6 +56,20 @@ class ResearchMessage(BaseModel):
 class ResearchRequest(BaseModel):
     messages: list[ResearchMessage] = Field(default_factory=list, max_length=100)
     message: str = Field("", max_length=2000)
+    file_context: Optional[str] = Field(None, max_length=15000)
+
+
+class OutlineRequest(BaseModel):
+    query: str = Field(..., max_length=500)
+    context: str = Field("", max_length=3000)
+
+    @field_validator("query")
+    @classmethod
+    def validate_query(cls, v: str) -> str:
+        v = _sanitize_str(v)
+        if not v:
+            raise ValueError("query cannot be empty")
+        return v
 
 
 class CiteRequest(BaseModel):

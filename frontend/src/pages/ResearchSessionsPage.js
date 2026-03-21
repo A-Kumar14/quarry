@@ -3,8 +3,8 @@ import { Box, Typography } from '@mui/material';
 import { ArrowLeft, BookOpen, Trash2, Clock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import GlassCard from '../components/GlassCard';
+import { useTopOffset } from '../SettingsContext';
 
-const PHASES = ['', 'Onboarding', 'Scope', 'Research', 'Synthesis', 'Wrap-up'];
 
 function timeAgo(ts) {
   const diff = Date.now() - ts;
@@ -18,31 +18,36 @@ function timeAgo(ts) {
 }
 
 function loadAllSessions() {
-  const index = JSON.parse(localStorage.getItem('quarry_sessions_index') || '[]');
-  return index
-    .map(id => {
-      try { return JSON.parse(localStorage.getItem(`quarry_session_${id}`)); }
-      catch { return null; }
-    })
-    .filter(Boolean)
-    .sort((a, b) => b.updatedAt - a.updatedAt);
+  try {
+    const index = JSON.parse(localStorage.getItem('quarry_sessions_index') || '[]');
+    return index
+      .map(id => {
+        try { return JSON.parse(localStorage.getItem(`quarry_session_${id}`)); }
+        catch { return null; }
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+  } catch { return []; }
 }
 
 export default function ResearchSessionsPage() {
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
+  const topOffset = useTopOffset();
   const [sessions, setSessions] = useState([]);
 
   useEffect(() => { setSessions(loadAllSessions()); }, []);
 
   const deleteSession = (id) => {
-    localStorage.removeItem(`quarry_session_${id}`);
-    const index = JSON.parse(localStorage.getItem('quarry_sessions_index') || '[]');
-    localStorage.setItem('quarry_sessions_index', JSON.stringify(index.filter(i => i !== id)));
+    try {
+      localStorage.removeItem(`quarry_session_${id}`);
+      const index = JSON.parse(localStorage.getItem('quarry_sessions_index') || '[]');
+      localStorage.setItem('quarry_sessions_index', JSON.stringify(index.filter(i => i !== id)));
+    } catch { /* private mode — UI still updates */ }
     setSessions(prev => prev.filter(s => s.id !== id));
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: 'var(--bg-primary)' }}>
+    <Box sx={{ minHeight: '100vh', bgcolor: 'var(--bg-primary)', paddingTop: `${topOffset}px` }}>
       {/* Header */}
       <Box sx={{
         display: 'flex', alignItems: 'center', gap: 1.5,
@@ -118,14 +123,6 @@ export default function ResearchSessionsPage() {
                       {s.topic || 'Untitled session'}
                     </Typography>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                      <Box sx={{
-                        px: 0.75, py: 0.15, borderRadius: '5px',
-                        bgcolor: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.2)',
-                        fontFamily: 'var(--font-family)', fontSize: '0.62rem', fontWeight: 700,
-                        color: 'var(--accent)', letterSpacing: '0.06em', textTransform: 'uppercase',
-                      }}>
-                        Phase {s.phase} · {PHASES[s.phase] || 'Onboarding'}
-                      </Box>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'var(--fg-dim)' }}>
                         <Clock size={11} />
                         <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.72rem', color: 'var(--fg-dim)' }}>

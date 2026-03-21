@@ -3,6 +3,8 @@ import { ExternalLink } from 'lucide-react';
 import GlassCard from './GlassCard';
 import Spinner from './Spinner';
 
+const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
 // Format large numbers: 12400 → "12.4k"
 function fmt(n) {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
@@ -106,14 +108,11 @@ export default function PerspectivesTab({ query }) {
     let cancelled = false;
     setStatus('loading');
 
-    fetch(
-      `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=relevance&limit=5&t=year`,
-      { headers: { Accept: 'application/json' } }
-    )
+    fetch(`${API}/explore/perspectives?q=${encodeURIComponent(query)}&limit=5`)
       .then(r => { if (!r.ok) throw new Error('non-2xx'); return r.json(); })
       .then(data => {
         if (cancelled) return;
-        setPosts((data?.data?.children || []).map(c => c.data));
+        setPosts(data?.posts || []);
         setStatus('done');
       })
       .catch(() => { if (!cancelled) setStatus('error'); });

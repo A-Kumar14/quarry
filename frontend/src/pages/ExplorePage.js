@@ -1,6 +1,6 @@
-import React, { useState, useRef, useCallback, useMemo, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { Box, Typography, Skeleton, Tooltip, CircularProgress } from '@mui/material';
-import { Search, BookmarkPlus, ExternalLink, Zap, FlaskConical, CornerDownRight, RefreshCw, MoreHorizontal, ArrowUpRight } from 'lucide-react';
+import { Search, BookmarkPlus, ExternalLink, Zap, FlaskConical, CornerDownRight, MoreHorizontal, ArrowUpRight, TrendingUp, RefreshCw, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -10,8 +10,10 @@ import ContradictionsTab from '../components/ContradictionsTab';
 import CitationsPanel from '../components/CitationsPanel';
 import { getSourceQuality, QUALITY_COLOR } from '../utils/sourceQuality';
 import Toast from '../components/Toast';
-
-const KnowledgeGraph = lazy(() => import('../components/KnowledgeGraph'));
+import MonthlyFiguresMarquee from '../components/MonthlyFiguresMarquee';
+import FinanceCard from '../components/FinanceCard';
+import { useSettings, useTopOffset } from '../SettingsContext';
+import { addSourcesToLibrary } from '../utils/sourceLibrary';
 
 // ── Saved searches ────────────────────────────────────────────────────────────
 function getSaved() {
@@ -189,8 +191,8 @@ function SourceCard({ src, index }) {
         px: 1.25, py: 1, borderRadius: '12px',
         background: 'var(--gbtn-bg)',
         border: '1px solid var(--border)',
-        transition: 'background 0.13s, border-color 0.13s',
-        '&:hover': { background: 'var(--glass-bg)', borderColor: 'rgba(249,115,22,0.22)' },
+        transition: 'all 0.16s ease',
+        '&:hover': { background: 'var(--glass-bg)', borderColor: 'rgba(249,115,22,0.22)', transform: 'translateY(-1px)', boxShadow: '0 4px 12px rgba(140,110,60,0.10)' },
       }}>
         {/* Number badge */}
         <Box sx={{
@@ -264,38 +266,6 @@ function useTrendingChips() {
   return { articles, trending, spinning, refetch: fetchTrending };
 }
 
-// ── Knowledge graph helpers ───────────────────────────────────────────────────
-
-function extractGraphData(answer, sources) {
-  const nodes = [], links = [];
-  const seen  = new Set();
-  const addNode = (id, name, type, url) => {
-    if (!seen.has(id)) { seen.add(id); nodes.push({ id, name, type, url }); }
-  };
-  addNode('__query__', 'Query', 'query');
-  sources.forEach((src, i) => {
-    const id = `src_${i}`;
-    const label = src.title ? src.title.slice(0, 32) + (src.title.length > 32 ? '…' : '') : `Source ${i + 1}`;
-    addNode(id, label, 'source', src.url);
-    links.push({ source: '__query__', target: id });
-  });
-  const headers = [...answer.matchAll(/^#{2,3}\s+(.+)$/gm)].map(m => m[1].trim());
-  headers.forEach((h, i) => {
-    const id = `topic_${i}`;
-    addNode(id, h.slice(0, 40), 'topic');
-    links.push({ source: '__query__', target: id });
-  });
-  const bold = [...new Set([...answer.matchAll(/\*\*([^*]{3,40})\*\*/g)].map(m => m[1].trim()))];
-  bold.slice(0, 12).forEach((b, i) => {
-    const id = `concept_${i}`;
-    const target = headers.length > 0 ? `topic_${Math.min(i, headers.length - 1)}` : '__query__';
-    addNode(id, b, 'concept');
-    links.push({ source: target, target: id });
-  });
-  return { nodes, links };
-}
-
-
 // ── Bento row helpers ─────────────────────────────────────────────────────────
 
 function BentoImages({ query }) {
@@ -331,61 +301,6 @@ function BentoImages({ query }) {
             onMouseEnter={e => { e.target.style.transform = 'scale(1.04)'; }}
             onMouseLeave={e => { e.target.style.transform = 'scale(1)'; }}
           />
-        </a>
-      ))}
-    </Box>
-  );
-}
-
-function BentoNews({ query }) {
-  const [articles, setArticles] = useState([]);
-  const [status, setStatus] = useState('loading');
-  useEffect(() => {
-    if (!query) return;
-    let cancelled = false;
-    setStatus('loading');
-    fetch(`${API}/explore/news?q=${encodeURIComponent(query)}&max=4`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (cancelled) return;
-        const arts = data?.articles?.slice(0, 4) || [];
-        setArticles(arts);
-        setStatus(arts.length ? 'done' : 'empty');
-      })
-      .catch(() => { if (!cancelled) setStatus('error'); });
-    return () => { cancelled = true; };
-  }, [query]);
-
-  if (status === 'loading') return <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}><CircularProgress size={14} sx={{ color: 'var(--accent)' }} /></Box>;
-  if (status !== 'done' || !articles.length) return <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.75rem', color: 'var(--fg-dim)', fontStyle: 'italic' }}>No news found</Typography>;
-
-  return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-      {articles.map((art, i) => (
-        <a key={i} href={art.url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
-          <Box sx={{
-            display: 'flex', gap: 1, alignItems: 'flex-start',
-            p: '7px 8px', borderRadius: '8px',
-            transition: 'background 0.13s',
-            '&:hover': { background: 'rgba(249,115,22,0.07)' },
-          }}>
-            {art.image && (
-              <img src={art.image} alt="" onError={e => { e.target.style.display = 'none'; }}
-                style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }} />
-            )}
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography sx={{
-                fontFamily: 'var(--font-family)', fontSize: '0.76rem', fontWeight: 400,
-                color: 'var(--fg-primary)', lineHeight: 1.4,
-                display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-              }}>
-                {art.title}
-              </Typography>
-              <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.62rem', color: 'var(--fg-dim)', mt: 0.3 }}>
-                {art.source?.name}
-              </Typography>
-            </Box>
-          </Box>
         </a>
       ))}
     </Box>
@@ -489,9 +404,7 @@ function MiniTabStrip({ active, onChange, hasContradictions, contradictionsLoadi
     { key: 'answer',        label: 'Result' },
     { key: 'perspectives',  label: 'Perspectives' },
     ...(hasSources ? [{ key: 'citations', label: 'Citations' }] : []),
-    { key: 'graph',         label: 'Knowledge Graph' },
     { key: 'images',        label: 'Images' },
-    { key: 'news',          label: 'News' },
     { key: 'contradictions', label: 'Contradictions', dot: contradictionsLoading ? true : hasContradictions },
   ];
 
@@ -528,18 +441,119 @@ function MiniTabStrip({ active, onChange, hasContradictions, contradictionsLoadi
   );
 }
 
+// ── Outline panel ─────────────────────────────────────────────────────────────
+
+function OutlinePanel({ question, answerContext, onClose }) {
+  const [outline, setOutline] = useState('');
+  const [streaming, setStreaming] = useState(true);
+  const [copied, setCopied]   = useState(false);
+  const abortRef = useRef(null);
+
+  useEffect(() => {
+    abortRef.current = new AbortController();
+    let buf = '', accumulated = '';
+    (async () => {
+      try {
+        const res = await fetch(`${API}/explore/outline`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: question, context: answerContext.slice(0, 2000) }),
+          signal: abortRef.current.signal,
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const parts = buf.split('\n\n');
+          buf = parts.pop();
+          for (const part of parts) {
+            const line = part.trim();
+            if (!line.startsWith('data: ')) continue;
+            const raw = line.slice(6).trim();
+            if (raw === '[DONE]') { setStreaming(false); continue; }
+            try {
+              const evt = JSON.parse(raw);
+              if (evt.type === 'chunk') { accumulated += evt.text; setOutline(accumulated); }
+            } catch { /* ignore */ }
+          }
+        }
+      } catch (err) {
+        if (err.name !== 'AbortError') setOutline('Failed to generate outline. Please try again.');
+      } finally {
+        setStreaming(false);
+      }
+    })();
+    return () => abortRef.current.abort();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const copyOutline = () => {
+    navigator.clipboard.writeText(outline).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    });
+  };
+
+  const downloadOutline = () => {
+    const blob = new Blob([outline], { type: 'text/markdown' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `outline-${question.slice(0, 40).replace(/[^a-z0-9]/gi, '-').toLowerCase()}.md`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  return (
+    <GlassCard style={{ padding: '20px 24px', marginTop: 8 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+        <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'var(--accent)', flexShrink: 0 }} />
+        <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.58rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.10em', textTransform: 'uppercase', flex: 1 }}>
+          Paper Outline
+        </Typography>
+        {!streaming && outline && (
+          <>
+            <Box onClick={copyOutline} sx={{ px: 1, py: 0.3, borderRadius: '6px', border: '1px solid var(--border)', cursor: 'pointer', fontFamily: 'var(--font-family)', fontSize: '0.65rem', color: copied ? '#16a34a' : 'var(--fg-dim)', transition: 'color 0.15s', '&:hover': { color: 'var(--fg-primary)' } }}>
+              {copied ? '✓ Copied' : 'Copy'}
+            </Box>
+            <Box onClick={downloadOutline} sx={{ px: 1, py: 0.3, borderRadius: '6px', border: '1px solid var(--border)', cursor: 'pointer', fontFamily: 'var(--font-family)', fontSize: '0.65rem', color: 'var(--fg-dim)', '&:hover': { color: 'var(--fg-primary)' } }}>
+              .md
+            </Box>
+          </>
+        )}
+        <Box onClick={onClose} sx={{ px: 1, py: 0.3, borderRadius: '6px', cursor: 'pointer', fontFamily: 'var(--font-family)', fontSize: '0.65rem', color: 'var(--fg-dim)', '&:hover': { color: 'var(--fg-primary)' } }}>
+          ✕
+        </Box>
+      </Box>
+      <Box sx={{
+        '& p':        { fontFamily: 'var(--font-family)', fontSize: '0.84rem', lineHeight: 1.7, color: 'var(--fg-primary)', my: 0.4 },
+        '& h1':       { fontFamily: 'var(--font-family)', fontSize: '0.92rem', fontWeight: 700, color: 'var(--fg-primary)', mt: 0, mb: 1 },
+        '& h2':       { fontFamily: 'var(--font-family)', fontSize: '0.82rem', fontWeight: 600, color: 'var(--fg-primary)', mt: 1.5, mb: 0.4, borderBottom: '1px solid var(--border)', pb: 0.3 },
+        '& ul, & ol': { pl: 2.5, my: 0.3 },
+        '& li':       { fontFamily: 'var(--font-family)', fontSize: '0.80rem', lineHeight: 1.65, color: 'var(--fg-secondary)', mb: 0.15 },
+        '& strong':   { fontWeight: 600, color: 'var(--fg-primary)' },
+      }}>
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{outline}</ReactMarkdown>
+      </Box>
+      {streaming && (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 1 }}>
+          <CircularProgress size={10} sx={{ color: 'var(--accent)' }} />
+          <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.65rem', color: 'var(--fg-dim)' }}>Generating outline…</Typography>
+        </Box>
+      )}
+    </GlassCard>
+  );
+}
+
 // ── Result block ──────────────────────────────────────────────────────────────
 
-function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowUp, onNewSearch, isDeepSearch, deepLabel, relatedSearches = [], loadingRelated = false, visualQuery = '', contradictions = null }) {
-  const [activeTab, setActiveTab] = useState('answer');
+function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowUp, onNewSearch, isDeepSearch, deepLabel, relatedSearches = [], loadingRelated = false, visualQuery = '', contradictions = null, stockData = null }) {
+  const [activeTab,    setActiveTab]    = useState('answer');
+  const [showOutline,  setShowOutline]  = useState(false);
 
   const contradictionsLoading = contradictions === null;
   const hasContradictions     = contradictions?.contradictions?.length > 0;
-
-  const graphData = useMemo(
-    () => answer ? extractGraphData(answer, sources) : { nodes: [], links: [] },
-    [answer, sources]
-  );
 
   const title    = answer ? extractAnswerTitle(answer, question) : '';
   const lede     = answer ? extractLede(answer) : '';
@@ -562,6 +576,9 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
           <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.8rem', color: 'var(--error)' }}>{errorMsg}</Typography>
         </Box>
       )}
+
+      {/* Finance card — shown when a stock/ticker was detected */}
+      {stockData && <FinanceCard data={stockData} />}
 
       {/* Two-column layout */}
       <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, alignItems: 'flex-start' }}>
@@ -615,15 +632,9 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
                     <CollapsibleAnswer answer={answer} streaming={streaming} sources={sources} />
                   </>
                 )}
-                {activeTab === 'graph' && (
-                  <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={20} sx={{ color: 'var(--accent)' }} /></Box>}>
-                    <KnowledgeGraph nodes={graphData.nodes} links={graphData.links} />
-                  </Suspense>
-                )}
                 {activeTab === 'perspectives'  && <PerspectivesTab query={question} />}
                 {activeTab === 'citations'     && <CitationsPanel sources={sources} />}
                 {activeTab === 'images'        && <BentoImages query={visualQuery || question} />}
-                {activeTab === 'news'          && <BentoNews query={question} />}
                 {activeTab === 'contradictions' && (
                   contradictionsLoading
                     ? <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.78rem', color: 'var(--fg-dim)', fontStyle: 'italic', py: 2 }}>Checking sources for contradictions…</Typography>
@@ -727,6 +738,33 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
         </Box>
       </Box>
 
+      {/* ── Outline builder ── */}
+      {!streaming && answer && (
+        <Box sx={{ mt: 1 }}>
+          {!showOutline ? (
+            <Box
+              onClick={() => setShowOutline(true)}
+              sx={{
+                display: 'inline-flex', alignItems: 'center', gap: 0.75,
+                px: 1.25, py: 0.5, borderRadius: 999, cursor: 'pointer',
+                border: '1px solid var(--border)', background: 'var(--gbtn-bg)',
+                fontFamily: 'var(--font-family)', fontSize: '0.72rem', color: 'var(--fg-secondary)',
+                transition: 'all 0.13s',
+                '&:hover': { borderColor: 'rgba(249,115,22,0.3)', color: 'var(--fg-primary)', background: 'rgba(249,115,22,0.05)' },
+              }}
+            >
+              <span style={{ fontSize: '0.7rem' }}>📄</span> Build paper outline
+            </Box>
+          ) : (
+            <OutlinePanel
+              question={question}
+              answerContext={answer}
+              onClose={() => setShowOutline(false)}
+            />
+          )}
+        </Box>
+      )}
+
     </Box>
   );
 }
@@ -747,6 +785,7 @@ function OptionsMenu({ onReset, navigate }) {
   const items = [
     { label: 'New search',           action: () => { onReset(); setOpen(false); } },
     { label: 'Saved searches',       action: () => { navigate('/saved'); setOpen(false); } },
+    { label: 'Source library',       action: () => { navigate('/sources'); setOpen(false); } },
     { label: 'Research mode',        action: () => { navigate('/research'); setOpen(false); } },
     { label: 'Session history',      action: () => { navigate('/research/sessions'); setOpen(false); } },
   ];
@@ -935,7 +974,7 @@ function HomeSearchBar({ query, setQuery, onSubmit, deepMode, onToggleDeep }) {
         sx={{
           width: '100%',
           display: 'flex', alignItems: 'center', gap: 1.25,
-          borderRadius: 999, px: 2, py: 1.1,
+          borderRadius: '12px', px: 2, py: 1.1,
           background: 'var(--gbtn-bg)',
           backdropFilter: 'blur(28px) saturate(180%) brightness(1.06)',
           WebkitBackdropFilter: 'blur(28px) saturate(180%) brightness(1.06)',
@@ -958,9 +997,10 @@ function HomeSearchBar({ query, setQuery, onSubmit, deepMode, onToggleDeep }) {
           style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: '0.95rem', fontFamily: 'var(--font-family)', fontWeight: 400, color: 'var(--fg-primary)', padding: '4px 0' }}
         />
         <Box onClick={e => { e.preventDefault(); onToggleDeep?.(); }} sx={{
-          display: 'flex', alignItems: 'center', gap: '3px', px: 1, py: 0.4, borderRadius: 999, cursor: 'pointer', flexShrink: 0,
-          border: deepMode ? '1px solid rgba(249,115,22,0.50)' : '1px solid var(--border)',
-          bgcolor: deepMode ? 'rgba(249,115,22,0.10)' : 'transparent',
+          display: 'flex', alignItems: 'center', gap: '3px', px: 1, py: 0.4, borderRadius: '6px', cursor: 'pointer', flexShrink: 0,
+          border: deepMode ? '1px solid rgba(249,115,22,0.40)' : '1px solid var(--border)',
+          bgcolor: deepMode ? 'rgba(249,115,22,0.08)' : 'transparent',
+          boxShadow: deepMode ? 'inset 0 2px 5px rgba(0,0,0,0.13), inset 0 1px 2px rgba(0,0,0,0.08)' : 'none',
           color: deepMode ? 'var(--accent)' : 'var(--fg-dim)',
           fontFamily: 'var(--font-family)', fontSize: '0.72rem', fontWeight: 400, transition: 'all 0.15s',
           '&:hover': { borderColor: 'var(--accent)', color: 'var(--accent)' },
@@ -982,7 +1022,7 @@ function HomeSearchBar({ query, setQuery, onSubmit, deepMode, onToggleDeep }) {
           background: 'rgba(250,246,238,0.97)',
           backdropFilter: 'blur(24px) saturate(180%)',
           WebkitBackdropFilter: 'blur(24px) saturate(180%)',
-          borderRadius: 14,
+          borderRadius: '12px',
           borderTop: '1px solid rgba(255,255,235,0.90)',
           borderLeft: '1px solid rgba(255,252,225,0.70)',
           borderRight: '1px solid rgba(185,165,128,0.18)',
@@ -1018,7 +1058,6 @@ function HomeSearchBar({ query, setQuery, onSubmit, deepMode, onToggleDeep }) {
 
 export default function ExplorePage() {
   const navigate = useNavigate();
-  const { articles: trendingArticles, trending, spinning, refetch } = useTrendingChips();
 
   const [query,        setQuery]        = useState('');
   const [phase,        setPhase]        = useState('idle');
@@ -1038,6 +1077,10 @@ export default function ExplorePage() {
   const [relatedSearches, setRelatedSearches] = useState([]);
   const [loadingRelated,  setLoadingRelated]  = useState(false);
   const [visualQuery,     setVisualQuery]     = useState('');
+  const [stockData,       setStockData]       = useState(null);
+  const { articles: trendingArticles, trending: isTrending, spinning: trendingSpinning, refetch: refetchTrending } = useTrendingChips();
+  const topOffset = useTopOffset();
+  const { settings } = useSettings();
   const followUpAbortRef  = useRef(null);
   const lastBlockRef      = useRef(null);
   const submittedQueryRef = useRef('');
@@ -1067,6 +1110,7 @@ export default function ExplorePage() {
     setSources([]); setAnswer(''); setSaved(false); setErrorMsg('');
     setStreaming(true); setContradictions(null); setFollowUpBlocks([]);
     setRelatedSearches([]); setLoadingRelated(false); setIsDeepSearch(false);
+    setStockData(null);
     setDeepLabel(isDeep ? '1/2' : '');
     setVisualQuery(deriveImageQuery(q.trim()));
     submittedQueryRef.current = q.trim();
@@ -1099,10 +1143,11 @@ export default function ExplorePage() {
           if (raw === '[DONE]') { setStreaming(false); continue; }
           try {
             const evt = JSON.parse(raw);
-            if      (evt.type === 'sources' && !skipSources) setSources(evt.sources || []);
+            if      (evt.type === 'sources' && !skipSources) { setSources(evt.sources || []); addSourcesToLibrary(evt.sources || [], submittedQueryRef.current); }
             else if (evt.type === 'chunk')                   { accumulatedAnswer += evt.text; setAnswer(prev => prev + evt.text); }
             else if (evt.type === 'error')                   setErrorMsg(evt.text);
             else if (evt.type === 'contradictions')          setContradictions(evt.data === null ? false : evt.data);
+            else if (evt.type === 'stock' && !skipSources)   setStockData(evt.data);
           } catch { /* ignore malformed sse */ }
         }
       }
@@ -1218,7 +1263,7 @@ export default function ExplorePage() {
     if (followUpAbortRef.current) followUpAbortRef.current.abort();
     setPhase('idle'); setAnswer(''); setSources([]);
     setQuery(''); setErrorMsg(''); setFollowUpBlocks([]);
-    setIsDeepSearch(false); setDeepLabel('');
+    setIsDeepSearch(false); setDeepLabel(''); setStockData(null);
   };
 
   const newSearch = q => { setQuery(q); runSearch(q); };
@@ -1227,7 +1272,14 @@ export default function ExplorePage() {
   if (phase === 'idle') {
     return (
       <>
-        <Box sx={{ ...PAGE_BG, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', gap: 2.5, px: 3, pb: 6, pt: 4 }}>
+        <Box sx={{ ...PAGE_BG, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', minHeight: '100vh', gap: 2, px: 3, pb: 6, paddingTop: `${topOffset + 16}px` }}>
+
+          {/* ── Calendar marquee ── */}
+          {settings.showCalendar && (
+            <Box sx={{ width: '100vw', maxWidth: 720, mx: 'auto' }}>
+              <MonthlyFiguresMarquee />
+            </Box>
+          )}
 
           {/* ── Masthead ── */}
           <Box sx={{ textAlign: 'center', mb: 0.5 }}>
@@ -1266,79 +1318,170 @@ export default function ExplorePage() {
 
           <HomeSearchBar query={query} setQuery={setQuery} onSubmit={handleSubmit} deepMode={deepMode} onToggleDeep={() => setDeepMode(d => !d)} />
 
-          {/* Research entry point */}
-          <Box onClick={() => navigate('/research')} sx={{
-            display: 'flex', alignItems: 'center', gap: 0.75, px: 1.5, py: 0.7,
-            borderRadius: '8px', border: '1px solid var(--border)',
-            background: 'var(--gbtn-bg)', cursor: 'pointer',
-            transition: 'background 0.15s, border-color 0.15s',
-            '&:hover': { background: 'var(--glass-bg)', borderColor: 'rgba(249,115,22,0.3)' },
-          }}>
-            <FlaskConical size={13} color="var(--accent)" />
-            <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.76rem', fontWeight: 500, color: 'var(--fg-primary)' }}>
-              Quarry Research
-            </Typography>
-            <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.72rem', fontStyle: 'italic', color: 'var(--fg-secondary)', ml: 0.25 }}>
-              — structured multi-phase deep dive
-            </Typography>
+          {/* Trending news cards */}
+          <Box sx={{ width: '100%', maxWidth: 640, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+              <Box sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: isTrending ? 'var(--accent)' : 'var(--fg-dim)', flexShrink: 0, animation: isTrending ? 'trendingPulse 1.4s ease-in-out infinite' : 'none' }} />
+              <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.55rem', fontWeight: 500, color: 'var(--fg-dim)', letterSpacing: '0.10em', textTransform: 'uppercase' }}>
+                {isTrending ? 'Trending' : 'Suggested'}
+              </Typography>
+              <Box onClick={refetchTrending} sx={{ cursor: 'pointer', opacity: 0.5, '&:hover': { opacity: 1 }, ml: 0.25 }}>
+                <RefreshCw size={10} color="var(--fg-dim)" style={{ animation: trendingSpinning ? 'spin 1s linear infinite' : 'none' }} />
+              </Box>
+            </Box>
+
+            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, width: '100%' }}>
+              {trendingArticles.slice(0, 6).map((art, i) => (
+                <Box
+                  key={i}
+                  onClick={() => newSearch(art.title)}
+                  sx={{
+                    borderRadius: '12px', overflow: 'hidden', cursor: 'pointer',
+                    border: '1px solid var(--border)',
+                    background: 'var(--gbtn-bg)',
+                    backdropFilter: 'blur(12px)',
+                    transition: 'all 0.16s',
+                    display: 'flex', flexDirection: 'column',
+                    '&:hover': {
+                      borderColor: 'rgba(249,115,22,0.35)',
+                      transform: 'translateY(-1px)',
+                      boxShadow: '0 4px 16px rgba(140,110,60,0.12)',
+                    },
+                  }}
+                >
+                  {/* Image — 16:9 aspect ratio */}
+                  {art.image ? (
+                    <Box sx={{ width: '100%', aspectRatio: '16/9', flexShrink: 0, overflow: 'hidden', borderRadius: '12px 12px 0 0' }}>
+                      <Box
+                        component="img"
+                        src={art.image}
+                        alt=""
+                        onError={e => { e.target.parentElement.style.display = 'none'; }}
+                        sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                      />
+                    </Box>
+                  ) : (
+                    <Box sx={{ width: '100%', aspectRatio: '16/9', flexShrink: 0, borderRadius: '12px 12px 0 0', background: 'linear-gradient(135deg, rgba(249,115,22,0.08) 0%, rgba(175,150,105,0.12) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Typography sx={{ fontFamily: 'var(--font-serif)', fontSize: '1.4rem', opacity: 0.18 }}>Q</Typography>
+                    </Box>
+                  )}
+
+                  {/* Text */}
+                  <Box sx={{ p: '8px 10px 10px', flex: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                    {art.source?.name && (
+                      <Typography sx={{
+                        fontFamily: 'var(--font-family)', fontSize: '0.5rem', fontWeight: 600,
+                        color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase',
+                      }}>
+                        {art.source.name}
+                      </Typography>
+                    )}
+                    <Typography sx={{
+                      fontFamily: 'var(--font-family)', fontSize: '0.72rem', fontWeight: 500,
+                      color: 'var(--fg-primary)', lineHeight: 1.3,
+                      display: '-webkit-box', WebkitLineClamp: 3,
+                      WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                    }}>
+                      {art.title}
+                    </Typography>
+                  </Box>
+                </Box>
+              ))}
+            </Box>
+          </Box>
+
+          {/* Primary CTAs — 2-column side by side */}
+          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, mt: 2, width: '100%' }}>
+
+            {/* Quarry Research */}
+            <Box onClick={() => navigate('/research')} sx={{
+              display: 'flex', flexDirection: 'column', gap: 1,
+              px: 2, py: 1.5,
+              borderRadius: '12px',
+              border: '1px solid rgba(0,0,0,0.10)',
+              background: 'linear-gradient(135deg, rgba(255,252,245,0.9) 0%, rgba(248,243,232,0.8) 100%)',
+              cursor: 'pointer',
+              boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+              transition: 'all 0.18s ease',
+              '&:hover': {
+                borderColor: 'rgba(249,115,22,0.35)',
+                boxShadow: '0 4px 16px rgba(249,115,22,0.10)',
+                transform: 'translateY(-1px)',
+              },
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box sx={{ width: 36, height: 36, borderRadius: '10px', bgcolor: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <FlaskConical size={18} color="var(--accent)" />
+                </Box>
+                <Box sx={{ color: 'var(--fg-dim)', opacity: 0.4, fontSize: '1rem' }}>›</Box>
+              </Box>
+              <Box>
+                <Typography sx={{ fontFamily: 'var(--font-serif)', fontSize: '0.92rem', fontWeight: 600, color: 'var(--fg-primary)', lineHeight: 1.2 }}>
+                  Quarry Research
+                </Typography>
+                <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', fontWeight: 300, color: 'var(--fg-secondary)', mt: 0.3, lineHeight: 1.4 }}>
+                  AI research assistant for papers, topics & citations
+                </Typography>
+              </Box>
+            </Box>
+
+            {/* Finance Terminal */}
+            <Box onClick={() => navigate('/finance')} sx={{
+              display: 'flex', flexDirection: 'column', gap: 1,
+              px: 2, py: 1.5,
+              borderRadius: '12px',
+              border: '1px solid rgba(0,0,0,0.10)',
+              background: 'linear-gradient(135deg, rgba(255,248,235,0.95) 0%, rgba(254,242,220,0.85) 100%)',
+              cursor: 'pointer',
+              boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+              transition: 'all 0.18s ease',
+              '&:hover': {
+                borderColor: 'rgba(249,115,22,0.40)',
+                boxShadow: '0 4px 16px rgba(249,115,22,0.12)',
+                transform: 'translateY(-1px)',
+              },
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box sx={{ width: 36, height: 36, borderRadius: '10px', bgcolor: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <TrendingUp size={18} color="var(--accent)" />
+                </Box>
+                <Box sx={{ color: 'var(--fg-dim)', opacity: 0.4, fontSize: '1rem' }}>›</Box>
+              </Box>
+              <Box>
+                <Typography sx={{ fontFamily: 'var(--font-serif)', fontSize: '0.92rem', fontWeight: 600, color: 'var(--fg-primary)', lineHeight: 1.2 }}>
+                  Finance Terminal
+                </Typography>
+                <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', fontWeight: 300, color: 'var(--fg-secondary)', mt: 0.3, lineHeight: 1.4 }}>
+                  Live prices, charts & market AI with QFL commands
+                </Typography>
+              </Box>
+            </Box>
+
           </Box>
 
           {/* Saved searches shortcut */}
-          {getSaved().length > 0 && (
+          {(() => { const savedCount = getSaved().length; return savedCount > 0 && (
             <Box onClick={() => navigate('/saved')} sx={{
               display: 'flex', alignItems: 'center', gap: 0.75, px: 1.5, py: 0.7,
               borderRadius: '8px', border: '1px solid var(--border)',
               background: 'rgba(30,58,138,0.06)', cursor: 'pointer',
-              transition: 'background 0.15s, border-color 0.15s',
-              '&:hover': { background: 'rgba(30,58,138,0.12)', borderColor: 'rgba(30,58,138,0.25)' },
+              transition: 'all 0.16s ease',
+              '&:hover': { background: 'rgba(30,58,138,0.12)', borderColor: 'rgba(30,58,138,0.25)', transform: 'translateY(-1px)', boxShadow: '0 3px 10px rgba(30,58,138,0.08)' },
             }}>
               <BookmarkPlus size={13} color="var(--blue)" />
               <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.76rem', fontWeight: 500, color: 'var(--fg-primary)' }}>
-                {getSaved().length} saved search{getSaved().length !== 1 ? 'es' : ''}
+                {savedCount} saved search{savedCount !== 1 ? 'es' : ''}
               </Typography>
             </Box>
-          )}
+          ); })()}
 
-          {/* Section header */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, width: '100%', maxWidth: 640 }}>
-            <Box sx={{ flex: 1, height: '1px', bgcolor: 'var(--fg-primary)', opacity: 0.10 }} />
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-              {trending && <Box sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: 'var(--accent)', animation: 'trendingPulse 1.8s ease-in-out infinite' }} />}
-              <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.58rem', fontWeight: 500, color: 'var(--fg-dim)', letterSpacing: '0.14em', textTransform: 'uppercase' }}>
-                {trending ? 'Trending' : 'Suggested'}
-              </Typography>
-              <Box onClick={refetch} sx={{ cursor: 'pointer', color: 'var(--fg-dim)', display: 'flex', alignItems: 'center', transition: 'color 0.15s', '&:hover': { color: 'var(--accent)' } }}>
-                <RefreshCw size={10} style={{ animation: spinning ? 'spin 0.7s linear infinite' : 'none' }} />
-              </Box>
-            </Box>
-            <Box sx={{ flex: 1, height: '1px', bgcolor: 'var(--fg-primary)', opacity: 0.10 }} />
-          </Box>
-
-          {/* Trending grid */}
-          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, width: '100%', maxWidth: 640 }}>
-            {trendingArticles.map((art, i) => (
-              <Box key={i} onClick={() => { setQuery(art.title); runSearch(art.title); }} sx={{
-                display: 'flex', flexDirection: 'column', gap: 0.5, px: 1.25, py: 1.1, borderRadius: '10px',
-                background: 'var(--gbtn-bg)', border: '1px solid var(--border)',
-                cursor: 'pointer', transition: 'border-color 0.15s, background 0.15s',
-                '&:hover': { background: 'var(--glass-bg)', borderColor: 'rgba(249,115,22,0.25)' },
-              }}>
-                <Typography sx={{ fontFamily: 'var(--font-family)', fontWeight: 400, fontSize: '0.76rem', color: 'var(--fg-primary)', lineHeight: 1.45, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                  {art.title}
-                </Typography>
-                {(art.source?.name || art.publishedAt) && (
-                  <Typography sx={{ fontFamily: 'var(--font-family)', fontStyle: 'italic', fontSize: '0.62rem', color: 'var(--fg-dim)', mt: 'auto', pt: 0.4 }}>
-                    {art.source?.name}
-                    {art.source?.name && art.publishedAt ? ' · ' : ''}
-                    {art.publishedAt ? new Date(art.publishedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''}
-                  </Typography>
-                )}
-              </Box>
-            ))}
+          {/* Settings link */}
+          <Box onClick={() => navigate('/settings')} sx={{ display: 'flex', alignItems: 'center', gap: 0.6, mt: 0.5, cursor: 'pointer', opacity: 0.38, '&:hover': { opacity: 0.75 }, transition: 'opacity 0.15s' }}>
+            <Settings size={11} color="var(--fg-dim)" />
+            <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.65rem', color: 'var(--fg-dim)' }}>Settings</Typography>
           </Box>
 
           <style>{`
-            @keyframes trendingPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.75)} }
             @keyframes spin { from{transform:rotate(0)} to{transform:rotate(360deg)} }
           `}</style>
         </Box>
@@ -1350,7 +1493,7 @@ export default function ExplorePage() {
   // ── Searching ──
   if (phase === 'searching') {
     return (
-      <Box sx={{ ...PAGE_BG, height: '100vh', overflowY: 'auto' }}>
+      <Box sx={{ ...PAGE_BG, height: '100vh', overflowY: 'auto', paddingTop: `${topOffset}px` }}>
         <TopBar
           query={query} setQuery={setQuery} onSubmit={handleSubmit}
           deepMode={deepMode} onToggleDeep={() => setDeepMode(d => !d)}
@@ -1394,7 +1537,7 @@ export default function ExplorePage() {
   const canFollowUp  = phase === 'results' && (lastFollowUp ? !lastFollowUp.streaming : (!streaming && answer.length > 0));
 
   return (
-    <Box sx={{ ...PAGE_BG, height: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <Box sx={{ ...PAGE_BG, height: '100vh', display: 'flex', flexDirection: 'column', paddingTop: `${topOffset}px` }}>
       <TopBar
         query={query} setQuery={setQuery} onSubmit={handleSubmit}
         deepMode={deepMode} onToggleDeep={() => setDeepMode(d => !d)}
@@ -1406,13 +1549,14 @@ export default function ExplorePage() {
       <Box sx={{ flex: 1, overflowY: 'auto' }}>
         <Box sx={{ maxWidth: 1100, mx: 'auto', px: 3, pt: 3, pb: 4, display: 'flex', flexDirection: 'column' }}>
           <ResultBlock
-            key={query}
-            question={query} sources={sources} answer={answer}
+            key={submittedQueryRef.current}
+            question={submittedQueryRef.current || query} sources={sources} answer={answer}
             streaming={streaming} errorMsg={errorMsg}
             isFollowUp={false} onNewSearch={newSearch}
             isDeepSearch={isDeepSearch} deepLabel={deepLabel}
             relatedSearches={relatedSearches} loadingRelated={loadingRelated}
             visualQuery={visualQuery} contradictions={contradictions}
+            stockData={stockData}
           />
 
           {followUpBlocks.map((block, i) => (
