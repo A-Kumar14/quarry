@@ -254,11 +254,12 @@ function InputBar({ onSubmit, disabled, artifacts, onAttach, onRemoveArtifact, p
   return (
     <Box sx={{
       position: 'relative',
-      background: 'rgba(237,232,223,0.92)',
+      /* Slightly lighter cream than the page — distinct footer-tray feel */
+      background: 'rgba(248,244,237,0.97)',
       backdropFilter: 'blur(20px) saturate(180%)',
       WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-      borderTop: '1px solid var(--border)',
-      boxShadow: '0 -6px 24px rgba(140,110,60,0.08)',
+      borderTop: '1px solid rgba(80,64,48,0.13)',
+      boxShadow: '0 -6px 28px rgba(140,110,60,0.09)',
       px: 3, py: 1.5,
     }}>
 
@@ -270,8 +271,8 @@ function InputBar({ onSubmit, disabled, artifacts, onAttach, onRemoveArtifact, p
         />
       )}
 
-      {/* Centred inner wrapper to align with message thread */}
-      <Box sx={{ maxWidth: 760, mx: 'auto' }}>
+      {/* Centred inner wrapper — aligns with header and content */}
+      <Box sx={{ maxWidth: 900, mx: 'auto' }}>
 
         {/* Attached file pills */}
         {artifacts.length > 0 && !showArtifacts && (
@@ -312,12 +313,12 @@ function InputBar({ onSubmit, disabled, artifacts, onAttach, onRemoveArtifact, p
             onChange={handleFileChange}
           />
 
-          {/* Paperclip — visually balanced */}
+          {/* Paperclip — extra left padding so it doesn't hug the edge */}
           <Box
             onClick={() => !disabled && !uploading && fileInputRef.current?.click()}
             sx={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 30, height: 30, borderRadius: '8px', flexShrink: 0,
+              width: 30, height: 30, borderRadius: '8px', flexShrink: 0, ml: 0.5,
               cursor: disabled || uploading ? 'default' : 'pointer',
               color: artifacts.length > 0 ? 'var(--accent)' : 'var(--fg-dim)',
               opacity: disabled || uploading ? 0.35 : artifacts.length > 0 ? 1 : 0.60,
@@ -403,46 +404,55 @@ function InputBar({ onSubmit, disabled, artifacts, onAttach, onRemoveArtifact, p
 
 function WelcomeScreen({ onSuggestion }) {
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, px: 3, pt: 7, pb: 5 }}>
+    <Box sx={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      flex: 1, px: 3, pt: 7,
+      pb: 16,  /* pb-32 — clears the fixed input bar */
+    }}>
 
-      {/* Hero — generous vertical breathing room */}
-      <Box sx={{ textAlign: 'center', mb: 5 }}>
-        {/* Tiny rule above */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, justifyContent: 'center' }}>
-          <Box sx={{ width: 32, height: '1px', bgcolor: 'var(--fg-primary)', opacity: 0.10 }} />
-          <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.5rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.22em', textTransform: 'uppercase' }}>
+      {/* ── Hero ── */}
+      <Box sx={{ textAlign: 'center', mb: 4.5, width: '100%', maxWidth: 900 }}>
+
+        {/* Letterhead rule — lines extend to edges of the hero container */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+          <Box sx={{ flex: 1, height: '1px', bgcolor: 'var(--fg-primary)', opacity: 0.08 }} />
+          <Typography sx={{
+            fontFamily: 'var(--font-family)', fontSize: '0.48rem', fontWeight: 600,
+            color: 'var(--fg-dim)', letterSpacing: '0.24em', textTransform: 'uppercase',
+            flexShrink: 0,
+          }}>
             Research Assistant
           </Typography>
-          <Box sx={{ width: 32, height: '1px', bgcolor: 'var(--fg-primary)', opacity: 0.10 }} />
+          <Box sx={{ flex: 1, height: '1px', bgcolor: 'var(--fg-primary)', opacity: 0.08 }} />
         </Box>
 
+        {/* Title — extra bottom margin so description breathes */}
         <Typography sx={{
           fontFamily: 'var(--font-serif)', fontSize: { xs: '2rem', sm: '2.4rem' }, fontWeight: 600,
-          color: 'var(--fg-primary)', letterSpacing: '-0.02em', lineHeight: 1.15, mb: 1.5,
+          color: 'var(--fg-primary)', letterSpacing: '-0.02em', lineHeight: 1.15,
+          mb: 2.5,
         }}>
           Quarry Research
         </Typography>
 
-        {/* Rule below title */}
-        <Box sx={{ height: '1px', bgcolor: 'var(--fg-primary)', opacity: 0.08, maxWidth: 200, mx: 'auto', mb: 1.75 }} />
-
+        {/* Description — lower opacity for visual hierarchy */}
         <Typography sx={{
-          fontFamily: 'var(--font-family)', fontSize: '0.9rem', fontWeight: 300,
-          color: 'rgba(61,47,30,0.60)',
-          maxWidth: 400, mx: 'auto', lineHeight: 1.65,
+          fontFamily: 'var(--font-family)', fontSize: '0.88rem', fontWeight: 300,
+          color: 'rgba(61,47,30,0.55)',
+          maxWidth: 380, mx: 'auto', lineHeight: 1.7,
           fontStyle: 'italic',
         }}>
           Outline a paper, explore a topic, compare sources, or get writing help — one conversation at a time.
         </Typography>
       </Box>
 
-      {/* Staggered 2-column suggestion cards */}
+      {/* ── Index-card grid — 2 columns, compact ── */}
       <Box sx={{
         display: 'grid',
         gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
-        gap: 1,
+        gap: 0.875,
         width: '100%',
-        maxWidth: 600,
+        maxWidth: 680,
         alignItems: 'start',
       }}>
         {SUGGESTIONS.map((s, i) => (
@@ -450,22 +460,22 @@ function WelcomeScreen({ onSuggestion }) {
             key={i}
             onClick={() => onSuggestion(s)}
             sx={{
-              px: 1.75, py: 1.25,
-              borderRadius: '10px',
+              px: 1.375, py: 0.9,
+              borderRadius: '8px',
               border: '1px solid rgba(0,0,0,0.05)',
-              background: 'rgba(255,252,242,0.60)',
+              background: 'rgba(255,252,242,0.55)',
               cursor: 'pointer',
               transition: 'all 0.15s ease',
               '&:hover': {
                 background: 'rgba(0,0,0,0.04)',
-                borderColor: 'rgba(249,115,22,0.25)',
+                borderColor: 'rgba(249,115,22,0.22)',
                 transform: 'translateY(-1px)',
                 boxShadow: '0 3px 10px rgba(140,110,60,0.08)',
               },
             }}
           >
             <Typography sx={{
-              fontFamily: 'var(--font-family)', fontSize: '0.78rem', fontWeight: 400,
+              fontFamily: 'var(--font-family)', fontSize: '0.75rem', fontWeight: 400,
               color: 'var(--fg-secondary)', lineHeight: 1.45, textAlign: 'left',
             }}>
               {s}
@@ -627,8 +637,8 @@ export default function ResearchPage() {
         position: 'sticky', top: 0, zIndex: 20,
         px: 3, py: 1.25,
       }}>
-        {/* Inner container aligned with card content */}
-        <Box sx={{ maxWidth: 760, mx: 'auto', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+        {/* Inner container — same max-width as content so controls align with card edges */}
+        <Box sx={{ maxWidth: 900, mx: 'auto', display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <Box
             onClick={() => navigate('/')}
             sx={{
@@ -689,7 +699,7 @@ export default function ResearchPage() {
         {isEmpty ? (
           <WelcomeScreen onSuggestion={s => sendMessage(s, [])} />
         ) : (
-          <Box sx={{ px: 3, py: 2.5 }}>
+          <Box sx={{ px: 3, pt: 2.5, pb: 16 }}>
             <Box sx={{ maxWidth: 760, mx: 'auto', display: 'flex', flexDirection: 'column' }}>
               {messages.map(msg =>
                 msg.role === 'user'
