@@ -982,7 +982,7 @@ export default function FinancePage() {
   };
 
   return (
-    <Box sx={{ height: '100vh', paddingTop: `${topOffset}px`, display: 'flex', flexDirection: 'column', background: 'linear-gradient(158deg,#EDE8DF 0%,#E5DDD0 40%,#DDD5C0 75%,#E8E2D5 100%)' }}>
+    <Box sx={{ height: '100vh', paddingTop: `${topOffset}px`, display: 'flex', flexDirection: 'column', background: 'transparent' }}>
 
       {/* ── Top bar ── */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2.5, py: 1.1, borderBottom: '1px solid var(--border)', background: 'rgba(237,232,223,0.92)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', flexShrink: 0 }}>

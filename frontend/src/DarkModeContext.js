@@ -24,9 +24,10 @@ export function DarkModeProvider({ children }) {
         background-attachment: fixed makes the gradient stay put while content scrolls.
       */}
       <div style={{
-        minHeight: '100vh',
+        minHeight: '100%',
         background: dark ? DARK_BG : LIGHT_BG,
         backgroundAttachment: 'fixed',
+        backgroundSize: 'cover',
         transition: 'background 0.4s ease',
       }}>
         {children}

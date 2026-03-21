@@ -81,7 +81,7 @@ const GLASS_BTN_ACCENT = {
 };
 
 const PAGE_BG = {
-  background: 'linear-gradient(158deg, #EDE8DF 0%, #E5DDD0 40%, #DDD5C0 75%, #E8E2D5 100%)',
+  background: 'transparent',
   minHeight: '100vh',
 };
 
