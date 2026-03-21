@@ -13,6 +13,7 @@ import Toast from '../components/Toast';
 import MonthlyFiguresMarquee from '../components/MonthlyFiguresMarquee';
 import FinanceCard from '../components/FinanceCard';
 import { useSettings, useTopOffset } from '../SettingsContext';
+import { useDarkMode } from '../DarkModeContext';
 import { addSourcesToLibrary } from '../utils/sourceLibrary';
 
 // ── Saved searches ────────────────────────────────────────────────────────────
@@ -1083,6 +1084,7 @@ export default function ExplorePage() {
   const [stockData,       setStockData]       = useState(null);
   const { articles: trendingArticles, trending: isTrending, spinning: trendingSpinning, refetch: refetchTrending } = useTrendingChips();
   const topOffset = useTopOffset();
+  const [dark] = useDarkMode();
   const { settings } = useSettings();
   const followUpAbortRef  = useRef(null);
   const lastBlockRef      = useRef(null);
@@ -1409,10 +1411,12 @@ export default function ExplorePage() {
               display: 'flex', flexDirection: 'column', gap: 1,
               px: 2, py: 1.5,
               borderRadius: '12px',
-              border: '1px solid rgba(0,0,0,0.10)',
-              background: 'linear-gradient(135deg, rgba(255,252,245,0.9) 0%, rgba(248,243,232,0.8) 100%)',
+              border: dark ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(0,0,0,0.10)',
+              background: dark
+                ? 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.03) 100%)'
+                : 'linear-gradient(135deg, rgba(255,252,245,0.9) 0%, rgba(248,243,232,0.8) 100%)',
               cursor: 'pointer',
-              boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+              boxShadow: dark ? '0 1px 4px rgba(0,0,0,0.25)' : '0 1px 4px rgba(0,0,0,0.05)',
               transition: 'all 0.18s ease',
               '&:hover': {
                 borderColor: 'rgba(249,115,22,0.35)',
@@ -1441,10 +1445,12 @@ export default function ExplorePage() {
               display: 'flex', flexDirection: 'column', gap: 1,
               px: 2, py: 1.5,
               borderRadius: '12px',
-              border: '1px solid rgba(0,0,0,0.10)',
-              background: 'linear-gradient(135deg, rgba(255,248,235,0.95) 0%, rgba(254,242,220,0.85) 100%)',
+              border: dark ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(0,0,0,0.10)',
+              background: dark
+                ? 'linear-gradient(135deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.04) 100%)'
+                : 'linear-gradient(135deg, rgba(255,248,235,0.95) 0%, rgba(254,242,220,0.85) 100%)',
               cursor: 'pointer',
-              boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+              boxShadow: dark ? '0 1px 4px rgba(0,0,0,0.25)' : '0 1px 4px rgba(0,0,0,0.05)',
               transition: 'all 0.18s ease',
               '&:hover': {
                 borderColor: 'rgba(249,115,22,0.40)',
