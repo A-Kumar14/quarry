@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { Box, Typography, Skeleton } from '@mui/material';
-import { TrendingUp, ArrowLeft, RefreshCw, Terminal, BarChart2, Zap, FileText, Globe, Layers, Hash, Activity } from 'lucide-react';
+import { Box, Typography, Skeleton, Tooltip } from '@mui/material';
+import { TrendingUp, ArrowLeft, RefreshCw, Terminal, BarChart2, Zap, FileText, Globe, Layers, Hash, Activity, Copy, Check } from 'lucide-react';
 import NavControls from '../components/NavControls';
 import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
@@ -751,6 +751,16 @@ function SystemMessage({ text, variant = 'info' }) {
 /* ── AI streaming result ─────────────────────────────────────────────────── */
 
 function AIResult({ text, streaming, sources }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }, [text]);
+
   return (
     <TerminalBlock style={{ padding: '16px 20px' }}>
       <Box sx={ANS}>
@@ -768,6 +778,31 @@ function AIResult({ text, streaming, sources }) {
               [{i + 1}] {(src.title || src.url)?.slice(0, 36)}
             </Box>
           ))}
+        </Box>
+      )}
+      {!streaming && (
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
+          <Tooltip title={copied ? 'Copied!' : 'Copy response'} placement="top">
+            <Box
+              component="button"
+              onClick={handleCopy}
+              sx={{
+                display: 'flex', alignItems: 'center', gap: 0.5,
+                px: 1, py: '3px', borderRadius: '5px', cursor: 'pointer',
+                border: '1px solid', transition: 'all 0.14s ease',
+                background: copied ? 'rgba(34,197,94,0.08)' : 'transparent',
+                borderColor: copied ? 'rgba(34,197,94,0.3)' : 'var(--border)',
+                '&:hover': { borderColor: 'var(--fg-dim)', background: 'rgba(255,255,255,0.04)' },
+              }}
+            >
+              {copied
+                ? <Check size={10} color="#22c55e" />
+                : <Copy size={10} color="var(--fg-dim)" />}
+              <Typography sx={{ fontFamily: MONO, fontSize: '0.58rem', color: copied ? '#22c55e' : 'var(--fg-dim)', letterSpacing: '0.04em' }}>
+                {copied ? 'COPIED' : 'COPY'}
+              </Typography>
+            </Box>
+          </Tooltip>
         </Box>
       )}
     </TerminalBlock>

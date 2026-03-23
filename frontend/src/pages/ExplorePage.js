@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { Box, Typography, Skeleton, Tooltip, CircularProgress } from '@mui/material';
-import { Search, BookmarkPlus, ExternalLink, Zap, FlaskConical, CornerDownRight, MoreHorizontal, ArrowUpRight, TrendingUp, RefreshCw } from 'lucide-react';
+import { Search, BookmarkPlus, ExternalLink, Zap, FlaskConical, CornerDownRight, MoreHorizontal, ArrowUpRight, TrendingUp, RefreshCw, Copy, Check } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -562,6 +562,15 @@ function OutlinePanel({ question, answerContext, onClose }) {
 function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowUp, onNewSearch, isDeepSearch, deepLabel, relatedSearches = [], loadingRelated = false, visualQuery = '', contradictions = null, stockData = null }) {
   const [activeTab,    setActiveTab]    = useState('answer');
   const [showOutline,  setShowOutline]  = useState(false);
+  const [copied,       setCopied]       = useState(false);
+
+  const handleCopy = useCallback(() => {
+    if (!answer) return;
+    navigator.clipboard.writeText(answer).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }, [answer]);
 
   const contradictionsLoading = contradictions === null;
   const hasContradictions     = contradictions?.contradictions?.length > 0;
@@ -608,6 +617,24 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
                   {` · ${today}`}
                   {isDeepSearch && ' · Deep'}
                 </Typography>
+                <Tooltip title={copied ? 'Copied!' : 'Copy answer'} placement="top">
+                  <Box
+                    component="button"
+                    onClick={handleCopy}
+                    sx={{
+                      ml: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      width: 24, height: 24, borderRadius: '6px', border: '1px solid var(--border)',
+                      background: copied ? 'rgba(34,197,94,0.10)' : 'transparent',
+                      borderColor: copied ? 'rgba(34,197,94,0.35)' : 'var(--border)',
+                      cursor: 'pointer', transition: 'all 0.14s ease', padding: 0,
+                      '&:hover': { background: 'rgba(0,0,0,0.05)', borderColor: 'var(--fg-dim)' },
+                    }}
+                  >
+                    {copied
+                      ? <Check size={11} color="#22c55e" />
+                      : <Copy size={11} color="var(--fg-dim)" />}
+                  </Box>
+                </Tooltip>
               </Box>
 
               {/* Serif title */}
