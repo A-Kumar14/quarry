@@ -56,5 +56,5 @@ Terminal command parser in `frontend/src/pages/FinancePage.js → parseQFL()`:
 - Contradiction detection: runs in `ThreadPoolExecutor` with 6s deadline
 
 ## Commit Style
-- Descriptive subject line, no co-author attribution
+- Descriptive subject line, no co-author attribution (DO NOT MENTION CLAUDE AS THE CONTRIBUTOR)
 - Group related changes into a single commit rather than many small ones

@@ -15,6 +15,7 @@ import FinanceCard from '../components/FinanceCard';
 import { useSettings, useTopOffset } from '../SettingsContext';
 import { useDarkMode } from '../DarkModeContext';
 import { addSourcesToLibrary } from '../utils/sourceLibrary';
+import NavControls from '../components/NavControls';
 
 // ── Saved searches ────────────────────────────────────────────────────────────
 function getSaved() {
@@ -936,8 +937,103 @@ function TopBar({ query, setQuery, onSubmit, deepMode, onToggleDeep, onReset, an
           )}
 
           <OptionsMenu onReset={onReset} navigate={navigate} />
+          <NavControls />
         </Box>
       </Box>
+    </Box>
+  );
+}
+
+// ── Watchlist grid ────────────────────────────────────────────────────────────
+
+function WatchlistGrid({ dark }) {
+  const [stocks, setStocks] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(`${API}/explore/stocks?symbols=` + encodeURIComponent('^DJI,^GSPC,^IXIC,AAPL,NVDA,MSFT'))
+      .then(r => r.json())
+      .then(d => { setStocks(d.stocks || []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.75, height: '100%', gridAutoRows: '1fr' }}>
+        {[...Array(6)].map((_, i) => (
+          <Skeleton key={i} variant="rounded" sx={{ borderRadius: '10px', bgcolor: dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }} />
+        ))}
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.75, height: '100%', gridAutoRows: '1fr' }}>
+      {stocks.slice(0, 6).map((s, i) => {
+        const up = s.changePct >= 0;
+        const clr = up ? '#22c55e' : '#ef4444';
+        const isIndex = s.rawTicker?.startsWith('^');
+        const pts = s.sparkline || [];
+        let sparkPath = '';
+        if (pts.length > 1) {
+          const min = Math.min(...pts), max = Math.max(...pts);
+          const range = max - min || 1;
+          sparkPath = pts.map((v, j) => {
+            const x = ((j / (pts.length - 1)) * 54).toFixed(1);
+            const y = (18 - ((v - min) / range) * 18).toFixed(1);
+            return `${j === 0 ? 'M' : 'L'}${x},${y}`;
+          }).join(' ');
+        }
+        return (
+          <Box
+            key={i}
+            sx={{
+              p: '9px 11px',
+              borderRadius: '10px',
+              border: dark ? '1px solid rgba(255,255,255,0.09)' : '1px solid rgba(175,150,105,0.26)',
+              borderTop: dark ? '1px solid rgba(255,255,255,0.14)' : '1px solid rgba(255,255,248,0.88)',
+              background: dark ? 'rgba(255,255,255,0.04)' : 'rgba(255,252,244,0.75)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+              boxShadow: dark
+                ? '0 3px 12px rgba(0,0,0,0.30), 0 1px 0 rgba(255,255,255,0.04) inset'
+                : '0 3px 12px rgba(140,110,60,0.07), 0 1px 0 rgba(255,254,228,0.80) inset',
+              cursor: 'pointer',
+              transition: 'all 0.14s ease',
+              '&:hover': {
+                transform: 'translateY(-1px)',
+                boxShadow: dark
+                  ? '0 6px 18px rgba(0,0,0,0.40)'
+                  : '0 6px 18px rgba(140,110,60,0.12)',
+              },
+            }}
+          >
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.75 }}>
+              <Box>
+                <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.60rem', fontWeight: 700, color: 'var(--fg-primary)', letterSpacing: '0.06em', lineHeight: 1 }}>
+                  {s.symbol}
+                </Typography>
+                <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.54rem', fontWeight: 300, color: 'var(--fg-dim)', mt: 0.25, lineHeight: 1 }}>
+                  {(s.name?.length > 12 ? s.name.slice(0, 12) + '…' : s.name) || s.symbol}
+                </Typography>
+              </Box>
+              {sparkPath && (
+                <svg width={54} height={18} style={{ display: 'block', opacity: 0.75 }}>
+                  <path d={sparkPath} fill="none" stroke={clr} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.5 }}>
+              <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', fontWeight: 600, color: 'var(--fg-primary)', lineHeight: 1 }}>
+                {isIndex ? '' : '$'}{s.price?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </Typography>
+              <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.60rem', fontWeight: 500, color: clr, lineHeight: 1 }}>
+                {up ? '+' : ''}{s.changePct?.toFixed(2)}%
+              </Typography>
+            </Box>
+          </Box>
+        );
+      })}
     </Box>
   );
 }
@@ -1283,7 +1379,12 @@ export default function ExplorePage() {
   if (phase === 'idle') {
     return (
       <>
-        <Box sx={{ ...PAGE_BG, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', minHeight: '100vh', gap: 2, px: 3, pb: 6, paddingTop: `${topOffset + 16}px` }}>
+        {/* Top-right nav cluster — sits below calendar bar when visible */}
+        <div style={{ position: 'fixed', top: topOffset + 12 + (settings.showCalendar ? 36 : 0), right: 16, zIndex: 50, transition: 'top 0.18s ease' }}>
+          <NavControls />
+        </div>
+
+        <Box sx={{ ...PAGE_BG, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', minHeight: '100vh', gap: 1.5, px: 3, pb: 8, paddingTop: `${topOffset + 12}px` }}>
 
           {/* ── Calendar marquee ── */}
           {settings.showCalendar && (
@@ -1316,7 +1417,7 @@ export default function ExplorePage() {
 
             {/* Serif wordmark */}
             <Typography sx={{
-              fontFamily: 'var(--font-serif)', fontSize: { xs: '3rem', sm: '3.8rem' },
+              fontFamily: 'var(--font-serif)', fontSize: { xs: '1.5rem', sm: '1.9rem' },
               fontWeight: 600, color: 'var(--fg-primary)', letterSpacing: '-0.02em',
               lineHeight: 1, mb: 0.75,
             }}>
@@ -1337,80 +1438,78 @@ export default function ExplorePage() {
 
           <HomeSearchBar query={query} setQuery={setQuery} onSubmit={handleSubmit} deepMode={deepMode} onToggleDeep={() => setDeepMode(d => !d)} />
 
-          {/* Trending news cards */}
-          <Box sx={{ width: '100%', maxWidth: 640, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-              <Box sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: isTrending ? 'var(--accent)' : 'var(--fg-dim)', flexShrink: 0, animation: isTrending ? 'trendingPulse 1.4s ease-in-out infinite' : 'none' }} />
-              <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.55rem', fontWeight: 500, color: 'var(--fg-dim)', letterSpacing: '0.10em', textTransform: 'uppercase' }}>
-                {isTrending ? 'Trending' : 'Suggested'}
-              </Typography>
-              <Box onClick={refetchTrending} sx={{ cursor: 'pointer', opacity: 0.5, '&:hover': { opacity: 1 }, ml: 0.25 }}>
-                <RefreshCw size={10} color="var(--fg-dim)" style={{ animation: trendingSpinning ? 'spin 1s linear infinite' : 'none' }} />
+          {/* ── Two-column body: Watchlist + Trending + CTAs ── */}
+          <Box sx={{ width: '100%', maxWidth: 640, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+
+            {/* Row 1: Watchlist | Trending */}
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1px 1fr', gap: 0, alignItems: 'stretch' }}>
+
+              {/* Left — Watchlist */}
+              <Box sx={{ pr: 1.5, display: 'flex', flexDirection: 'column' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.75 }}>
+                  <TrendingUp size={10} color="var(--accent)" />
+                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.55rem', fontWeight: 500, color: 'var(--fg-dim)', letterSpacing: '0.10em', textTransform: 'uppercase' }}>
+                    Watchlist
+                  </Typography>
+                </Box>
+                <Box sx={{ flex: 1 }}><WatchlistGrid dark={dark} /></Box>
               </Box>
-            </Box>
 
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, width: '100%' }}>
-              {trendingArticles.slice(0, 6).map((art, i) => (
-                <Box
-                  key={i}
-                  onClick={() => newSearch(art.title)}
-                  sx={{
-                    borderRadius: '12px', overflow: 'hidden', cursor: 'pointer',
-                    border: '1px solid var(--border)',
-                    background: 'var(--gbtn-bg)',
-                    backdropFilter: 'blur(12px)',
-                    transition: 'all 0.16s',
-                    display: 'flex', flexDirection: 'column',
-                    '&:hover': {
-                      borderColor: 'rgba(249,115,22,0.35)',
-                      transform: 'translateY(-1px)',
-                      boxShadow: '0 4px 16px rgba(140,110,60,0.12)',
-                    },
-                  }}
-                >
-                  {/* Image — 16:9 aspect ratio */}
-                  {art.image ? (
-                    <Box sx={{ width: '100%', aspectRatio: '16/9', flexShrink: 0, overflow: 'hidden', borderRadius: '12px 12px 0 0' }}>
-                      <Box
-                        component="img"
-                        src={art.image}
-                        alt=""
-                        onError={e => { e.target.parentElement.style.display = 'none'; }}
-                        sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                      />
-                    </Box>
-                  ) : (
-                    <Box sx={{ width: '100%', aspectRatio: '16/9', flexShrink: 0, borderRadius: '12px 12px 0 0', background: 'linear-gradient(135deg, rgba(249,115,22,0.08) 0%, rgba(175,150,105,0.12) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Typography sx={{ fontFamily: 'var(--font-serif)', fontSize: '1.4rem', opacity: 0.18 }}>Q</Typography>
-                    </Box>
-                  )}
+              {/* Divider */}
+              <Box sx={{ bgcolor: dark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)', mx: 0 }} />
 
-                  {/* Text */}
-                  <Box sx={{ p: '8px 10px 10px', flex: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                    {art.source?.name && (
-                      <Typography sx={{
-                        fontFamily: 'var(--font-family)', fontSize: '0.5rem', fontWeight: 600,
-                        color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase',
-                      }}>
-                        {art.source.name}
-                      </Typography>
-                    )}
-                    <Typography sx={{
-                      fontFamily: 'var(--font-family)', fontSize: '0.72rem', fontWeight: 500,
-                      color: 'var(--fg-primary)', lineHeight: 1.3,
-                      display: '-webkit-box', WebkitLineClamp: 3,
-                      WebkitBoxOrient: 'vertical', overflow: 'hidden',
-                    }}>
-                      {art.title}
-                    </Typography>
+              {/* Right — Trending pills */}
+              <Box sx={{ pl: 1.5 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.75 }}>
+                  <Box sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: isTrending ? 'var(--accent)' : 'var(--fg-dim)', flexShrink: 0, animation: isTrending ? 'trendingPulse 1.4s ease-in-out infinite' : 'none' }} />
+                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.55rem', fontWeight: 500, color: 'var(--fg-dim)', letterSpacing: '0.10em', textTransform: 'uppercase' }}>
+                    {isTrending ? 'Trending' : 'Suggested'}
+                  </Typography>
+                  <Box onClick={refetchTrending} sx={{ cursor: 'pointer', opacity: 0.5, '&:hover': { opacity: 1 }, ml: 0.25 }}>
+                    <RefreshCw size={10} color="var(--fg-dim)" style={{ animation: trendingSpinning ? 'spin 1s linear infinite' : 'none' }} />
                   </Box>
                 </Box>
-              ))}
-            </Box>
-          </Box>
 
-          {/* Primary CTAs — 2-column side by side, aligned with news grid */}
-          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, mt: 0.5, width: '100%', maxWidth: 640 }}>
+                <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                  {trendingArticles.slice(0, 6).map((art, i) => (
+                    <Box
+                      key={i}
+                      onClick={() => newSearch(art.title)}
+                      sx={{
+                        display: 'flex', flexDirection: 'column', gap: 0.25,
+                        px: 1, py: '7px',
+                        cursor: 'pointer',
+                        borderRadius: '8px',
+                        transition: 'all 0.14s ease',
+                        borderBottom: i < 5 ? (dark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.06)') : 'none',
+                        '&:hover': {
+                          background: dark ? 'rgba(255,255,255,0.05)' : 'rgba(249,115,22,0.05)',
+                          borderColor: 'transparent',
+                        },
+                      }}
+                    >
+                      {art.source?.name && (
+                        <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.48rem', fontWeight: 600, color: 'var(--accent)', letterSpacing: '0.12em', textTransform: 'uppercase', lineHeight: 1 }}>
+                          {art.source.name}
+                        </Typography>
+                      )}
+                      <Typography sx={{
+                        fontFamily: 'var(--font-family)', fontSize: '0.70rem', fontWeight: 500,
+                        color: 'var(--fg-primary)', lineHeight: 1.3,
+                        display: '-webkit-box', WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                      }}>
+                        {art.title}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+
+            </Box>
+
+            {/* Row 2: CTAs */}
+          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, width: '100%' }}>
 
             {/* Quarry Research */}
             <Box onClick={() => navigate('/research')} sx={{
@@ -1437,10 +1536,10 @@ export default function ExplorePage() {
                 <Box sx={{ color: 'var(--fg-dim)', opacity: 0.4, fontSize: '1rem' }}>›</Box>
               </Box>
               <Box>
-                <Typography sx={{ fontFamily: 'var(--font-serif)', fontSize: '0.92rem', fontWeight: 600, color: 'var(--fg-primary)', lineHeight: 1.2 }}>
+                <Typography sx={{ fontFamily: 'var(--font-serif)', fontSize: '1.05rem', fontWeight: 700, color: 'var(--fg-primary)', lineHeight: 1.2, letterSpacing: '-0.01em' }}>
                   Quarry Research
                 </Typography>
-                <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', fontWeight: 300, color: 'var(--fg-secondary)', mt: 0.3, lineHeight: 1.4 }}>
+                <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.66rem', fontWeight: 400, fontStyle: 'italic', color: 'var(--fg-secondary)', mt: 0.35, lineHeight: 1.4 }}>
                   AI research assistant for papers, topics & citations
                 </Typography>
               </Box>
@@ -1471,16 +1570,17 @@ export default function ExplorePage() {
                 <Box sx={{ color: 'var(--fg-dim)', opacity: 0.4, fontSize: '1rem' }}>›</Box>
               </Box>
               <Box>
-                <Typography sx={{ fontFamily: 'var(--font-serif)', fontSize: '0.92rem', fontWeight: 600, color: 'var(--fg-primary)', lineHeight: 1.2 }}>
+                <Typography sx={{ fontFamily: 'var(--font-serif)', fontSize: '1.05rem', fontWeight: 700, color: 'var(--fg-primary)', lineHeight: 1.2, letterSpacing: '-0.01em' }}>
                   Finance Terminal
                 </Typography>
-                <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', fontWeight: 300, color: 'var(--fg-secondary)', mt: 0.3, lineHeight: 1.4 }}>
+                <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.66rem', fontWeight: 400, fontStyle: 'italic', color: 'var(--fg-secondary)', mt: 0.35, lineHeight: 1.4 }}>
                   Live prices, charts & market AI with QFL commands
                 </Typography>
               </Box>
             </Box>
 
-          </Box>
+          </Box>{/* end CTAs row */}
+          </Box>{/* end two-column + CTAs wrapper */}
 
           {/* Saved searches shortcut */}
           {(() => { const savedCount = getSaved().length; return savedCount > 0 && (
