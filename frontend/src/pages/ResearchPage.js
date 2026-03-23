@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Box, Typography } from '@mui/material';
-import { ArrowLeft, Send, History, Download, Paperclip, X, FileText, Layers } from 'lucide-react';
+import { Box, Typography, Tooltip } from '@mui/material';
+import { ArrowLeft, Send, History, Download, Paperclip, X, FileText, Layers, Copy, Check } from 'lucide-react';
 import NavControls from '../components/NavControls';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -113,6 +113,16 @@ function UserBubble({ content, attachments }) {
 }
 
 function AssistantBubble({ content, streaming }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    if (!content) return;
+    navigator.clipboard.writeText(content).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }, [content]);
+
   return (
     <Box sx={{ display: 'flex', justifyContent: 'flex-start', mb: 1.5 }}>
       <Box sx={{ maxWidth: '82%' }}>
@@ -127,6 +137,31 @@ function AssistantBubble({ content, streaming }) {
               animation: 'blinkPulse 1s step-end infinite',
               verticalAlign: 'text-bottom',
             }} />
+          )}
+          {!streaming && content && (
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1, pt: 0.75, borderTop: '1px solid var(--border)' }}>
+              <Tooltip title={copied ? 'Copied!' : 'Copy response'} placement="top">
+                <Box
+                  component="button"
+                  onClick={handleCopy}
+                  sx={{
+                    display: 'flex', alignItems: 'center', gap: 0.5,
+                    px: 1, py: '3px', borderRadius: '6px', cursor: 'pointer',
+                    border: '1px solid', transition: 'all 0.14s ease',
+                    background: copied ? 'rgba(34,197,94,0.08)' : 'transparent',
+                    borderColor: copied ? 'rgba(34,197,94,0.3)' : 'var(--border)',
+                    '&:hover': { borderColor: 'var(--fg-dim)', background: 'rgba(0,0,0,0.04)' },
+                  }}
+                >
+                  {copied
+                    ? <Check size={11} color="#22c55e" />
+                    : <Copy size={11} color="var(--fg-dim)" />}
+                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.62rem', color: copied ? '#22c55e' : 'var(--fg-dim)', letterSpacing: '0.04em' }}>
+                    {copied ? 'Copied' : 'Copy'}
+                  </Typography>
+                </Box>
+              </Tooltip>
+            </Box>
           )}
         </GlassCard>
       </Box>
