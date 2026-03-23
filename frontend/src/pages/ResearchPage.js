@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Box, Typography } from '@mui/material';
-import { ArrowLeft, Send, History, Settings, Download, Paperclip, X, FileText, Layers } from 'lucide-react';
+import { ArrowLeft, Send, History, Download, Paperclip, X, FileText, Layers } from 'lucide-react';
+import NavControls from '../components/NavControls';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -687,9 +688,7 @@ export default function ResearchPage() {
             >
               <History size={13} /> Sessions
             </Box>
-            <Box onClick={() => navigate('/settings')} sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', opacity: 0.4, '&:hover': { opacity: 0.85 }, transition: 'opacity 0.14s' }}>
-              <Settings size={14} color="var(--fg-dim)" />
-            </Box>
+            <NavControls />
           </Box>
         </Box>
       </Box>

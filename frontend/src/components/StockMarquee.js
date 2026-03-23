@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useDarkMode } from '../DarkModeContext';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -84,17 +85,20 @@ function Sparkline({ prices, up }) {
 }
 
 /* ── Single stock card ───────────────────────────────────────────────────── */
-function StockCard({ s, live }) {
-  const hasData = live && s.price != null;
-  const up      = (s.change ?? 0) >= 0;
-  const pillBg  = hasData ? (up ? '#16a34a' : '#dc2626') : 'rgba(100,90,80,0.18)';
+function StockCard({ s, live, dark }) {
+  const hasData  = live && s.price != null;
+  const up       = (s.change ?? 0) >= 0;
+  const pillBg   = hasData ? (up ? '#16a34a' : '#dc2626') : (dark ? 'rgba(255,255,255,0.08)' : 'rgba(100,90,80,0.18)');
+  const fgPrimary = dark ? 'rgba(230,237,243,0.92)' : '#1a130a';
+  const fgDim    = dark ? 'rgba(160,170,180,0.55)'  : '#9a8570';
+  const divider  = dark ? 'rgba(255,255,255,0.06)'  : 'rgba(80,64,48,0.09)';
 
   return (
     <div style={{
       width:         240,
       flexShrink:    0,
       padding:       '7px 14px 8px',
-      borderRight:   '1px solid rgba(80,64,48,0.09)',
+      borderRight:   `1px solid ${divider}`,
       display:       'flex',
       flexDirection: 'column',
       gap:           2,
@@ -104,10 +108,10 @@ function StockCard({ s, live }) {
         {/* Symbol + name */}
         <div style={{ flex: '0 0 auto', minWidth: 62 }}>
           <div style={{
-            fontFamily:    '"Courier New", monospace',
+            fontFamily:    '"IBM Plex Mono", "Courier New", monospace',
             fontSize:      '0.72rem',
             fontWeight:    700,
-            color:         'var(--fg-primary, #1a130a)',
+            color:         fgPrimary,
             letterSpacing: '-0.01em',
             whiteSpace:    'nowrap',
           }}>
@@ -116,7 +120,7 @@ function StockCard({ s, live }) {
           <div style={{
             fontFamily:  'var(--font-family, sans-serif)',
             fontSize:    '0.45rem',
-            color:       'var(--fg-dim, #9a8570)',
+            color:       fgDim,
             marginTop:   1,
             maxWidth:    68,
             overflow:    'hidden',
@@ -135,10 +139,10 @@ function StockCard({ s, live }) {
         {/* Price + change pill */}
         <div style={{ flex: '0 0 auto', textAlign: 'right' }}>
           <div style={{
-            fontFamily:    '"Courier New", monospace',
+            fontFamily:    '"IBM Plex Mono", "Courier New", monospace',
             fontSize:      '0.75rem',
             fontWeight:    600,
-            color:         'var(--fg-primary, #1a130a)',
+            color:         fgPrimary,
             letterSpacing: '0.01em',
             whiteSpace:    'nowrap',
             animation:     !hasData ? 'stockPulse 1.8s ease-in-out infinite' : 'none',
@@ -153,10 +157,10 @@ function StockCard({ s, live }) {
             padding:       '1.5px 7px',
             borderRadius:  5,
             background:    pillBg,
-            fontFamily:    '"Courier New", monospace',
+            fontFamily:    '"IBM Plex Mono", "Courier New", monospace',
             fontSize:      '0.5rem',
             fontWeight:    700,
-            color:         hasData ? '#fff' : 'rgba(100,90,80,0.5)',
+            color:         hasData ? '#fff' : (dark ? 'rgba(200,210,220,0.4)' : 'rgba(100,90,80,0.5)'),
             whiteSpace:    'nowrap',
             minWidth:      44,
             textAlign:     'center',
@@ -174,6 +178,7 @@ export const STOCK_H = 46;
 
 /* ── Main component ──────────────────────────────────────────────────────── */
 export default function StockMarquee({ inline = false }) {
+  const [dark]   = useDarkMode();
   const [stocks, setStocks] = useState(PLACEHOLDER);
   const [live,   setLive]   = useState(false);
 
@@ -194,6 +199,9 @@ export default function StockMarquee({ inline = false }) {
 
   const items = [...stocks, ...stocks];
 
+  const bg     = dark ? 'rgba(8,10,16,0.98)'      : 'rgba(245,240,232,0.97)';
+  const border = dark ? 'rgba(255,255,255,0.07)'  : 'rgba(80,64,48,0.12)';
+
   return (
     <div style={{
       ...(inline
@@ -201,10 +209,10 @@ export default function StockMarquee({ inline = false }) {
         : { position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9998 }),
       height:           STOCK_H,
       overflow:         'hidden',
-      background:       'rgba(245,240,232,0.97)',
+      background:       bg,
       backdropFilter:   'blur(12px) saturate(150%)',
       WebkitBackdropFilter: 'blur(12px) saturate(150%)',
-      borderBottom:     '1px solid rgba(80,64,48,0.12)',
+      borderBottom:     `1px solid ${border}`,
       maskImage:        'linear-gradient(to right, transparent 0%, black 4%, black 96%, transparent 100%)',
       WebkitMaskImage:  'linear-gradient(to right, transparent 0%, black 4%, black 96%, transparent 100%)',
     }}>
@@ -219,7 +227,7 @@ export default function StockMarquee({ inline = false }) {
         onMouseLeave={e => { e.currentTarget.style.animationPlayState = 'running'; }}
       >
         {items.map((s, idx) => (
-          <StockCard key={idx} s={s} live={live} />
+          <StockCard key={idx} s={s} live={live} dark={dark} />
         ))}
       </div>
 

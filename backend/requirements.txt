@@ -4,9 +4,8 @@ uvicorn[standard]==0.30.6
 python-multipart>=0.0.22
 slowapi==0.1.9
 
-# AI providers (at least one API key required — see .env.example)
+# AI — OpenRouter (uses openai-compatible SDK)
 openai==1.95.1
-google-generativeai>=0.3.0
 
 # Web search + scraping
 ddgs>=0.1.0

@@ -1,370 +1,242 @@
-# Quarry
+<a id="readme-top"></a>
 
-A full-stack AI search engine. Web search + real-time scraping + LLM reasoning, streamed to a React UI.
+[![Issues][issues-shield]][issues-url]
+[![MIT License][license-shield]][license-url]
+
+<br />
+<div align="center">
+  <h1 align="center">Quarry</h1>
+  <p align="center">
+    An AI-powered research and finance platform — search the web, synthesise sources, cite with confidence.
+    <br />
+    <a href="https://github.com/A-Kumar14/quarry/blob/main/CONTEXT/ARCHITECTURE.md"><strong>Read the architecture docs »</strong></a>
+    <br />
+    <br />
+    <a href="https://github.com/A-Kumar14/quarry/issues/new?labels=bug">Report Bug</a>
+    &middot;
+    <a href="https://github.com/A-Kumar14/quarry/issues/new?labels=enhancement">Request Feature</a>
+  </p>
+</div>
 
 ---
 
-## What It Does
+<details>
+  <summary>Table of Contents</summary>
+  <ol>
+    <li><a href="#about">About</a></li>
+    <li><a href="#built-with">Built With</a></li>
+    <li>
+      <a href="#getting-started">Getting Started</a>
+      <ul>
+        <li><a href="#prerequisites">Prerequisites</a></li>
+        <li><a href="#installation">Installation</a></li>
+      </ul>
+    </li>
+    <li><a href="#usage">Usage</a></li>
+    <li><a href="#api-keys">API Keys</a></li>
+    <li><a href="#roadmap">Roadmap</a></li>
+    <li><a href="#license">License</a></li>
+    <li><a href="#contact">Contact</a></li>
+  </ol>
+</details>
 
-Quarry takes a natural-language query, searches the web via DuckDuckGo, scrapes the top result pages for actual content, injects everything into an LLM prompt, and streams a cited Markdown answer back to the user. Follow-up questions continue as a threaded conversation, each one aware of the original query.
+---
 
-Every result exposes five tabs:
+## About
 
-| Tab | Description |
+Quarry is a full-stack AI research platform with three surfaces:
+
+**Quarry Search** — type any question and get a live, streamed answer synthesised from real web sources. Every claim is cited inline with `[1]`, `[2]` references that link back to the original pages. A contradiction detector runs in the background and flags any sources that disagree on the facts.
+
+**Quarry Research** — a multi-turn research assistant built for deep work. Upload PDFs, Word docs, or text files and ask questions against them. Quarry handles session persistence, so you can close the tab and pick up where you left off.
+
+**Finance Terminal** — a command-driven market terminal powered by QFL (Quarry Finance Language). Type `AAPL`, `COMPARE AAPL MSFT NVDA`, `/analyze NVDA`, or plain English and get live prices, sparklines, charts, and AI analysis.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+---
+
+## Built With
+
+[![React][React-badge]][React-url]
+[![FastAPI][FastAPI-badge]][FastAPI-url]
+[![OpenRouter][OpenRouter-badge]][OpenRouter-url]
+[![MUI][MUI-badge]][MUI-url]
+[![TailwindCSS][Tailwind-badge]][Tailwind-url]
+[![Python][Python-badge]][Python-url]
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- **Python 3.11+**
+- **Node.js 18+** and npm
+- An **OpenRouter API key** — get one at [openrouter.ai](https://openrouter.ai)
+- *(Optional)* A **GNews API key** for the News tab — free tier at [gnews.io](https://gnews.io)
+
+### Installation
+
+1. **Clone the repo**
+   ```sh
+   git clone https://github.com/A-Kumar14/quarry.git
+   cd quarry
+   ```
+
+2. **Set up the backend**
+   ```sh
+   cd backend
+   python3 -m venv .venv
+   source .venv/bin/activate          # Windows: .venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
+
+3. **Create `backend/.env`**
+   ```sh
+   cp backend/.env.example backend/.env
+   ```
+   Open `backend/.env` and fill in your keys:
+   ```
+   OPENROUTER_API_KEY=sk-or-...
+   GNEWS_API_KEY=...                  # optional
+   ```
+
+4. **Set up the frontend**
+   ```sh
+   cd frontend
+   npm install
+   ```
+
+5. **Create `frontend/.env`**
+   ```
+   REACT_APP_API_URL=http://localhost:8000
+   ```
+
+6. **Start both servers**
+
+   Quick start (opens split terminals automatically):
+   ```sh
+   chmod +x dev.sh && ./dev.sh
+   ```
+
+   Or manually in two separate terminals:
+   ```sh
+   # Terminal 1 — backend
+   cd backend && uvicorn main:app --reload --port 8000
+
+   # Terminal 2 — frontend
+   cd frontend && npm start
+   ```
+
+   Open **http://localhost:3000** in your browser.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+---
+
+## Usage
+
+### Quarry Search (`/`)
+
+Type any question and press Enter. Results stream in real time with inline source citations. Use the tabs to switch between the Answer, Citations, Contradictions, Perspectives, Images, and News views.
+
+For follow-up questions, keep typing — each follow-up is aware of the original query and previous answers. Toggle **Deep Mode** next to the search bar for a more thorough two-pass analysis on complex topics.
+
+### Finance Terminal (`/finance`)
+
+The terminal accepts QFL commands or plain English:
+
+| Command | What it does |
 |---|---|
-| Result | Streamed LLM answer with inline citations, inline images, and a quick summary |
-| News | Google News-style 2-column article grid with a sources sidebar |
-| Images | Masonry image grid with filter chips, lightbox panel, and infinite scroll |
-| Perspectives | Reddit threads for the query |
-| Knowledge Graph | Force-directed concept graph extracted from the answer |
+| `AAPL` | Live quote + sparkline for a single ticker |
+| `AAPL VS MSFT` | Side-by-side price comparison |
+| `COMPARE AAPL MSFT NVDA` | Multi-ticker comparison table |
+| `INDICES` | Market overview (DOW, S&P 500, NASDAQ) |
+| `/analyze NVDA` | Full AI analysis — technicals, fundamentals, catalysts |
+| `/technicals AAPL` | RSI, MACD, SMA with interpretation |
+| `/macro` | Fed, rates, inflation, sector rotation |
+| `EXPLAIN P/E ratio` | Plain-English definition of any finance term |
+| `HELP` | Full command reference |
 
-The homepage also provides a **Quarry Research** mode: a 5-phase structured research assistant (Onboarding, Scope, Research, Synthesis, Wrap-up) with a multi-turn streaming chat interface and phase progress tracker.
+### Quarry Research (`/research`)
 
----
+Start a conversation or upload a document (PDF, DOCX, TXT, MD, CSV — up to 10 MB). Quarry reads the file and answers questions against it. Sessions are saved automatically and accessible from the Sessions page.
 
-## Repository Layout
-
-```
-quarry/
-├── backend/
-│   ├── main.py                  # FastAPI app, CORS, rate limiting, security headers
-│   ├── schemas.py               # Pydantic request/response models
-│   ├── requirements.txt
-│   ├── .env                     # Real keys — gitignored
-│   ├── .env.example             # Placeholder template — committed
-│   ├── Makefile                 # Dev workflow shortcuts
-│   ├── pytest.ini
-│   ├── routers/
-│   │   └── explore.py           # All /explore/* endpoints
-│   ├── services/
-│   │   ├── registry.py          # Module-level singletons
-│   │   ├── llm.py               # LLM abstraction (OpenRouter / OpenAI / Gemini)
-│   │   ├── ai_service.py        # SAG pipeline + research session streaming
-│   │   ├── search_service.py    # DuckDuckGo search, trafilatura scraping
-│   │   └── image_service.py     # og:image extraction from search result pages
-│   ├── security/
-│   └── tests/                   # 16 test files covering endpoints and services
-│
-├── frontend/
-│   ├── src/
-│   │   ├── App.js               # Routes: / and /research
-│   │   ├── index.css            # CSS variables, DM Sans + Inter, animations
-│   │   ├── pages/
-│   │   │   ├── ExplorePage.js   # Main search page
-│   │   │   └── ResearchPage.js  # 5-phase research chat
-│   │   ├── components/
-│   │   │   ├── GlassCard.js
-│   │   │   ├── Spinner.js
-│   │   │   ├── KnowledgeGraph.js
-│   │   │   ├── NewsTab.js
-│   │   │   ├── ImagesTab.js
-│   │   │   ├── PerspectivesTab.js
-│   │   │   ├── PixelFigurines.jsx
-│   │   │   └── Toast.js
-│   │   └── utils/
-│   │       └── sourceQuality.js
-│   └── package.json
-│
-└── dev.sh                       # Opens split Terminal windows for backend + frontend
-```
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ---
 
-## Tech Stack
+## API Keys
 
-### Backend
-
-| Layer | Technology |
-|---|---|
-| Web framework | FastAPI 0.115 |
-| Server | Uvicorn + Watchfiles (dev), Gunicorn (prod) |
-| Streaming | Server-Sent Events (`StreamingResponse`, `text/event-stream`) |
-| LLM access | OpenAI SDK pointed at OpenRouter (or OpenAI/Gemini directly) |
-| Web search | DuckDuckGo via `ddgs` — no API key needed |
-| Web scraping | `trafilatura` for clean Markdown extraction |
-| Image search | `og:image` meta tag extraction from search result pages |
-| News | GNews API, server-side proxied with 5-minute cache |
-| Rate limiting | `slowapi` per endpoint |
-| Validation | Pydantic v2 |
-| Security | CORS, security headers, SSRF protection, prompt injection sanitization |
-
-### Frontend
-
-| Layer | Technology |
-|---|---|
-| Framework | React 19 (Create React App) |
-| Component lib | MUI v7 |
-| Routing | react-router-dom v7 |
-| Markdown | react-markdown + remark-gfm |
-| Knowledge graph | react-force-graph-2d |
-| Icons | lucide-react |
-| Fonts | Inter (UI), DM Sans (News/Images tabs) |
-
----
-
-## API Keys Required
-
-| Key | File | Used For | Free Tier |
+| Key | Required | Used for | Where to get it |
 |---|---|---|---|
-| `OPENROUTER_API_KEY` | `backend/.env` | LLM inference | Pay-per-token |
-| `GNEWS_API_KEY` | `backend/.env` | News tab + trending articles | 100 req/day |
+| `OPENROUTER_API_KEY` | **Yes** | All AI responses | [openrouter.ai](https://openrouter.ai) |
+| `GNEWS_API_KEY` | No | News tab + trending articles | [gnews.io](https://gnews.io) — 100 req/day free |
 
-Image search uses `og:image` extraction from DuckDuckGo results — no API key required.
+Image search uses `og:image` extraction from DuckDuckGo results — no API key needed.
 
----
+To change the default model (`openai/gpt-4o`), set `OPENROUTER_CHAT_MODEL` in `backend/.env` to any OpenRouter model ID — for example `anthropic/claude-sonnet-4.5`, `x-ai/grok-3`, or `google/gemini-2.0-flash-exp:free`.
 
-## Environment Files
-
-**`backend/.env`**
-```
-AI_PROVIDER=openrouter
-OPENROUTER_API_KEY=sk-or-v1-...
-GNEWS_API_KEY=...
-```
-
-**`frontend/.env`**
-```
-REACT_APP_API_URL=http://localhost:8000
-```
-
-`REACT_APP_*` vars are baked in at `npm start` / build time. Restart the dev server after editing `.env`.
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ---
 
-## Running Locally
+## Roadmap
 
-**Quick start (split terminal)**
-```bash
-chmod +x dev.sh
-./dev.sh
-```
+- [x] Streaming search-augmented generation with inline citations
+- [x] Contradiction detection across sources
+- [x] Finance terminal with QFL command parser
+- [x] Multi-turn research assistant with file upload
+- [x] Live ESPN scores injection for sports queries
+- [x] Academic paper outline generator
+- [x] Session persistence for research conversations
+- [ ] User accounts and cloud sync
+- [ ] PDF export for research sessions
+- [ ] Custom watchlist persistence across devices
+- [ ] Voice input
 
-Opens two Terminal windows side by side — backend on the left, frontend on the right.
+See [open issues](https://github.com/A-Kumar14/quarry/issues) for proposed features and known bugs.
 
-**Backend (manual)**
-```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python3 main.py
-```
-
-**Frontend (manual)**
-```bash
-cd frontend
-npm install
-npm start
-```
-
-**Tests**
-```bash
-cd backend
-make test
-```
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ---
 
-## API Endpoints
+## License
 
-### `POST /explore/search`
-Streams a Search-Augmented Generation response as SSE.
+Distributed under the MIT License.
 
-```json
-{ "query": "what are piranhas?", "context": null }
-```
-
-SSE events returned:
-```
-data: {"type": "sources", "sources": [{title, url, snippet, favicon}]}
-data: {"type": "chunk",   "text": "...markdown fragment..."}
-data: {"type": "error",   "text": "..."}
-data: [DONE]
-```
-
-Pass `context: "<original query>"` for follow-up questions. The backend prepends the context to keep search results on topic.
-
-### `GET /explore/images?q=<query>&page=<n>`
-Returns up to 9 images per page extracted from `og:image` meta tags on web search result pages.
-
-```json
-{
-  "images": [
-    {"title": "...", "image": "https://...", "thumbnail": "https://...", "source": "https://...", "domain": "example.com"}
-  ]
-}
-```
-
-### `GET /explore/news?q=<query>&max=<n>`
-Proxies GNews search server-side. Cached 5 minutes per query.
-
-### `GET /explore/trending-news?max=<n>`
-Proxies GNews top headlines. Cached 5 minutes.
-
-### `POST /explore/research`
-Streams a multi-turn research session as SSE. Accepts conversation history.
-
-```json
-{
-  "messages": [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}],
-  "message": "latest user input"
-}
-```
-
-Responses include `<!-- SESSION_STATE phase: N -->` comments for phase tracking. The frontend strips these before rendering.
-
-### `GET /explore/related?query=<q>&snippet=<s>`
-Returns 3 related search suggestions as a JSON array.
-
-### `GET /health`
-```json
-{"status": "ok"}
-```
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ---
 
-## Data Flow — Main Search
+## Contact
 
-```
-User submits query
-        |
-POST /explore/search
-        |
-DuckDuckGo text search (max 8 results)
-        |
-Parallel page scraping via trafilatura (top 5 URLs, 3000 char limit each)
-        |
-SSE: sources event sent to frontend
-        |
-LLM streaming via OpenRouter / OpenAI / Gemini
-        |
-SSE: chunk events sent one token at a time
-        |
-Frontend accumulates chunks into live Markdown render
-Frontend fetches og:images in parallel for inline image strip
-Frontend fetches related searches on completion
-```
+**A-Kumar14** — [github.com/A-Kumar14](https://github.com/A-Kumar14)
+
+Project link: [https://github.com/A-Kumar14/quarry](https://github.com/A-Kumar14/quarry)
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ---
 
-## Data Flow — Research Mode
+<!-- MARKDOWN LINKS & BADGES -->
+[issues-shield]: https://img.shields.io/github/issues/A-Kumar14/quarry.svg?style=for-the-badge
+[issues-url]: https://github.com/A-Kumar14/quarry/issues
+[license-shield]: https://img.shields.io/badge/license-MIT-green.svg?style=for-the-badge
+[license-url]: https://github.com/A-Kumar14/quarry/blob/main/LICENSE
 
-```
-User clicks "Quarry Research" on homepage -> navigates to /research
-        |
-Auto-init: POST /explore/research with empty message
-        |
-Backend applies RESEARCH_SYSTEM_PROMPT (server-side only, never sent to frontend)
-5 phases: Onboarding -> Scope -> Research -> Synthesis -> Wrap-up
-        |
-SSE streams response, ending with <!-- SESSION_STATE phase: N -->
-        |
-Frontend parses phase number, updates PhaseTracker progress bar
-Frontend strips SESSION_STATE comment before displaying message
-        |
-User replies; full conversation history sent with each request
-```
-
----
-
-## Image Service
-
-Images are sourced without any API key:
-
-1. DuckDuckGo text search runs for the query
-2. The first 32 KB of each result page is fetched in parallel (8 threads)
-3. `og:image` or `twitter:image` meta tags are extracted from the HTML
-4. Images that pass basic quality checks are returned
-
-This produces topically relevant images since they come from the same pages as the search results.
-
----
-
-## News Tab
-
-The News tab renders a Google News-style layout. The left sources panel is hidden when this tab is active so the news content uses the full width.
-
-The main panel contains a section header linking to Google News search, a 2-column card grid (source favicon, headline, thumbnail, relative timestamp per card), and a pagination control at the bottom.
-
-The right sidebar contains a Save toggle button and source chips derived from the unique domains in the result set.
-
----
-
-## Images Tab
-
-The Images tab renders a masonry grid using CSS `columns`.
-
-| Viewport | Columns |
-|---|---|
-| > 1024px | 4 |
-| 768–1024px | 3 |
-| 480–768px | 2 |
-| < 480px | 1 |
-
-A filter chips row above the grid lets users filter by source domain. Clicking any image card opens a right-side detail panel showing the full image, title, domain, and links to visit the source page or view the raw image. Scrolling near the bottom of the grid automatically loads the next page.
-
----
-
-## LLM Provider Detection
-
-`services/llm.py` selects a provider in this order:
-
-1. `AI_PROVIDER` env var (`openrouter` / `openai` / `gemini`)
-2. `OPENROUTER_API_KEY` present
-3. `OPENAI_API_KEY` present
-4. `GOOGLE_API_KEY` or `GEMINI_API_KEY` present
-
-| Provider | Default model | Override env var |
-|---|---|---|
-| OpenRouter | `openai/gpt-4o` | `OPENROUTER_CHAT_MODEL` |
-| OpenAI | `gpt-4o` | `OPENAI_CHAT_MODEL` |
-| Gemini | `gemini-2.0-flash` | `GEMINI_CHAT_MODEL` |
-
----
-
-## Security
-
-All responses include standard security headers (X-Content-Type-Options, X-Frame-Options, Referrer-Policy).
-
-Input validation is enforced via Pydantic v2 with strict length limits on all request fields. Scraped content is sanitized before LLM injection to prevent prompt injection. SSE chunks are sanitized to prevent event stream injection. URLs are validated against a blocklist before scraping to prevent SSRF. Rate limiting is applied per endpoint via `slowapi`.
-
----
-
-## Styling
-
-CSS variables in `frontend/src/index.css`:
-
-```css
---bg-primary:   #EDEAE5
---fg-primary:   #111827
---accent:       #F97316
---border:       #E5E7EB
---font-family:  'Inter', system-ui, sans-serif
-```
-
-News and Images tabs use DM Sans for an editorial feel distinct from the rest of the UI.
-
-Glass-morphism pattern used throughout:
-```css
-background: rgba(255,255,255,0.15);
-backdrop-filter: blur(12px);
-border: 1px solid rgba(255,255,255,0.25);
-```
-
----
-
-## Known Limitations
-
-Scraping success varies. `trafilatura` cannot scrape JS-rendered pages or paywalled sites. When all scrape attempts fail, the LLM only receives search snippets and answers are shallower.
-
-The GNews free tier allows 100 requests per day shared across the News tab and the trending article grid on the homepage.
-
-ESPN live scores only cover soccer (8 leagues).
-
-CRA env vars are injected at build time. Restart `npm start` after editing `frontend/.env`.
-
----
-
-## Repository
-
-`https://github.com/A-Kumar14/quarry` — branch `main`
+[React-badge]: https://img.shields.io/badge/React_19-20232A?style=for-the-badge&logo=react&logoColor=61DAFB
+[React-url]: https://reactjs.org/
+[FastAPI-badge]: https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white
+[FastAPI-url]: https://fastapi.tiangolo.com/
+[OpenRouter-badge]: https://img.shields.io/badge/OpenRouter-6B21A8?style=for-the-badge&logo=openai&logoColor=white
+[OpenRouter-url]: https://openrouter.ai/
+[MUI-badge]: https://img.shields.io/badge/MUI_v7-007FFF?style=for-the-badge&logo=mui&logoColor=white
+[MUI-url]: https://mui.com/
+[Tailwind-badge]: https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white
+[Tailwind-url]: https://tailwindcss.com/
+[Python-badge]: https://img.shields.io/badge/Python_3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white
+[Python-url]: https://python.org/

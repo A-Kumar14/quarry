@@ -1,14 +1,16 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Box, Typography, Skeleton } from '@mui/material';
-import { TrendingUp, ArrowLeft, RefreshCw, Settings, Terminal, ChevronRight } from 'lucide-react';
+import { TrendingUp, ArrowLeft, RefreshCw, Terminal, BarChart2, Zap, FileText, Globe, Layers, Hash, Activity } from 'lucide-react';
+import NavControls from '../components/NavControls';
 import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import GlassCard from '../components/GlassCard';
 import StockMarquee from '../components/StockMarquee';
 import { useTopOffset } from '../SettingsContext';
+import { useDarkMode } from '../DarkModeContext';
 
 const API           = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const MONO          = '"IBM Plex Mono", "JetBrains Mono", "Courier New", monospace';
 const WATCHLIST_KEY = 'quarry_watchlist';
 const INDICES       = ['^DJI', '^GSPC', '^IXIC'];
 const INDEX_DISPLAY = ['DOW', 'S&P 500', 'NASDAQ'];
@@ -61,6 +63,49 @@ function saveWatchlist(list) {
   try { localStorage.setItem(WATCHLIST_KEY, JSON.stringify(list)); } catch {}
 }
 
+/* ── Slash commands registry ─────────────────────────────────────────────── */
+
+const SLASH_COMMANDS = [
+  { name: 'analyze',    Icon: BarChart2,  args: '<TICKER>',      desc: 'AI deep-dive: technicals, fundamentals, catalysts, risks & verdict' },
+  { name: 'technicals', Icon: Activity,   args: '<TICKER>',      desc: 'RSI(14), MACD, SMA(20/50) — computed from live price history'      },
+  { name: 'earnings',   Icon: FileText,   args: '<TICKER>',      desc: 'AI analysis of latest earnings, revenue and guidance'               },
+  { name: 'macro',      Icon: Globe,      args: '',              desc: 'Macro environment: Fed, rates, inflation & sector rotation'          },
+  { name: 'brief',      Icon: Zap,        args: '',              desc: 'Morning market brief — indices, movers & key headlines'             },
+  { name: 'sector',     Icon: Layers,     args: '[sector name]', desc: 'Sector rotation analysis and relative performance'                   },
+  { name: 'compare',    Icon: Hash,       args: '<T1> <T2>',     desc: 'Side-by-side comparison with AI narrative'                          },
+];
+
+/* ── QFL syntax highlighter ─────────────────────────────────────────────── */
+
+const QFL_KEYWORDS  = new Set(['HELP','INDICES','INDEX','MARKET','OVERVIEW','RATES','RATE','BONDS','YIELDS','COMPARE','WATCH','NEWS','EXPLAIN','SCREEN']);
+const QFL_OPERATORS = new Set(['VS','ADD','REMOVE']);
+const QFL_TICKER_RE = /^[A-Z^.]{1,6}$/;
+
+function escHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function highlightQFL(raw) {
+  if (!raw) return '';
+  return raw.split(/(\s+)/).map(tok => {
+    if (/^\s+$/.test(tok)) return tok;
+    // Slash commands — purple
+    if (tok.startsWith('/')) {
+      const cmdName = tok.slice(1).toLowerCase();
+      const valid = SLASH_COMMANDS.some(c => c.name === cmdName || c.name.startsWith(cmdName));
+      return `<span style="color:${valid ? '#a78bfa' : '#c084fc'};font-weight:700">${escHtml(tok)}</span>`;
+    }
+    const up = tok.toUpperCase();
+    if (QFL_KEYWORDS.has(up))
+      return `<span style="color:#fb923c;font-weight:700">${escHtml(tok)}</span>`;
+    if (QFL_OPERATORS.has(up))
+      return `<span style="color:#60a5fa;font-weight:600">${escHtml(tok)}</span>`;
+    if (QFL_TICKER_RE.test(up) && tok === tok.toUpperCase())
+      return `<span style="color:#e2e8f0;font-weight:600">${escHtml(tok)}</span>`;
+    return `<span style="color:rgba(200,210,220,0.58)">${escHtml(tok)}</span>`;
+  }).join('');
+}
+
 /* ── QFL parser ──────────────────────────────────────────────────────────── */
 
 // Maps common index names/phrases → yfinance symbols
@@ -73,6 +118,13 @@ const INDEX_ALIASES = {
 
 function parseQFL(raw) {
   const input = raw.trim();
+
+  // Slash command — /analyze AAPL, /technicals NVDA, etc.
+  if (input.startsWith('/')) {
+    const [rawCmd, ...argParts] = input.slice(1).split(/\s+/);
+    return { type: 'SLASH', command: rawCmd.toLowerCase(), args: argParts.filter(Boolean), raw: input };
+  }
+
   const up    = input.toUpperCase();
   const parts = up.split(/\s+/);
 
@@ -141,6 +193,60 @@ function parseQFL(raw) {
 
   // Default: AI natural language
   return { type: 'AI', query: input, raw: input };
+}
+
+/* ── Technical indicator math ────────────────────────────────────────────── */
+
+function calcSMA(prices, period) {
+  return prices.map((_, i) => {
+    if (i < period - 1) return null;
+    return prices.slice(i - period + 1, i + 1).reduce((s, v) => s + v, 0) / period;
+  });
+}
+
+function calcEMA(prices, period) {
+  const k = 2 / (period + 1);
+  const result = new Array(prices.length).fill(null);
+  let seed = prices.slice(0, period).reduce((s, v) => s + v, 0) / period;
+  result[period - 1] = seed;
+  for (let i = period; i < prices.length; i++) {
+    seed = prices[i] * k + seed * (1 - k);
+    result[i] = seed;
+  }
+  return result;
+}
+
+function calcRSI(prices, period = 14) {
+  if (prices.length < period + 1) return null;
+  const changes = prices.slice(1).map((v, i) => v - prices[i]);
+  let avgGain = changes.slice(0, period).filter(c => c > 0).reduce((s, c) => s + c, 0) / period;
+  let avgLoss = changes.slice(0, period).filter(c => c < 0).reduce((s, c) => s + Math.abs(c), 0) / period;
+  for (let i = period; i < changes.length; i++) {
+    const g = changes[i] > 0 ? changes[i] : 0;
+    const l = changes[i] < 0 ? Math.abs(changes[i]) : 0;
+    avgGain = (avgGain * (period - 1) + g) / period;
+    avgLoss = (avgLoss * (period - 1) + l) / period;
+  }
+  if (avgLoss === 0) return 100;
+  return 100 - (100 / (1 + avgGain / avgLoss));
+}
+
+function calcMACD(prices) {
+  const ema12 = calcEMA(prices, 12);
+  const ema26 = calcEMA(prices, 26);
+  const macdLine = ema12.map((v, i) => v != null && ema26[i] != null ? v - ema26[i] : null);
+  // Signal = EMA(9) of MACD
+  const validStart = macdLine.findIndex(v => v != null);
+  if (validStart < 0) return { line: null, signal: null, histogram: null };
+  const macdValues = macdLine.slice(validStart).filter(v => v != null);
+  const k = 2 / 10;
+  let sig = macdValues.slice(0, 9).reduce((s, v) => s + v, 0) / 9;
+  for (let i = 9; i < macdValues.length; i++) {
+    sig = macdValues[i] * k + sig * (1 - k);
+  }
+  const last = macdValues[macdValues.length - 1] ?? null;
+  const hist  = last != null ? last - sig : null;
+  return { line: last, signal: sig, histogram: hist };
 }
 
 /* ── Formatting helpers ──────────────────────────────────────────────────── */
@@ -212,10 +318,10 @@ function StockRow({ stock, onQuery, onRemove, removable = true }) {
       )}
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <Typography sx={{ fontFamily: '"Courier New", monospace', fontSize: '0.78rem', fontWeight: 700, color: 'var(--fg-primary)' }}>
+          <Typography sx={{ fontFamily: MONO, fontSize: '0.78rem', fontWeight: 700, color: 'var(--fg-primary)' }}>
             {sym}
           </Typography>
-          <Typography sx={{ fontFamily: '"Courier New", monospace', fontSize: '0.78rem', fontWeight: 600, color: 'var(--fg-primary)' }}>
+          <Typography sx={{ fontFamily: MONO, fontSize: '0.78rem', fontWeight: 600, color: 'var(--fg-primary)' }}>
             ${stock.price?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </Typography>
         </Box>
@@ -223,7 +329,7 @@ function StockRow({ stock, onQuery, onRemove, removable = true }) {
           <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.61rem', color: 'var(--fg-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 90 }}>
             {stock.name}
           </Typography>
-          <Typography sx={{ fontFamily: '"Courier New", monospace', fontSize: '0.63rem', fontWeight: 600, color }}>
+          <Typography sx={{ fontFamily: MONO, fontSize: '0.63rem', fontWeight: 600, color }}>
             {sign}{stock.changePct?.toFixed(2)}%
           </Typography>
         </Box>
@@ -273,20 +379,40 @@ const ANS = {
   '& th':             { bgcolor: 'rgba(229,221,208,0.5)', fontWeight: 500 },
 };
 
+/* ── Terminal output card — replaces GlassCard for all output blocks ─────── */
+
+function TerminalBlock({ children, style }) {
+  const [dark] = useDarkMode();
+  return (
+    <div style={{
+      borderRadius: 4,
+      border: dark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(175,150,105,0.34)',
+      borderTop: dark ? '2px solid rgba(249,115,22,0.22)' : '2px solid rgba(175,150,105,0.34)',
+      background: dark ? 'rgba(16,20,30,0.88)' : 'rgba(237,232,223,0.55)',
+      backdropFilter: 'blur(10px)',
+      WebkitBackdropFilter: 'blur(10px)',
+      overflow: 'hidden',
+      ...style,
+    }}>
+      {children}
+    </div>
+  );
+}
+
 /* ── Compare table ───────────────────────────────────────────────────────── */
 
 function CompareResult({ stocks }) {
   if (!stocks || stocks.length === 0) {
     return (
-      <GlassCard style={{ padding: '14px 18px' }}>
-        <Typography sx={{ fontFamily: '"Courier New", monospace', fontSize: '0.78rem', color: 'var(--error)' }}>
-          ERROR: Could not fetch comparison data.
+      <TerminalBlock style={{ padding: '14px 18px' }}>
+        <Typography sx={{ fontFamily: MONO, fontSize: '0.78rem', color: 'var(--error)' }}>
+          ERR: Could not fetch comparison data.
         </Typography>
-      </GlassCard>
+      </TerminalBlock>
     );
   }
   return (
-    <GlassCard style={{ padding: '14px 20px' }}>
+    <TerminalBlock style={{ padding: '14px 20px' }}>
       <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.54rem', fontWeight: 500, color: 'var(--fg-dim)', letterSpacing: '0.10em', textTransform: 'uppercase', mb: 1.25 }}>
         Comparison
       </Typography>
@@ -321,26 +447,26 @@ function CompareResult({ stocks }) {
                           style={{ borderRadius: 4, display: 'block', objectFit: 'contain' }}
                           onError={e => { e.target.style.display = 'none'; }} />
                       : <Box sx={{ width: 18, height: 18, borderRadius: '4px', bgcolor: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <Typography sx={{ fontFamily: '"Courier New", monospace', fontSize: '0.44rem', fontWeight: 700, color: 'var(--fg-dim)' }}>{sym.slice(0,2)}</Typography>
+                          <Typography sx={{ fontFamily: MONO, fontSize: '0.44rem', fontWeight: 700, color: 'var(--fg-dim)' }}>{sym.slice(0,2)}</Typography>
                         </Box>
                     }
                   </td>
-                  <td style={{ padding: '8px 10px', fontFamily: '"Courier New", monospace', fontSize: '0.82rem', fontWeight: 700, color: 'var(--fg-primary)' }}>
+                  <td style={{ padding: '8px 10px', fontFamily: MONO, fontSize: '0.82rem', fontWeight: 700, color: 'var(--fg-primary)' }}>
                     {sym}
                   </td>
                   <td style={{ padding: '8px 10px', fontFamily: 'var(--font-family)', fontSize: '0.72rem', color: 'var(--fg-secondary)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {s.name}
                   </td>
-                  <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: '"Courier New", monospace', fontSize: '0.82rem', fontWeight: 600, color: 'var(--fg-primary)' }}>
+                  <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: MONO, fontSize: '0.82rem', fontWeight: 600, color: 'var(--fg-primary)' }}>
                     ${fmtPrice(s.price)}
                   </td>
-                  <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: '"Courier New", monospace', fontSize: '0.78rem', color }}>
+                  <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: MONO, fontSize: '0.78rem', color }}>
                     {sign}{fmtPrice(s.change)}
                   </td>
-                  <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: '"Courier New", monospace', fontSize: '0.78rem', fontWeight: 600, color }}>
+                  <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: MONO, fontSize: '0.78rem', fontWeight: 600, color }}>
                     {sign}{s.changePct?.toFixed(2)}%
                   </td>
-                  <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: '"Courier New", monospace', fontSize: '0.72rem', color: 'var(--fg-secondary)' }}>
+                  <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: MONO, fontSize: '0.72rem', color: 'var(--fg-secondary)' }}>
                     {fmtMcap(s.marketCap)}
                   </td>
                   <td style={{ padding: '8px 10px', textAlign: 'right' }}>
@@ -352,7 +478,7 @@ function CompareResult({ stocks }) {
           </tbody>
         </table>
       </Box>
-    </GlassCard>
+    </TerminalBlock>
   );
 }
 
@@ -374,17 +500,17 @@ const HELP_COMMANDS = [
 
 function HelpResult() {
   return (
-    <GlassCard style={{ padding: '16px 20px' }}>
+    <TerminalBlock style={{ padding: '16px 20px' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 1.5 }}>
         <Terminal size={13} style={{ color: 'var(--accent)' }} />
-        <Typography sx={{ fontFamily: '"Courier New", monospace', fontSize: '0.72rem', fontWeight: 700, color: 'var(--fg-primary)', letterSpacing: '0.04em' }}>
+        <Typography sx={{ fontFamily: MONO, fontSize: '0.72rem', fontWeight: 700, color: 'var(--fg-primary)', letterSpacing: '0.04em' }}>
           QUARRY FINANCE LANGUAGE (QFL)
         </Typography>
       </Box>
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
         {HELP_COMMANDS.map(([cmd, desc], i) => (
           <Box key={i} sx={{ display: 'flex', gap: 2, alignItems: 'baseline' }}>
-            <Typography sx={{ fontFamily: '"Courier New", monospace', fontSize: '0.76rem', fontWeight: 600, color: 'var(--accent)', minWidth: 220, flexShrink: 0 }}>
+            <Typography sx={{ fontFamily: MONO, fontSize: '0.76rem', fontWeight: 600, color: 'var(--accent)', minWidth: 220, flexShrink: 0 }}>
               {cmd}
             </Typography>
             <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.78rem', fontWeight: 300, color: 'var(--fg-secondary)' }}>
@@ -398,7 +524,213 @@ function HelpResult() {
           Commands are case-insensitive. Press ↑/↓ in the terminal to navigate command history.
         </Typography>
       </Box>
-    </GlassCard>
+    </TerminalBlock>
+  );
+}
+
+/* ── Technicals card ─────────────────────────────────────────────────────── */
+
+function TechnicalsCard({ ticker }) {
+  const [data,    setData]    = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [err,     setErr]     = useState('');
+
+  useEffect(() => {
+    if (!ticker) return;
+    setLoading(true); setErr('');
+    fetch(`${API}/explore/chart/${encodeURIComponent(ticker)}?period=3M`)
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(d => {
+        const prices = d.prices || [];
+        const rsi  = calcRSI(prices);
+        const sma20 = calcSMA(prices, 20);
+        const sma50 = calcSMA(prices, 50);
+        const macd  = calcMACD(prices);
+        const last  = prices[prices.length - 1] ?? null;
+        const s20   = sma20[sma20.length - 1];
+        const s50   = sma50[sma50.length - 1];
+        setData({ rsi, macd, sma20: s20, sma50: s50, price: last });
+        setLoading(false);
+      })
+      .catch(() => { setErr('Could not compute technicals.'); setLoading(false); });
+  }, [ticker]);
+
+  if (loading) {
+    return (
+      <TerminalBlock style={{ padding: '16px 20px' }}>
+        {[60, 45, 72].map((w, i) => (
+          <Skeleton key={i} variant="text" width={`${w}%`} sx={{ bgcolor: 'var(--bg-tertiary)', height: 16, mb: 0.5 }} />
+        ))}
+      </TerminalBlock>
+    );
+  }
+  if (err) {
+    return (
+      <TerminalBlock style={{ padding: '14px 18px' }}>
+        <Typography sx={{ fontFamily: MONO, fontSize: '0.78rem', color: 'var(--error)' }}>{err}</Typography>
+      </TerminalBlock>
+    );
+  }
+
+  const { rsi, macd, sma20, sma50, price } = data;
+
+  // Signal logic
+  function rsiSignal(v) {
+    if (v == null) return { label: '–', color: 'var(--fg-dim)' };
+    if (v > 70)   return { label: 'Overbought', color: '#ef4444' };
+    if (v < 30)   return { label: 'Oversold',   color: '#22c55e' };
+    return { label: 'Neutral', color: '#fb923c' };
+  }
+  function trendSignal() {
+    if (!price || !sma20 || !sma50) return { label: '–', color: 'var(--fg-dim)' };
+    if (price > sma20 && sma20 > sma50) return { label: 'Bullish',  color: '#22c55e' };
+    if (price < sma20 && sma20 < sma50) return { label: 'Bearish',  color: '#ef4444' };
+    return { label: 'Mixed', color: '#fb923c' };
+  }
+  function macdSignal() {
+    if (!macd || macd.histogram == null) return { label: '–', color: 'var(--fg-dim)' };
+    if (macd.histogram > 0 && macd.line > 0) return { label: 'Bullish crossover', color: '#22c55e' };
+    if (macd.histogram < 0 && macd.line < 0) return { label: 'Bearish crossover', color: '#ef4444' };
+    if (macd.histogram > 0) return { label: 'Momentum building', color: '#fb923c' };
+    return { label: 'Momentum fading', color: '#ef4444' };
+  }
+
+  const rsiSig   = rsiSignal(rsi);
+  const trendSig = trendSignal();
+  const macdSig  = macdSignal();
+
+  const row = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1, borderBottom: '1px solid var(--border)' };
+  const label = { fontFamily: 'var(--font-family)', fontSize: '0.72rem', color: 'var(--fg-secondary)' };
+  const val   = { fontFamily: MONO, fontSize: '0.75rem', fontWeight: 700, color: 'var(--fg-primary)' };
+
+  return (
+    <TerminalBlock style={{ padding: '16px 20px' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 1.5 }}>
+        <Activity size={13} style={{ color: 'var(--accent)' }} />
+        <Typography sx={{ fontFamily: MONO, fontSize: '0.72rem', fontWeight: 700, color: 'var(--fg-primary)', letterSpacing: '0.04em' }}>
+          TECHNICALS — {ticker} <Typography component="span" sx={{ fontFamily: 'var(--font-family)', fontSize: '0.60rem', fontWeight: 400, color: 'var(--fg-dim)', ml: 0.5 }}>3-month window</Typography>
+        </Typography>
+      </Box>
+      <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+        {/* RSI */}
+        <Box sx={row}>
+          <Box>
+            <Typography sx={label}>RSI (14)</Typography>
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Typography sx={val}>{rsi != null ? rsi.toFixed(1) : '–'}</Typography>
+            <Box sx={{ px: 1, py: '2px', borderRadius: 999, background: rsiSig.color + '20', border: `1px solid ${rsiSig.color}40` }}>
+              <Typography sx={{ fontFamily: MONO, fontSize: '0.62rem', fontWeight: 700, color: rsiSig.color }}>{rsiSig.label}</Typography>
+            </Box>
+          </Box>
+        </Box>
+        {/* SMA 20 / 50 */}
+        <Box sx={row}>
+          <Typography sx={label}>SMA (20 / 50)</Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Typography sx={{ ...val, fontSize: '0.70rem' }}>
+              {sma20 != null ? sma20.toFixed(2) : '–'} / {sma50 != null ? sma50.toFixed(2) : '–'}
+            </Typography>
+            <Box sx={{ px: 1, py: '2px', borderRadius: 999, background: trendSig.color + '20', border: `1px solid ${trendSig.color}40` }}>
+              <Typography sx={{ fontFamily: MONO, fontSize: '0.62rem', fontWeight: 700, color: trendSig.color }}>{trendSig.label}</Typography>
+            </Box>
+          </Box>
+        </Box>
+        {/* MACD */}
+        <Box sx={{ ...row, borderBottom: 'none' }}>
+          <Box>
+            <Typography sx={label}>MACD (12/26/9)</Typography>
+            <Typography sx={{ fontFamily: MONO, fontSize: '0.60rem', color: 'var(--fg-dim)', mt: 0.2 }}>
+              Line: {macd?.line != null ? macd.line.toFixed(3) : '–'} · Signal: {macd?.signal != null ? macd.signal.toFixed(3) : '–'} · Hist: {macd?.histogram != null ? macd.histogram.toFixed(3) : '–'}
+            </Typography>
+          </Box>
+          <Box sx={{ px: 1, py: '2px', borderRadius: 999, background: macdSig.color + '20', border: `1px solid ${macdSig.color}40`, flexShrink: 0, ml: 2 }}>
+            <Typography sx={{ fontFamily: MONO, fontSize: '0.62rem', fontWeight: 700, color: macdSig.color }}>{macdSig.label}</Typography>
+          </Box>
+        </Box>
+      </Box>
+      <Box sx={{ mt: 1.25, pt: 1, borderTop: '1px solid var(--border)' }}>
+        <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.65rem', color: 'var(--fg-dim)' }}>
+          Indicators computed client-side from 3-month daily close prices. Not investment advice.
+        </Typography>
+      </Box>
+    </TerminalBlock>
+  );
+}
+
+/* ── Command palette ─────────────────────────────────────────────────────── */
+
+function CommandPalette({ query, onSelect, activeIdx, dark }) {
+  const filtered = SLASH_COMMANDS.filter(c =>
+    !query || c.name.startsWith(query.toLowerCase())
+  );
+  if (filtered.length === 0) return null;
+
+  return (
+    <div style={{
+      position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, right: 0,
+      zIndex: 500,
+      background: dark ? 'rgba(14,17,26,0.97)' : 'rgba(253,250,243,0.98)',
+      border: dark ? '1px solid rgba(167,139,250,0.20)' : '1px solid rgba(167,139,250,0.30)',
+      borderRadius: 10,
+      backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
+      boxShadow: dark ? '0 -16px 48px rgba(0,0,0,0.60)' : '0 -12px 36px rgba(100,70,200,0.10)',
+      overflow: 'hidden',
+      animation: 'palIn 0.13s ease',
+    }}>
+      {/* Header */}
+      <div style={{
+        padding: '7px 14px 5px',
+        borderBottom: dark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.06)',
+        fontFamily: 'var(--font-family)', fontSize: '0.52rem', fontWeight: 600,
+        color: dark ? 'rgba(167,139,250,0.70)' : 'rgba(109,40,217,0.60)',
+        letterSpacing: '0.12em', textTransform: 'uppercase',
+      }}>
+        Slash Commands
+      </div>
+      {filtered.map((cmd, i) => {
+        const isActive = i === activeIdx;
+        const { Icon } = cmd;
+        return (
+          <div
+            key={cmd.name}
+            onMouseDown={e => { e.preventDefault(); onSelect(cmd); }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '8px 14px',
+              cursor: 'pointer',
+              background: isActive
+                ? (dark ? 'rgba(167,139,250,0.12)' : 'rgba(167,139,250,0.08)')
+                : 'transparent',
+              borderLeft: isActive ? '2px solid #a78bfa' : '2px solid transparent',
+              transition: 'background 0.08s',
+            }}
+          >
+            <Icon size={13} style={{ color: '#a78bfa', flexShrink: 0 }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <span style={{
+                fontFamily: '"IBM Plex Mono","Courier New",monospace',
+                fontSize: '0.78rem', fontWeight: 700, color: '#a78bfa',
+              }}>/{cmd.name}</span>
+              {cmd.args && (
+                <span style={{
+                  fontFamily: '"IBM Plex Mono","Courier New",monospace',
+                  fontSize: '0.72rem', fontWeight: 400,
+                  color: dark ? 'rgba(200,210,220,0.45)' : 'rgba(80,70,60,0.45)',
+                  marginLeft: 6,
+                }}>{cmd.args}</span>
+              )}
+              <div style={{
+                fontFamily: 'var(--font-family)', fontSize: '0.64rem',
+                color: dark ? 'rgba(160,170,180,0.55)' : 'rgba(80,70,60,0.55)',
+                marginTop: 1,
+              }}>{cmd.desc}</div>
+            </div>
+          </div>
+        );
+      })}
+      <style>{`@keyframes palIn { from { opacity:0; transform:translateY(6px) scale(0.98); } to { opacity:1; transform:translateY(0) scale(1); } }`}</style>
+    </div>
   );
 }
 
@@ -409,7 +741,7 @@ function SystemMessage({ text, variant = 'info' }) {
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 1, py: 0.5 }}>
       <Box sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: color, flexShrink: 0 }} />
-      <Typography sx={{ fontFamily: '"Courier New", monospace', fontSize: '0.76rem', color }}>
+      <Typography sx={{ fontFamily: MONO, fontSize: '0.76rem', color }}>
         {text}
       </Typography>
     </Box>
@@ -420,7 +752,7 @@ function SystemMessage({ text, variant = 'info' }) {
 
 function AIResult({ text, streaming, sources }) {
   return (
-    <GlassCard style={{ padding: '16px 20px' }}>
+    <TerminalBlock style={{ padding: '16px 20px' }}>
       <Box sx={ANS}>
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
       </Box>
@@ -438,7 +770,7 @@ function AIResult({ text, streaming, sources }) {
           ))}
         </Box>
       )}
-    </GlassCard>
+    </TerminalBlock>
   );
 }
 
@@ -448,7 +780,7 @@ function AIResult({ text, streaming, sources }) {
 
 const PERIODS = ['1D', '1W', '1M', '3M', '1Y', '5Y'];
 
-function StockChart({ ticker }) {
+function StockChart({ ticker, dark }) {
   const [period,    setPeriod]    = useState('1M');
   const [chartData, setChartData] = useState(null);
   const [loading,   setLoading]   = useState(true);
@@ -463,9 +795,10 @@ function StockChart({ ticker }) {
       .catch(() => { setErr('Chart unavailable'); setLoading(false); });
   }, [ticker, period]);
 
-  const up    = (chartData?.pctChange ?? 0) >= 0;
-  const color = up ? '#16a34a' : '#dc2626';
-  const sign  = up ? '+' : '';
+  const up        = (chartData?.pctChange ?? 0) >= 0;
+  const color     = up ? '#22c55e' : '#ef4444';   // used only for period % readout
+  const sign      = up ? '+' : '';
+  const lineColor = dark ? '#fb923c' : '#f97316'; // orange — Quarry Finance theme
 
   // SVG chart
   const W = 700, H = 130, PAD = { t: 10, r: 8, b: 28, l: 52 };
@@ -533,7 +866,7 @@ function StockChart({ ticker }) {
             onClick={() => setPeriod(p)}
             sx={{
               px: 1.1, py: 0.35, borderRadius: '6px', cursor: 'pointer',
-              fontFamily: '"Courier New", monospace', fontSize: '0.70rem', fontWeight: 600,
+              fontFamily: MONO, fontSize: '0.70rem', fontWeight: 600,
               transition: 'all 0.12s',
               ...(p === period
                 ? { bgcolor: 'var(--accent)', color: '#fff' }
@@ -545,7 +878,7 @@ function StockChart({ ticker }) {
           </Box>
         ))}
         {chartData && (
-          <Typography sx={{ ml: 'auto', fontFamily: '"Courier New", monospace', fontSize: '0.72rem', fontWeight: 600, color, alignSelf: 'center' }}>
+          <Typography sx={{ ml: 'auto', fontFamily: MONO, fontSize: '0.72rem', fontWeight: 600, color, alignSelf: 'center' }}>
             {sign}{chartData.pctChange?.toFixed(2)}%
           </Typography>
         )}
@@ -557,16 +890,16 @@ function StockChart({ ticker }) {
       )}
       {err && !loading && (
         <Box sx={{ height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Typography sx={{ fontFamily: '"Courier New", monospace', fontSize: '0.70rem', color: 'var(--fg-dim)' }}>{err}</Typography>
+          <Typography sx={{ fontFamily: MONO, fontSize: '0.70rem', color: 'var(--fg-dim)' }}>{err}</Typography>
         </Box>
       )}
       {!loading && !err && chartData?.prices?.length > 1 && (
-        <Box sx={{ overflowX: 'auto' }}>
+        <Box sx={{ overflowX: 'auto', background: 'rgba(0,0,0,0.38)', borderRadius: '6px', p: '8px 4px 4px' }}>
           <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', minWidth: 280 }}>
             <defs>
-              <linearGradient id={`cg-${up ? 'u' : 'd'}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%"   stopColor={color} stopOpacity={0.18} />
-                <stop offset="100%" stopColor={color} stopOpacity={0.01} />
+              <linearGradient id="cg-line" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%"   stopColor={lineColor} stopOpacity={0.22} />
+                <stop offset="100%" stopColor={lineColor} stopOpacity={0.02} />
               </linearGradient>
             </defs>
 
@@ -574,9 +907,11 @@ function StockChart({ ticker }) {
             {yLabels(chartData.prices).map(({ y, label }, i) => (
               <g key={i}>
                 <line x1={PAD.l} y1={y} x2={PAD.l + iW} y2={y}
-                  stroke="rgba(193,180,155,0.2)" strokeWidth={0.5} strokeDasharray="3 3" />
+                  stroke={dark ? 'rgba(255,255,255,0.06)' : 'rgba(193,180,155,0.2)'}
+                  strokeWidth={0.5} strokeDasharray="3 3" />
                 <text x={PAD.l - 5} y={y + 3.5} textAnchor="end"
-                  fontFamily="'Courier New', monospace" fontSize={9} fill="rgba(120,105,80,0.7)">
+                  fontFamily="'IBM Plex Mono', 'Courier New', monospace" fontSize={9}
+                  fill={dark ? 'rgba(200,190,175,0.50)' : 'rgba(120,105,80,0.7)'}>
                   {label}
                 </text>
               </g>
@@ -585,15 +920,16 @@ function StockChart({ ticker }) {
             {/* X date labels */}
             {xLabels(chartData.dates, chartData.prices).map(({ x, label }, i) => (
               <text key={i} x={x} y={H - 6} textAnchor="middle"
-                fontFamily="'Courier New', monospace" fontSize={9} fill="rgba(120,105,80,0.6)">
+                fontFamily="'IBM Plex Mono', 'Courier New', monospace" fontSize={9}
+                fill={dark ? 'rgba(200,190,175,0.45)' : 'rgba(120,105,80,0.6)'}>
                 {label}
               </text>
             ))}
 
             {/* Fill */}
-            <path d={buildFill(chartData.prices)} fill={`url(#cg-${up ? 'u' : 'd'})`} />
+            <path d={buildFill(chartData.prices)} fill="url(#cg-line)" />
             {/* Line */}
-            <path d={buildPath(chartData.prices)} fill="none" stroke={color} strokeWidth={1.8}
+            <path d={buildPath(chartData.prices)} fill="none" stroke={lineColor} strokeWidth={1.8}
               strokeLinejoin="round" strokeLinecap="round" />
           </svg>
         </Box>
@@ -605,6 +941,7 @@ function StockChart({ ticker }) {
 /* ── Quote detail (chart + header + actions) ─────────────────────────────── */
 
 function QuoteDetail({ data, onAction }) {
+  const [dark] = useDarkMode();
   const sym   = data.symbol || data.ticker || data.rawTicker || '';
   const logo  = getLogoUrl(data.rawTicker || sym);
   const up    = (data.changePct ?? 0) >= 0;
@@ -620,7 +957,7 @@ function QuoteDetail({ data, onAction }) {
   ];
 
   return (
-    <GlassCard style={{ padding: '16px 20px', marginBottom: 12 }}>
+    <TerminalBlock style={{ padding: '16px 20px', marginBottom: 12 }}>
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5, flexWrap: 'wrap' }}>
         {logo && (
@@ -630,7 +967,7 @@ function QuoteDetail({ data, onAction }) {
         )}
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
-            <Typography sx={{ fontFamily: '"Courier New", monospace', fontSize: '1.05rem', fontWeight: 700, color: 'var(--fg-primary)' }}>
+            <Typography sx={{ fontFamily: MONO, fontSize: '1.05rem', fontWeight: 700, color: 'var(--fg-primary)' }}>
               {sym}
             </Typography>
             <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', color: 'var(--fg-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -639,11 +976,11 @@ function QuoteDetail({ data, onAction }) {
           </Box>
         </Box>
         <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
-          <Typography sx={{ fontFamily: '"Courier New", monospace', fontSize: '1.35rem', fontWeight: 700, color: 'var(--fg-primary)', lineHeight: 1 }}>
+          <Typography sx={{ fontFamily: MONO, fontSize: '1.35rem', fontWeight: 700, color: 'var(--fg-primary)', lineHeight: 1 }}>
             ${data.price?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </Typography>
           <Box sx={{ display: 'inline-flex', alignItems: 'center', mt: 0.4, px: 1, py: '2px', borderRadius: 999, background: pillBg, border: `1px solid ${up ? 'rgba(22,163,74,0.25)' : 'rgba(220,38,38,0.20)'}` }}>
-            <Typography sx={{ fontFamily: '"Courier New", monospace', fontSize: '0.70rem', fontWeight: 600, color, whiteSpace: 'nowrap' }}>
+            <Typography sx={{ fontFamily: MONO, fontSize: '0.70rem', fontWeight: 600, color, whiteSpace: 'nowrap' }}>
               {sign}{fmtPrice(data.change)} ({sign}{data.changePct?.toFixed(2)}%)
             </Typography>
           </Box>
@@ -651,7 +988,7 @@ function QuoteDetail({ data, onAction }) {
       </Box>
 
       {/* Chart */}
-      <StockChart ticker={data.rawTicker || sym} />
+      <StockChart ticker={data.rawTicker || sym} dark={dark} />
 
       {/* Quick action buttons */}
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1.5, pt: 1.25, borderTop: '1px solid var(--border)' }}>
@@ -671,32 +1008,53 @@ function QuoteDetail({ data, onAction }) {
           </Box>
         ))}
       </Box>
-    </GlassCard>
+    </TerminalBlock>
   );
 }
 
 /* ── Terminal output block ───────────────────────────────────────────────── */
 
 function OutputItem({ item, onAction }) {
+  const num = item.cellNum;
   return (
-    <Box sx={{ mb: 2 }}>
-      {/* Command echo */}
-      {item.command && (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.75 }}>
-          <ChevronRight size={12} style={{ color: 'var(--accent)', flexShrink: 0 }} />
-          <Typography sx={{ fontFamily: '"Courier New", monospace', fontSize: '0.78rem', color: 'var(--fg-secondary)', letterSpacing: '0.01em' }}>
-            {item.command}
+    <Box sx={{ mb: 3, display: 'flex', gap: 0 }}>
+      {/* Left gutter — Jupyter-style cell number */}
+      <Box sx={{
+        width: 52, flexShrink: 0, pt: 0.25,
+        display: 'flex', flexDirection: 'column', alignItems: 'flex-end', pr: 1.5,
+        userSelect: 'none',
+      }}>
+        {/* In [n]: */}
+        {item.command && (
+          <Typography sx={{ fontFamily: MONO, fontSize: '0.62rem', color: 'var(--fg-dim)', lineHeight: 1, mb: 0.5, whiteSpace: 'nowrap' }}>
+            [{num}]:
           </Typography>
-        </Box>
-      )}
+        )}
+      </Box>
+
+      {/* Cell body */}
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        {/* Command echo */}
+        {item.command && (
+          <Box sx={{
+            display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.75,
+            px: 1.25, py: 0.5,
+            borderLeft: '2px solid var(--accent)',
+            background: 'rgba(249,115,22,0.04)',
+          }}>
+            <Typography sx={{ fontFamily: MONO, fontSize: '0.78rem', fontWeight: 500, color: 'var(--fg-primary)', letterSpacing: '0.02em' }}>
+              {item.command}
+            </Typography>
+          </Box>
+        )}
 
       {/* Result */}
       {item.type === 'loading' && (
-        <GlassCard style={{ padding: '16px 20px' }}>
+        <TerminalBlock style={{ padding: '16px 20px' }}>
           {[72, 58, 82].map((w, i) => (
             <Skeleton key={i} variant="text" width={`${w}%`} sx={{ bgcolor: 'var(--bg-tertiary)', height: 16, mb: 0.4 }} />
           ))}
-        </GlassCard>
+        </TerminalBlock>
       )}
       {item.type === 'quote' && item.data && <QuoteDetail data={item.data} onAction={onAction} />}
       {item.type === 'compare' && <CompareResult stocks={item.data} />}
@@ -705,45 +1063,179 @@ function OutputItem({ item, onAction }) {
         <AIResult text={item.text || ''} streaming={item.streaming} sources={item.sources} />
       )}
       {item.type === 'help' && <HelpResult />}
+      {item.type === 'technicals' && <TechnicalsCard ticker={item.ticker} />}
       {item.type === 'system' && <SystemMessage text={item.text} variant={item.variant} />}
       {item.type === 'error' && <SystemMessage text={item.text} variant="error" />}
+      </Box>
     </Box>
   );
 }
 
-/* ── Welcome prompt ──────────────────────────────────────────────────────── */
+/* ── Finance dashboard (empty-state) ────────────────────────────────────── */
 
 const QUICK_COMMANDS = ['AAPL', 'INDICES', 'NVDA VS MSFT', 'RATES', 'HELP'];
 
-function WelcomePrompt({ onCommand }) {
+/* Reusable section label */
+function DashLabel({ label }) {
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 2, py: 6, px: 3, textAlign: 'center' }}>
-      <Terminal size={28} color="var(--accent)" style={{ opacity: 0.5 }} />
-      <Box>
-        <Typography sx={{ fontFamily: '"Courier New", monospace', fontSize: '0.88rem', fontWeight: 700, color: 'var(--fg-primary)', letterSpacing: '-0.01em' }}>
-          Quarry Finance Language
-        </Typography>
-        <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.78rem', fontWeight: 300, color: 'var(--fg-secondary)', mt: 0.5 }}>
-          Type a command or ask anything in plain English
-        </Typography>
-      </Box>
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, justifyContent: 'center', maxWidth: 400 }}>
-        {QUICK_COMMANDS.map(cmd => (
-          <Box
-            key={cmd}
-            onClick={() => onCommand(cmd)}
-            sx={{
-              px: 1.25, py: 0.5, borderRadius: '7px', cursor: 'pointer',
-              border: '1px solid var(--border)', background: 'var(--gbtn-bg)',
-              fontFamily: '"Courier New", monospace', fontSize: '0.72rem', color: 'var(--fg-secondary)',
-              transition: 'all 0.12s',
-              '&:hover': { borderColor: 'rgba(249,115,22,0.4)', color: 'var(--accent)', background: 'rgba(249,115,22,0.06)' },
-            }}
-          >
-            {cmd}
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.25 }}>
+      <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.50rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.14em', textTransform: 'uppercase', flexShrink: 0 }}>
+        {label}
+      </Typography>
+      <Box sx={{ flex: 1, height: '1px', bgcolor: 'rgba(255,255,255,0.07)' }} />
+    </Box>
+  );
+}
+
+/* Sparkline path builder */
+function buildSpark(pts, w, h) {
+  if (!pts || pts.length < 2) return '';
+  const min = Math.min(...pts), max = Math.max(...pts), range = max - min || 1;
+  return pts.map((v, j) => {
+    const x = ((j / (pts.length - 1)) * w).toFixed(1);
+    const y = (h - ((v - min) / range) * h).toFixed(1);
+    return `${j === 0 ? 'M' : 'L'}${x},${y}`;
+  }).join(' ');
+}
+
+function TopMovers({ prices, onCommand }) {
+  const allPrices = prices || [];
+  const indexPrices = allPrices.filter(s => INDICES.includes(s.rawTicker));
+  const userPrices  = allPrices.filter(s => !INDICES.includes(s.rawTicker));
+
+  /* Top movers from user watchlist sorted by |changePct| */
+  const movers = [...userPrices]
+    .filter(s => s.changePct != null)
+    .sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct));
+
+  const tileBase = {
+    borderRadius: '8px',
+    border: '1px solid rgba(255,255,255,0.07)',
+    borderTop: '1px solid rgba(255,255,255,0.11)',
+    background: 'rgba(255,255,255,0.03)',
+    cursor: 'pointer', transition: 'all 0.13s',
+  };
+  const tileHover = { background: 'rgba(249,115,22,0.07)', borderColor: 'rgba(249,115,22,0.26)', borderTopColor: 'rgba(249,115,22,0.26)' };
+
+  return (
+    <Box sx={{ pt: 2, pb: 4, px: 0.5 }}>
+
+      {/* ── Indices overview ── */}
+      <Box sx={{ mb: 3 }}>
+        <DashLabel label="Market Overview" />
+        {indexPrices.length === 0 ? (
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1 }}>
+            {[0,1,2].map(i => <Skeleton key={i} variant="rounded" height={80} sx={{ borderRadius: '8px', bgcolor: 'rgba(255,255,255,0.05)' }} />)}
           </Box>
-        ))}
+        ) : (
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1 }}>
+            {indexPrices.map((s, i) => {
+              const up  = s.changePct >= 0;
+              const clr = up ? '#22c55e' : '#ef4444';
+              const sym = s.symbol || s.ticker || '';
+              const sp  = buildSpark(s.sparkline, 72, 28);
+              return (
+                <Box key={i} onClick={() => onCommand(s.rawTicker || sym)} sx={{ ...tileBase, p: '14px 16px', '&:hover': tileHover }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1.25 }}>
+                    <Box>
+                      <Typography sx={{ fontFamily: MONO, fontSize: '0.62rem', fontWeight: 700, color: 'var(--fg-dim)', letterSpacing: '0.08em' }}>
+                        {sym}
+                      </Typography>
+                      <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.56rem', fontWeight: 300, color: 'var(--fg-dim)', mt: 0.25, lineHeight: 1, opacity: 0.7 }}>
+                        {s.name?.length > 16 ? s.name.slice(0, 16) + '…' : s.name}
+                      </Typography>
+                    </Box>
+                    {sp && (
+                      <svg width={72} height={28} style={{ display: 'block', opacity: 0.80 }}>
+                        <path d={sp} fill="none" stroke={clr} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                  </Box>
+                  <Typography sx={{ fontFamily: MONO, fontSize: '1.05rem', fontWeight: 700, color: 'var(--fg-primary)', lineHeight: 1, mb: 0.5 }}>
+                    {s.price?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Typography>
+                  <Typography sx={{ fontFamily: MONO, fontSize: '0.66rem', fontWeight: 600, color: clr }}>
+                    {up ? '+' : ''}{s.changePct?.toFixed(2)}%
+                  </Typography>
+                </Box>
+              );
+            })}
+          </Box>
+        )}
       </Box>
+
+      {/* ── Top movers ── */}
+      <Box sx={{ mb: 3 }}>
+        <DashLabel label="Top Movers" />
+        {movers.length === 0 ? (
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 1 }}>
+            {[0,1,2,3].map(i => <Skeleton key={i} variant="rounded" height={72} sx={{ borderRadius: '8px', bgcolor: 'rgba(255,255,255,0.05)' }} />)}
+          </Box>
+        ) : (
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 1 }}>
+            {movers.slice(0, 6).map((s, i) => {
+              const up  = s.changePct >= 0;
+              const clr = up ? '#22c55e' : '#ef4444';
+              const sym = s.symbol || s.ticker || s.rawTicker || '';
+              const sp  = buildSpark(s.sparkline, 80, 26);
+              const logo = getLogoUrl(s.rawTicker || sym);
+              return (
+                <Box key={i} onClick={() => onCommand(s.rawTicker || sym)} sx={{ ...tileBase, p: '11px 14px', display: 'flex', alignItems: 'center', gap: 1.5, '&:hover': tileHover }}>
+                  {logo && (
+                    <img src={logo} alt="" width={18} height={18}
+                      style={{ borderRadius: 4, flexShrink: 0, objectFit: 'contain' }}
+                      onError={e => { e.target.style.display = 'none'; }} />
+                  )}
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', mb: 0.25 }}>
+                      <Typography sx={{ fontFamily: MONO, fontSize: '0.74rem', fontWeight: 700, color: 'var(--fg-primary)' }}>
+                        {sym}
+                      </Typography>
+                      <Typography sx={{ fontFamily: MONO, fontSize: '0.68rem', fontWeight: 600, color: clr }}>
+                        {up ? '+' : ''}{s.changePct?.toFixed(2)}%
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography sx={{ fontFamily: MONO, fontSize: '0.82rem', fontWeight: 600, color: 'var(--fg-primary)', lineHeight: 1 }}>
+                        ${s.price?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </Typography>
+                      {sp && (
+                        <svg width={80} height={26} style={{ display: 'block', opacity: 0.80, flexShrink: 0 }}>
+                          <path d={sp} fill="none" stroke={clr} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </Box>
+                  </Box>
+                </Box>
+              );
+            })}
+          </Box>
+        )}
+      </Box>
+
+      {/* ── Quick commands ── */}
+      <Box>
+        <DashLabel label="Quick Commands" />
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.6 }}>
+          {QUICK_COMMANDS.map(cmd => (
+            <Box
+              key={cmd}
+              onClick={() => onCommand(cmd)}
+              sx={{
+                px: 1.25, py: 0.45, borderRadius: '5px', cursor: 'pointer',
+                border: '1px solid rgba(255,255,255,0.08)',
+                background: 'rgba(255,255,255,0.03)',
+                fontFamily: MONO, fontSize: '0.68rem', color: 'var(--fg-dim)',
+                transition: 'all 0.12s',
+                '&:hover': { borderColor: 'rgba(249,115,22,0.4)', color: 'var(--accent)', background: 'rgba(249,115,22,0.06)' },
+              }}
+            >
+              {cmd}
+            </Box>
+          ))}
+        </Box>
+      </Box>
+
     </Box>
   );
 }
@@ -751,8 +1243,17 @@ function WelcomePrompt({ onCommand }) {
 /* ── Main page ───────────────────────────────────────────────────────────── */
 
 export default function FinancePage() {
-  const navigate  = useNavigate();
-  const topOffset = useTopOffset();
+  const navigate       = useNavigate();
+  const topOffset      = useTopOffset();
+  const [dark, setDark] = useDarkMode();
+  const cellCountRef   = useRef(0);
+
+  /* Force dark mode only while Finance page is open — restore previous value on leave */
+  useEffect(() => {
+    const prev = dark;
+    setDark(true);
+    return () => { setDark(prev); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Watchlist
   const [watchlist,     setWatchlist]     = useState(getSavedWatchlist);
@@ -764,6 +1265,11 @@ export default function FinancePage() {
   const [cmdInput,   setCmdInput]   = useState('');
   const [cmdHistory, setCmdHistory] = useState([]);
   const [, setHistIdx] = useState(-1);
+
+  // Command palette
+  const [paletteOpen,    setPaletteOpen]    = useState(false);
+  const [paletteQuery,   setPaletteQuery]   = useState('');
+  const [paletteIdx,     setPaletteIdx]     = useState(0);
 
   const abortRef   = useRef(null);
   const bottomRef  = useRef(null);
@@ -818,17 +1324,53 @@ export default function FinancePage() {
 
   /* ── Execute a parsed command ── */
   const executeCommand = useCallback(async (cmd) => {
-    const id = Date.now();
+    const id  = Date.now();
+    cellCountRef.current += 1;
+    const cellNum = cellCountRef.current;
+
+    if (cmd.type === 'SLASH') {
+      const { command, args } = cmd;
+      const ticker = (args[0] || '').toUpperCase();
+
+      if (command === 'technicals') {
+        if (!ticker) {
+          setOutputs(prev => [...prev, { id, cellNum, command: cmd.raw, type: 'error', text: 'Usage: /technicals <TICKER>' }]);
+          return;
+        }
+        setOutputs(prev => [...prev, { id, cellNum, command: cmd.raw, type: 'technicals', ticker }]);
+        return;
+      }
+
+      // All other slash commands route to AI with structured prompts
+      const SLASH_PROMPTS = {
+        analyze:  ticker ? `Deep investment analysis for ${ticker}: (1) Technical outlook, (2) Fundamental metrics, (3) Recent catalysts, (4) Analyst consensus, (5) Key risks, (6) Verdict with target range. Be concise and structured.` : null,
+        earnings: ticker ? `Latest earnings analysis for ${ticker}: actual vs estimates, revenue trend, EPS growth, management guidance, and market reaction.` : null,
+        macro:    'Current macro environment analysis: Federal Reserve policy, interest rates, inflation trajectory, employment, sector rotation implications, and near-term market outlook.',
+        brief:    'Morning market brief: key index levels and moves, top pre-market movers, major overnight headlines, economic data due today, and one key thing to watch.',
+        sector:   args.length > 0 ? `Sector rotation analysis for ${args.join(' ')} sector: relative performance, top picks, headwinds/tailwinds, and whether to overweight or underweight.` : 'Current sector rotation analysis: which sectors are leading/lagging, where institutional money is flowing, and best opportunities now.',
+        compare:  args.length >= 2 ? `Compare ${args[0].toUpperCase()} vs ${args[1].toUpperCase()}: business model, growth rates, valuation multiples, competitive positioning, and investment recommendation.` : null,
+      };
+
+      const query = SLASH_PROMPTS[command];
+      if (!query) {
+        setOutputs(prev => [...prev, { id, cellNum, command: cmd.raw, type: 'error', text: `ERR: Unknown command /${command}. Type /help or HELP.` }]);
+        return;
+      }
+
+      // Execute as AI query
+      await executeCommand({ ...cmd, type: 'AI', query });
+      return;
+    }
 
     if (cmd.type === 'HELP') {
-      setOutputs(prev => [...prev, { id, command: cmd.raw, type: 'help' }]);
+      setOutputs(prev => [...prev, { id, cellNum, command: cmd.raw, type: 'help' }]);
       return;
     }
 
     if (cmd.type === 'WATCH_ADD') {
       const added = addTicker(cmd.ticker);
       setOutputs(prev => [...prev, {
-        id, command: cmd.raw, type: 'system',
+        id, cellNum, command: cmd.raw, type: 'system',
         text: added ? `${cmd.ticker} added to watchlist.` : `${cmd.ticker} is already in your watchlist.`,
         variant: added ? 'success' : 'info',
       }]);
@@ -839,15 +1381,15 @@ export default function FinancePage() {
       const t = cmd.ticker.toUpperCase();
       if (watchlist.includes(t)) {
         removeTicker(t);
-        setOutputs(prev => [...prev, { id, command: cmd.raw, type: 'system', text: `${t} removed from watchlist.`, variant: 'info' }]);
+        setOutputs(prev => [...prev, { id, cellNum, command: cmd.raw, type: 'system', text: `${t} removed from watchlist.`, variant: 'info' }]);
       } else {
-        setOutputs(prev => [...prev, { id, command: cmd.raw, type: 'system', text: `${t} is not in your watchlist.`, variant: 'error' }]);
+        setOutputs(prev => [...prev, { id, cellNum, command: cmd.raw, type: 'system', text: `${t} is not in your watchlist.`, variant: 'error' }]);
       }
       return;
     }
 
     if (cmd.type === 'QUOTE') {
-      setOutputs(prev => [...prev, { id, command: cmd.raw, type: 'loading' }]);
+      setOutputs(prev => [...prev, { id, cellNum, command: cmd.raw, type: 'loading' }]);
       try {
         const sym = cmd.tickers[0];
         const res  = await fetch(`${API}/explore/quote/${encodeURIComponent(sym)}`);
@@ -870,7 +1412,7 @@ export default function FinancePage() {
 
     if (cmd.type === 'COMPARE' || cmd.type === 'INDICES') {
       const syms = cmd.type === 'INDICES' ? INDICES : cmd.tickers;
-      setOutputs(prev => [...prev, { id, command: cmd.raw, type: 'loading' }]);
+      setOutputs(prev => [...prev, { id, cellNum, command: cmd.raw, type: 'loading' }]);
       try {
         const res  = await fetch(`${API}/explore/stocks?symbols=${encodeURIComponent(syms.join(','))}`);
         const data = res.ok ? await res.json() : { stocks: [] };
@@ -891,7 +1433,7 @@ export default function FinancePage() {
       if (abortRef.current) abortRef.current.abort();
       abortRef.current = new AbortController();
 
-      setOutputs(prev => [...prev, { id, command: cmd.raw, type: 'ai', text: '', streaming: true, sources: [] }]);
+      setOutputs(prev => [...prev, { id, cellNum, command: cmd.raw, type: 'ai', text: '', streaming: true, sources: [] }]);
 
       try {
         const res = await fetch(`${API}/explore/search`, {
@@ -941,11 +1483,42 @@ export default function FinancePage() {
     }
   }, [addTicker, removeTicker, watchlist]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* ── Palette helpers ── */
+  const paletteFiltered = SLASH_COMMANDS.filter(c =>
+    !paletteQuery || c.name.startsWith(paletteQuery.toLowerCase())
+  );
+
+  const handleInputChange = useCallback((val) => {
+    setCmdInput(val);
+    setHistIdx(-1);
+    if (val.startsWith('/')) {
+      const after = val.slice(1);
+      // Only show palette while typing the command name (no space yet)
+      if (!after.includes(' ')) {
+        setPaletteOpen(true);
+        setPaletteQuery(after);
+        setPaletteIdx(0);
+        return;
+      }
+    }
+    setPaletteOpen(false);
+    setPaletteQuery('');
+  }, []);
+
+  const selectPaletteItem = useCallback((cmd) => {
+    const completion = `/${cmd.name}${cmd.args ? ' ' : ''}`;
+    setCmdInput(completion);
+    setPaletteOpen(false);
+    setPaletteQuery('');
+    inputRef.current?.focus();
+  }, []);
+
   /* ── Submit command ── */
   const submitCmd = useCallback((rawInput) => {
     const input = (rawInput || cmdInput).trim();
     if (!input) return;
 
+    setPaletteOpen(false);
     setCmdInput('');
     setCmdHistory(prev => [input, ...prev.slice(0, 49)]);
     setHistIdx(-1);
@@ -956,6 +1529,29 @@ export default function FinancePage() {
 
   /* ── Keyboard navigation ── */
   const handleKeyDown = (e) => {
+    // Palette navigation
+    if (paletteOpen && paletteFiltered.length > 0) {
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setPaletteIdx(i => (i - 1 + paletteFiltered.length) % paletteFiltered.length);
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setPaletteIdx(i => (i + 1) % paletteFiltered.length);
+        return;
+      }
+      if (e.key === 'Tab' || (e.key === 'Enter' && paletteFiltered.length > 0 && paletteIdx >= 0)) {
+        e.preventDefault();
+        selectPaletteItem(paletteFiltered[paletteIdx]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        setPaletteOpen(false);
+        return;
+      }
+    }
+
     if (e.key === 'Enter') {
       e.preventDefault();
       submitCmd();
@@ -985,20 +1581,20 @@ export default function FinancePage() {
     <Box sx={{ height: '100vh', paddingTop: `${topOffset}px`, display: 'flex', flexDirection: 'column', background: 'transparent' }}>
 
       {/* ── Top bar ── */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2.5, py: 1.1, borderBottom: '1px solid var(--border)', background: 'rgba(237,232,223,0.92)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', flexShrink: 0 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2.5, py: 1.1, borderBottom: '1px solid var(--border)', background: dark ? 'rgba(10,12,18,0.98)' : 'rgba(237,232,223,0.92)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', flexShrink: 0 }}>
         <Box onClick={() => navigate('/')} sx={{ display: 'flex', alignItems: 'center', gap: 0.6, cursor: 'pointer', opacity: 0.55, '&:hover': { opacity: 1 }, transition: 'opacity 0.14s' }}>
           <ArrowLeft size={13} color="var(--fg-secondary)" />
           <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.70rem', color: 'var(--fg-secondary)' }}>Home</Typography>
         </Box>
         <Box sx={{ width: '1px', height: 14, bgcolor: 'var(--border)' }} />
         <TrendingUp size={14} color="var(--accent)" />
-        <Typography sx={{ fontFamily: '"Courier New", monospace', fontSize: '0.82rem', fontWeight: 700, color: 'var(--fg-primary)', letterSpacing: '-0.01em' }}>
+        <Typography sx={{ fontFamily: MONO, fontSize: '0.82rem', fontWeight: 700, color: 'var(--fg-primary)', letterSpacing: '-0.01em' }}>
           Finance Terminal
         </Typography>
         <Box sx={{
           px: 0.75, py: 0.2, borderRadius: '5px', ml: 0.5,
           border: '1px solid rgba(249,115,22,0.25)', bgcolor: 'rgba(249,115,22,0.07)',
-          fontFamily: '"Courier New", monospace', fontSize: '0.58rem', fontWeight: 700,
+          fontFamily: MONO, fontSize: '0.58rem', fontWeight: 700,
           color: 'rgba(249,115,22,0.75)', letterSpacing: '0.06em', textTransform: 'uppercase',
         }}>
           QFL
@@ -1008,9 +1604,7 @@ export default function FinancePage() {
           <RefreshCw size={11} color="var(--fg-dim)" style={{ animation: pricesLoading ? 'finSpin 1s linear infinite' : 'none' }} />
           <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.62rem', color: 'var(--fg-dim)' }}>Refresh</Typography>
         </Box>
-        <Box onClick={() => navigate('/settings')} sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', opacity: 0.4, '&:hover': { opacity: 0.85 }, transition: 'opacity 0.14s', ml: 0.5 }}>
-          <Settings size={13} color="var(--fg-dim)" />
-        </Box>
+        <NavControls />
       </Box>
 
       {/* ── Stock marquee strip ── */}
@@ -1020,49 +1614,68 @@ export default function FinancePage() {
       <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
 
         {/* ── Left sidebar ── */}
-        <Box sx={{ width: 248, flexShrink: 0, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflowY: 'auto', background: 'rgba(229,221,208,0.45)', '&::-webkit-scrollbar': { width: 3 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(175,150,105,0.28)', borderRadius: 2 } }}>
+        <Box sx={{
+          width: 232, flexShrink: 0,
+          borderRight: dark ? '1px solid rgba(255,255,255,0.07)' : '1px solid var(--border)',
+          display: 'flex', flexDirection: 'column', overflowY: 'auto',
+          background: dark ? 'rgba(12,14,22,0.99)' : 'rgba(225,218,205,0.55)',
+          '&::-webkit-scrollbar': { width: 3 },
+          '&::-webkit-scrollbar-thumb': { bgcolor: dark ? 'rgba(255,255,255,0.12)' : 'rgba(175,150,105,0.28)', borderRadius: 2 },
+        }}>
+          {/* Sidebar sections */}
+          {[
+            {
+              label: 'Market',
+              content: pricesLoading
+                ? [0, 1, 2].map(i => <RowSkeleton key={i} />)
+                : indexRows.map(s => <StockRow key={s.ticker} stock={s} onQuery={c => executeCommand(c)} onRemove={() => {}} removable={false} />),
+            },
+            {
+              label: 'Watchlist',
+              content: pricesLoading
+                ? [0, 1, 2, 3].map(i => <RowSkeleton key={i} />)
+                : userRows.length === 0
+                  ? <Typography sx={{ fontFamily: MONO, fontSize: '0.66rem', color: 'var(--fg-dim)', px: 1.25, py: 0.5 }}>
+                      WATCH ADD &lt;TICKER&gt;
+                    </Typography>
+                  : userRows.map(s => <StockRow key={s.rawTicker || s.ticker} stock={s} onQuery={c => executeCommand(c)} onRemove={removeTicker} />),
+            },
+          ].map(({ label, content }) => (
+            <Box key={label} sx={{ pb: 0.5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, pt: 1.25, pb: 0.75 }}>
+                <Typography sx={{
+                  fontFamily: 'var(--font-family)', fontSize: '0.50rem', fontWeight: 600,
+                  color: 'var(--fg-dim)', letterSpacing: '0.14em', textTransform: 'uppercase', flexShrink: 0,
+                }}>
+                  {label}
+                </Typography>
+                <Box sx={{ flex: 1, height: '1px', bgcolor: dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.08)' }} />
+              </Box>
+              {content}
+            </Box>
+          ))}
 
-          {/* Market overview */}
-          <Box sx={{ p: 1.5, pb: 0.5 }}>
-            <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.54rem', fontWeight: 500, color: 'var(--fg-dim)', letterSpacing: '0.10em', textTransform: 'uppercase', mb: 0.5 }}>
-              Market Overview
-            </Typography>
-            {pricesLoading
-              ? [0, 1, 2].map(i => <RowSkeleton key={i} />)
-              : indexRows.map(s => <StockRow key={s.ticker} stock={s} onQuery={c => executeCommand(c)} onRemove={() => {}} removable={false} />)
-            }
-          </Box>
-
-          <Box sx={{ height: '1px', bgcolor: 'var(--border)', mx: 1.5, my: 0.75 }} />
-
-          {/* Watchlist */}
-          <Box sx={{ px: 1.5, pt: 0, flex: 1 }}>
-            <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.54rem', fontWeight: 500, color: 'var(--fg-dim)', letterSpacing: '0.10em', textTransform: 'uppercase', mb: 0.5 }}>
-              Watchlist
-            </Typography>
-            {pricesLoading
-              ? [0, 1, 2, 3].map(i => <RowSkeleton key={i} />)
-              : userRows.length === 0
-                ? <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.70rem', color: 'var(--fg-dim)', fontStyle: 'italic', px: 1.25, py: 0.5 }}>
-                    Type WATCH ADD AAPL to add tickers
-                  </Typography>
-                : userRows.map(s => <StockRow key={s.rawTicker || s.ticker} stock={s} onQuery={c => executeCommand(c)} onRemove={removeTicker} />)
-            }
-          </Box>
-
-          {/* Quick command reference */}
-          <Box sx={{ p: 1.5, borderTop: '1px solid var(--border)', flexShrink: 0 }}>
-            <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.54rem', fontWeight: 500, color: 'var(--fg-dim)', letterSpacing: '0.10em', textTransform: 'uppercase', mb: 0.75 }}>
-              Quick Commands
-            </Typography>
-            {[['AAPL VS MSFT', 'compare'], ['INDICES', 'market'], ['RATES', 'rates'], ['HELP', 'reference']].map(([cmd, label]) => (
+          {/* Quick commands */}
+          <Box sx={{ mt: 'auto', borderTop: '1px solid var(--border)', p: 1.5 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75 }}>
+              <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.50rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.14em', textTransform: 'uppercase', flexShrink: 0 }}>
+                Commands
+              </Typography>
+              <Box sx={{ flex: 1, height: '1px', bgcolor: dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.08)' }} />
+            </Box>
+            {[['AAPL VS MSFT', 'cmp'], ['INDICES', 'mkt'], ['RATES', 'yld'], ['HELP', 'ref']].map(([cmd, label]) => (
               <Box
                 key={cmd}
                 onClick={() => submitCmd(cmd)}
-                sx={{ px: 1, py: 0.5, borderRadius: '6px', cursor: 'pointer', transition: 'background 0.12s', '&:hover': { background: 'rgba(249,115,22,0.06)' }, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                sx={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  px: 1, py: 0.45, borderRadius: '3px', cursor: 'pointer',
+                  transition: 'background 0.12s',
+                  '&:hover': { background: 'rgba(249,115,22,0.07)' },
+                }}
               >
-                <Typography sx={{ fontFamily: '"Courier New", monospace', fontSize: '0.70rem', color: 'var(--accent)' }}>{cmd}</Typography>
-                <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.60rem', color: 'var(--fg-dim)' }}>{label}</Typography>
+                <Typography sx={{ fontFamily: MONO, fontSize: '0.68rem', color: 'var(--accent)' }}>{cmd}</Typography>
+                <Typography sx={{ fontFamily: MONO, fontSize: '0.58rem', color: 'var(--fg-dim)' }}>{label}</Typography>
               </Box>
             ))}
           </Box>
@@ -1071,53 +1684,96 @@ export default function FinancePage() {
         {/* ── Terminal panel ── */}
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
+          {/* ── Input bar at TOP — like a real terminal ── */}
+          <Box sx={{
+            px: 3, py: 1.1,
+            background: dark ? 'rgba(8,10,16,0.99)' : 'rgba(237,232,223,0.85)',
+            borderBottom: dark ? '2px solid rgba(249,115,22,0.30)' : '2px solid rgba(175,150,105,0.30)',
+            backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
+            flexShrink: 0, display: 'flex', alignItems: 'center', gap: 1,
+            position: 'relative',
+          }}>
+            {/* Command palette — floats above input bar */}
+            {paletteOpen && (
+              <CommandPalette
+                query={paletteQuery}
+                onSelect={selectPaletteItem}
+                activeIdx={paletteIdx}
+                dark={dark}
+              />
+            )}
+            {/* Prompt glyph */}
+            <Typography sx={{ fontFamily: MONO, fontSize: '0.90rem', fontWeight: 700, color: paletteOpen ? '#a78bfa' : 'var(--accent)', flexShrink: 0, lineHeight: 1, userSelect: 'none', transition: 'color 0.15s' }}>
+              ›
+            </Typography>
+            {/* Highlighted input wrapper */}
+            <div style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center' }}>
+              {/* Syntax-highlight overlay — sits behind the transparent input */}
+              {cmdInput && (
+                <div
+                  aria-hidden
+                  style={{
+                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                    fontFamily: MONO, fontSize: '0.86rem', fontWeight: 500,
+                    letterSpacing: '0.01em', padding: '3px 0',
+                    pointerEvents: 'none', userSelect: 'none',
+                    whiteSpace: 'pre', overflow: 'hidden',
+                    display: 'flex', alignItems: 'center',
+                  }}
+                  dangerouslySetInnerHTML={{ __html: highlightQFL(cmdInput) }}
+                />
+              )}
+              <input
+                ref={inputRef}
+                className="qfl-input"
+                value={cmdInput}
+                onChange={e => handleInputChange(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onBlur={() => setTimeout(() => setPaletteOpen(false), 150)}
+                placeholder="enter command or /command…"
+                autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
+                autoFocus
+                style={{
+                  width: '100%', border: 'none', outline: 'none',
+                  background: 'transparent',
+                  fontFamily: MONO, fontSize: '0.86rem', fontWeight: 500,
+                  color: cmdInput ? 'transparent' : undefined,
+                  caretColor: paletteOpen ? '#a78bfa' : '#fb923c',
+                  padding: '3px 0', letterSpacing: '0.01em',
+                  position: 'relative', zIndex: 1,
+                }}
+              />
+            </div>
+            {cmdHistory.length > 0 && !paletteOpen && (
+              <Typography sx={{ fontFamily: MONO, fontSize: '0.58rem', color: 'var(--fg-dim)', flexShrink: 0, userSelect: 'none' }}>
+                ↑↓
+              </Typography>
+            )}
+            {paletteOpen && (
+              <Typography sx={{ fontFamily: MONO, fontSize: '0.58rem', color: '#a78bfa', flexShrink: 0, userSelect: 'none' }}>
+                ↑↓ tab
+              </Typography>
+            )}
+          </Box>
+
           {/* Output feed */}
           <Box
             onClick={() => inputRef.current?.focus()}
-            sx={{ flex: 1, overflowY: 'auto', px: 3, py: 2.5, cursor: 'text', '&::-webkit-scrollbar': { width: 4 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(175,150,105,0.28)', borderRadius: 2 } }}
+            sx={{
+              flex: 1, overflowY: 'auto', px: 3, py: 2.5, cursor: 'text',
+              background: dark ? 'rgba(6,8,14,1)' : 'transparent',
+              '&::-webkit-scrollbar': { width: 4 },
+              '&::-webkit-scrollbar-thumb': { bgcolor: dark ? 'rgba(255,255,255,0.10)' : 'rgba(175,150,105,0.28)', borderRadius: 2 },
+            }}
           >
             <Box sx={{ maxWidth: 820, mx: 'auto' }}>
               {outputs.length === 0 ? (
-                <WelcomePrompt onCommand={cmd => submitCmd(cmd)} />
+                <TopMovers prices={prices} onCommand={cmd => submitCmd(cmd)} />
               ) : (
                 outputs.map(item => <OutputItem key={item.id} item={item} onAction={cmd => submitCmd(cmd)} />)
               )}
               <div ref={bottomRef} />
             </Box>
-          </Box>
-
-          {/* Terminal input */}
-          <Box sx={{
-            px: 3, py: 1.25, borderTop: '1px solid var(--border)',
-            background: 'rgba(229,221,208,0.70)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
-            flexShrink: 0, display: 'flex', alignItems: 'center', gap: 0.75,
-          }}>
-            <ChevronRight size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
-            <input
-              ref={inputRef}
-              value={cmdInput}
-              onChange={e => { setCmdInput(e.target.value); setHistIdx(-1); }}
-              onKeyDown={handleKeyDown}
-              placeholder="Enter command or ask anything — type HELP to see commands"
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck={false}
-              style={{
-                flex: 1, border: 'none', outline: 'none',
-                background: 'transparent',
-                fontFamily: '"Courier New", monospace',
-                fontSize: '0.84rem',
-                color: 'var(--fg-primary)',
-                padding: '4px 0',
-                letterSpacing: '0.01em',
-              }}
-            />
-            {cmdHistory.length > 0 && (
-              <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.58rem', color: 'var(--fg-dim)', flexShrink: 0, userSelect: 'none' }}>
-                ↑↓ history
-              </Typography>
-            )}
           </Box>
         </Box>
       </Box>
@@ -1125,6 +1781,7 @@ export default function FinancePage() {
       <style>{`
         @keyframes blinkPulse { 50% { opacity: 0; } }
         @keyframes finSpin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+        .qfl-input::placeholder { color: rgba(160,170,180,0.38); }
       `}</style>
     </Box>
   );
