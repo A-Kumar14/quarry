@@ -1,0 +1,12 @@
+frontend/
+.git/
+**/__pycache__/
+**/*.pyc
+**/.env
+backend/.env.example
+backend/.venv/
+backend/tests/
+CONTEXT/
+CLAUDE.md
+README.md
+PHILOSOPHY.md
