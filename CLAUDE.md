@@ -1,60 +1,89 @@
-# Quarry — Project Guidelines
+# Quarry — Claude Code Context
 
-## Overview
-Quarry is an AI-powered research and finance platform with three main surfaces:
-- **Quarry Search** (`/`) — web search + AI synthesis with sources, contradictions, follow-ups
-- **Quarry Research** (`/research`) — conversational research assistant (multi-turn, file upload)
-- **Finance Terminal** (`/finance`) — QFL command-based live market data, charts, AI analysis
+## What Quarry Is Becoming
+Quarry is an epistemic research tool for crisis journalists and policy analysts.
+The philosophical difference from Perplexity:
+- Perplexity optimises for CONFIDENCE ("here is the answer")
+- Quarry optimises for EPISTEMIC TRANSPARENCY ("here is what is being said,
+  where it comes from, and where sources contradict each other")
 
-## Tech Stack
-- **Frontend**: React (CRA), MUI (sx prop), Lucide icons, ReactMarkdown + remark-gfm
-- **Backend**: FastAPI + Python, yfinance, trafilatura, duckduckgo-search (ddgs), SSE streaming
+## Stack (Read Before Every Session)
+- Frontend: React 18 (CRA), MUI (sx prop), Lucide icons, ReactMarkdown + remark-gfm,
+  react-force-graph-2d (KnowledgeGraph only)
+- Backend: FastAPI, Python 3.10+, Railway deployment
+- LLM: OpenRouter ONLY (openai/gpt-4o default) — llm.py has stream_sync() and chat_sync()
+- Search: DuckDuckGo via ddgs library (no API key)
+- Scraping: trafilatura (max_pages=5, 3000 char truncation)
+- No database (in-memory source profiles only — see Session 1)
+- No auth
 
-## Architecture
-- All AI responses stream as Server-Sent Events (`text/event-stream`)
-- LLM provider chain: OpenRouter → OpenAI → Gemini (auto-detected from env vars)
-- Finance data: yfinance 2.x (note: `raw["Close"]` returns DataFrame — use `hasattr(closes, "columns")` guard)
-- Web scraping: trafilatura with 4s timeout, max 3 pages, 2000 char truncation
+## Design System — "Modern Newspaper" (DO NOT CHANGE)
+- Background: sepia gradient #EDE8DF → #E5DDD0 → #DDD5C0
+- var(--font-serif) for headings, var(--font-family) Inter for body
+- var(--font-mono) for code/dates
+- accent: #F97316 (orange)
+- Border-radius: 12px on cards
+- Glass-morphism: rgba(255,255,255,0.15), blur(12px), 1px solid rgba(255,255,255,0.25)
+- Hover: translateY(-1px) + shadow, 0.16-0.18s ease
 
-## Design System — "Modern Newspaper"
-The UI follows a **premium newspaper aesthetic** with sepia/paper tones. Key rules:
+## Critical Architecture Facts
 
-- **Background**: sepia gradient `#EDE8DF → #E5DDD0 → #DDD5C0` — never change this
-- **Fonts**: `var(--font-serif)` for headings/titles, `var(--font-family)` for body, `var(--font-mono)` for code/dates
-- **Border-radius**: `12px` on cards, search bar, and image containers (unified system)
-- **Hover interactions**: `translateY(-1px)` + `shadow-md` on all interactive cards, `transition: all 0.16–0.18s ease`
-- **Source labels**: uppercase, `fontSize: '0.5rem'`, `letterSpacing: '0.12em'`
-- **Headlines**: `lineHeight: 1.3` (leading-tight)
-- **Deep toggle**: inset box-shadow `inset 0 2px 5px rgba(0,0,0,0.13)` when active (pressed/physical look)
-- **CTA blocks**: 2-column grid, thin `1px solid rgba(0,0,0,0.10)` border
-- **Calendar ticker**: single-line watermark, `opacity: 0.38`, no competing density
+### Backend Pipeline (ai_service.py)
+explore_the_web(query) currently does:
+  search → scrape → build_context → SINGLE LLM call → stream
+Session 2 replaces this with a 4-step pipeline.
 
-## QFL (Quarry Finance Language)
-Terminal command parser in `frontend/src/pages/FinancePage.js → parseQFL()`:
-- `AAPL` — single ticker quote
-- `AAPL VS MSFT` — side-by-side comparison
-- `COMPARE AAPL MSFT NVDA` — multi-ticker table
-- `INDICES` / `INDEX` — market overview
-- `HELP` — command reference
-- Reserved KEYWORDS are checked **before** the ticker regex to prevent collision
+detect_contradictions(sources) ALREADY EXISTS in ai_service.py
+  - Takes list of {title, url, snippet} sources
+  - Returns {contradictions: [...], consensus: str}
+  - Called from /explore/search endpoint AFTER the main stream completes
+  - ContradictionsTab.js is ALREADY wired to receive this data
+  DO NOT REBUILD THIS. Session 2 enriches it with new pipeline data.
 
-## Key Files
-- `frontend/src/pages/ExplorePage.js` — main search page (home + results)
-- `frontend/src/pages/FinancePage.js` — finance terminal + QFL parser
-- `frontend/src/pages/ResearchPage.js` — conversational research assistant
-- `frontend/src/components/MonthlyFiguresMarquee.js` — calendar watermark ticker
-- `backend/services/ai_service.py` — SAG pipeline, contradiction detection, research session
-- `backend/services/search_service.py` — DuckDuckGo search, trafilatura scraping, ESPN scores
-- `backend/services/finance_service.py` — yfinance quotes, chart history, news
-- `backend/services/llm.py` — LLM provider abstraction (OpenRouter/OpenAI/Gemini)
-- `backend/routers/explore.py` — FastAPI routes for search, finance, images, trending
+### Frontend Structure (ExplorePage.js — 1744 lines)
+MiniTabStrip tabs: Result / Perspectives / Citations / Images / Contradictions
+ContradictionsTab is already imported and receiving data.
+KnowledgeGraph is available as a component (react-force-graph-2d).
+WatchlistGrid shows 6 stock mini-cards on the homepage idle state.
+OutlinePanel streams from /explore/outline.
+MonthlyFiguresMarquee has been archived — remove any imports if they error.
 
-## Performance Constraints
-- `max_tokens: 1000` across all LLM calls
-- Search: `max_results=5`, `max_pages=3`, scrape timeout `8s`, per-page timeout `4s`
-- ESPN scores: all 8 leagues fetched in parallel with 4s total deadline
-- Contradiction detection: runs in `ThreadPoolExecutor` with 6s deadline
+### Utility Files
+sourceQuality.js — classifies URLs as high/medium/unknown (hardcoded domain list)
+  → Session 3 adds sourceProfile.js (API-backed) alongside it
+sourceLibrary.js — localStorage saved-sources system
+  → DO NOT TOUCH THIS. It's a separate feature.
 
-## Commit Style
-- Descriptive subject line, no co-author attribution (DO NOT MENTION CLAUDE AS THE CONTRIBUTOR)
-- Group related changes into a single commit rather than many small ones
+### LLM Usage Pattern
+stream_sync(messages) → yields text tokens (for SSE streaming)
+chat_sync(messages, timeout=15) → returns full string (for pipeline steps)
+Use chat_sync() for extract_claims() and reconcile_claims() in Session 2.
+Use stream_sync() for generate_brief() in Session 2.
+
+## Files That Must Never Be Modified
+- backend/services/citation_service.py
+- backend/services/finance_service.py
+- frontend/src/utils/sourceLibrary.js
+- Any file in frontend/src/archived/
+
+## Test Suite
+Run with: cd backend && python3 -m pytest
+Baseline: 169 passing, 14 pre-existing failures (stale imports — NOT introduced by us).
+All 169 passing tests must still pass after each session.
+The key SSE contract that tests enforce:
+  sources event → chunk events → [DONE]
+This order must be preserved in the new pipeline.
+
+## What NOT To Do
+- Do NOT modify backend/security/ (any file)
+- Do NOT delete sourceLibrary.js (different feature from sourceQuality.js)
+- Do NOT rebuild detect_contradictions — it already works
+- Do NOT change the SSE event format from `data: JSON\n\n`
+- Do NOT add ChromaDB, auth, or a database (in-memory source profiles only)
+- Do NOT install new npm packages without checking first
+- Do NOT change the sepia/newspaper design system
+
+## Session State
+Phase: PHASE 1 — Foundation
+Last completed: Step 0 (branch created, dead pages archived)
+Branch: overhaul/epistemic-pipeline
