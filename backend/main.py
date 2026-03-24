@@ -18,6 +18,7 @@ from slowapi.util import get_remote_address
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from routers import explore
+from routers.sources import router as sources_router
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -52,6 +53,7 @@ app.add_middleware(
 )
 
 app.include_router(explore.router)
+app.include_router(sources_router)
 
 
 # ── Generic exception handler (prevents API key / traceback leakage) ──────────
