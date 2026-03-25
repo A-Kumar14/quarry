@@ -86,5 +86,5 @@ This order must be preserved in the new pipeline.
 
 ## Session State
 Phase: PHASE 1 — Foundation
-Last completed: Session 10: Three-column results, ArtifactsPage, document persistence to localStorage, pipeline fixes
+Last completed: Session 11: Writing surface overhaul — document-first layout, story sidebar, confidence bar, drawer default collapsed, unsourced detection improved
 Branch: overhaul/epistemic-pipeline
