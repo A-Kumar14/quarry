@@ -730,15 +730,15 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
       {/* Finance card — shown when a stock/ticker was detected */}
       {stockData && <FinanceCard data={stockData} />}
 
-      {/* Three-column layout */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '240px 1fr', lg: '240px 1fr 260px' }, gap: 0 }}>
+      {/* Three-column layout (single-column for finance queries) */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: stockData ? '1fr' : { xs: '1fr', md: '240px 1fr', lg: '240px 1fr 260px' }, gap: 0 }}>
 
         {/* ── LEFT COLUMN: Source Intelligence ── */}
         <Box sx={{
           borderRight: '1px solid var(--border)',
           padding: '16px 14px',
           overflowY: 'auto',
-          display: { xs: 'none', md: 'block' },
+          display: stockData ? 'none' : { xs: 'none', md: 'block' },
         }}>
           <Typography sx={{
             fontFamily: 'var(--font-family)', fontSize: '0.58rem', fontWeight: 600,
@@ -996,7 +996,7 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
         </Box>
 
         {/* ── RIGHT COLUMN: Claim Landscape ── */}
-        {(claims.length > 0 || sources.length > 0) && (
+        {!stockData && (claims.length > 0 || sources.length > 0) && (
           <Box sx={{
             borderLeft: '1px solid var(--border)',
             padding: '16px 14px',
