@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quarry — Research that shows its work</title>
+  <meta name="description" content="For journalists and analysts who need to know where information actually comes from — not just what it says." />
+  <meta property="og:title" content="Quarry — Research that shows its work" />
+  <meta property="og:description" content="For journalists who need to know where information actually comes from." />
+  <meta property="og:type" content="website" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(160deg, #EDE8DF 0%, #E5DDD0 50%, #DDD5C0 100%);
+      font-family: 'DM Sans', system-ui, sans-serif;
+      padding: 24px;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.72);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.55);
+      border-radius: 20px;
+      box-shadow: 0 8px 40px rgba(0, 0, 0, 0.08);
+      padding: 52px 60px;
+      max-width: 600px;
+      width: 100%;
+    }
+
+    .wordmark {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 1.05rem;
+      font-weight: 400;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #F97316;
+      margin-bottom: 28px;
+    }
+
+    .headline {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 2.4rem;
+      font-weight: 400;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+      color: #111827;
+      margin-bottom: 16px;
+    }
+
+    .subheadline {
+      font-size: 1rem;
+      font-weight: 300;
+      line-height: 1.65;
+      color: #4B5563;
+      margin-bottom: 32px;
+      max-width: 460px;
+    }
+
+    .pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 36px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: 20px;
+      border: 1px solid rgba(249, 115, 22, 0.25);
+      background: rgba(249, 115, 22, 0.06);
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: #c2540a;
+      letter-spacing: 0.01em;
+    }
+
+    .pill::before {
+      content: '✦';
+      font-size: 0.55rem;
+      opacity: 0.7;
+    }
+
+    .cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 13px 28px;
+      background: #F97316;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      letter-spacing: 0.01em;
+      transition: background 0.16s ease, transform 0.16s ease;
+      box-shadow: 0 2px 12px rgba(249, 115, 22, 0.30);
+    }
+
+    .cta:hover {
+      background: #ea6c0a;
+      transform: translateY(-1px);
+    }
+
+    .cta-arrow {
+      font-size: 1rem;
+      transition: transform 0.16s ease;
+    }
+
+    .cta:hover .cta-arrow {
+      transform: translateX(3px);
+    }
+
+    .fine-print {
+      margin-top: 20px;
+      font-size: 0.72rem;
+      font-weight: 300;
+      color: #9CA3AF;
+      letter-spacing: 0.02em;
+    }
+
+    @media (max-width: 520px) {
+      .card { padding: 36px 28px; }
+      .headline { font-size: 1.85rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="wordmark">Quarry</div>
+
+    <h1 class="headline">Research that<br>shows its work.</h1>
+
+    <p class="subheadline">
+      For journalists and analysts who need to know where
+      information actually comes from — not just what it says.
+    </p>
+
+    <div class="pills">
+      <span class="pill">Source provenance</span>
+      <span class="pill">Contradiction detection</span>
+      <span class="pill">Claim verification</span>
+    </div>
+
+    <a href="/" class="cta">
+      Open Quarry <span class="cta-arrow">→</span>
+    </a>
+
+    <p class="fine-print">Built for crisis research. Free to use.</p>
+  </div>
+</body>
+</html>

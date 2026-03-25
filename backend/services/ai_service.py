@@ -155,7 +155,8 @@ Before writing your answer, verify that the search results are actually relevant
 
 --- WEB CONTEXT ---
 {context_block}
---- END CONTEXT ---"""
+--- END CONTEXT ---
+{epistemic_instruction}"""
 
 _FINANCE_INSTRUCTION = (
     "**[LIVE FINANCE DATA present]** Treat the [LIVE FINANCE DATA] block at the top of the context "
@@ -171,6 +172,16 @@ _SCORES_INSTRUCTION = (
     "as the most authoritative and up-to-date source for current match scores, game status, and "
     "in-progress stats. Web sources may be stale — prefer the live scores block for anything "
     "time-sensitive. For historical records, standings, or player background, use the web sources.\n\n"
+)
+
+_EPISTEMIC_INSTRUCTION = (
+    "\n\n**[EPISTEMIC PIPELINE]** The following claims were automatically extracted and "
+    "reconciled across sources by Quarry's epistemic pipeline. Use them to calibrate your "
+    "confidence language — but do not list them verbatim in your answer.\n"
+    "- **[verified]** = corroborated by 2+ credible sources\n"
+    "- **[contested]** = sources actively disagree on this fact\n"
+    "- **[uncertain]** = single source or low-credibility outlet\n\n"
+    "{claims_block}"
 )
 
 
@@ -257,15 +268,32 @@ Use this markdown structure. Do not deviate from the section headers or numberin
 - If no research context is provided, generate a general-purpose outline for exploratory / argumentative research on the topic."""
 
 
-def build_explore_system_prompt(context_block: str, stock_data=None, live_scores: bool = False) -> str:
+def build_explore_system_prompt(
+    context_block: str,
+    stock_data=None,
+    live_scores: bool = False,
+    use_epistemic: bool = False,
+    reconciled_claims: list | None = None,
+) -> str:
     """
     Construct the explore_the_web system prompt with the correct conditional
     instruction blocks injected.
     """
+    if use_epistemic and reconciled_claims:
+        claims_lines = "\n".join(
+            f"- [{r.get('status', 'uncertain')}] {r.get('claim', '')}"
+            + (f" — {r['note']}" if r.get("note") else "")
+            for r in reconciled_claims
+        )
+        epistemic_instruction = _EPISTEMIC_INSTRUCTION.format(claims_block=claims_lines)
+    else:
+        epistemic_instruction = ""
+
     return _EXPLORE_BASE.format(
         finance_instruction=_FINANCE_INSTRUCTION if stock_data else "",
         scores_instruction=_SCORES_INSTRUCTION if live_scores else "",
         context_block=context_block,
+        epistemic_instruction=epistemic_instruction,
     )
 
 
@@ -285,6 +313,149 @@ def sanitize_sse_chunk(text: str) -> str:
     # Neutralise any literal "data:" at the start of a line with a zero-width space
     text = re.sub(r"(?m)^data\s*:", "data\u200b:", text)
     return text
+
+
+# ── Epistemic pipeline — module-level functions ────────────────────────────────
+
+_EXTRACT_CLAIMS_PROMPT = """You are an epistemic analyst. Given a set of numbered web sources, extract the key factual claims made across all sources. Return ONLY valid JSON — no markdown fences, no preamble.
+
+Return this exact JSON shape:
+{
+  "claims": [
+    {
+      "claim": "concise factual statement (max 25 words)",
+      "source_indices": [1, 3],
+      "confidence": "high | medium | low"
+    }
+  ]
+}
+
+Rules:
+- Extract 3–8 claims total. Focus on the most important, specific, verifiable facts.
+- Each claim must be directly supported by at least one numbered source.
+- confidence = "high" if multiple sources agree; "medium" if one credible source; "low" if single low-credibility source or uncertain.
+- Do not extract opinions, predictions, or vague generalisations."""
+
+_RECONCILE_CLAIMS_PROMPT = """You are an epistemic analyst. Given a list of extracted claims and the source profiles for each source, assign a verified/contested/uncertain status to each claim.
+
+Return ONLY valid JSON — no markdown fences, no preamble.
+
+Return this exact JSON shape:
+{
+  "reconciled": [
+    {
+      "claim": "the original claim text",
+      "status": "verified | corroborated | single_source | contested",
+      "note": "optional: brief explanation if contested or single_source (max 20 words)"
+    }
+  ]
+}
+
+Status assignment rules — apply these strictly:
+verified: The claim appears in 3 or more sources
+  that are editorially independent of each other.
+  Mark as verified even if exact wording differs,
+  as long as the core fact is the same.
+corroborated: The claim appears in exactly 2
+  independent sources.
+single_source: The claim appears in only 1 source,
+  OR all sources citing it trace back to the same
+  original report.
+contested: Two or more sources make directly
+  contradictory factual claims about the same
+  subject — e.g. different casualty numbers,
+  conflicting timelines, or one source denying
+  what another asserts.
+
+Important: most claims in a news story will be
+single_source or corroborated. Do not default
+everything to single_source — actively look for
+claims that appear across multiple sources and
+mark them verified or corroborated accordingly."""
+
+
+def extract_claims(sources: list[dict], scraped: list[dict], llm) -> list[dict]:
+    """
+    Extract key factual claims from scraped source content.
+    Returns a list of claim dicts, or [] on failure.
+    """
+    if not sources:
+        return []
+
+    parts = []
+    for i, src in enumerate(sources, start=1):
+        markdown = next(
+            (s["markdown"] for s in scraped if s["url"] == src["url"]), None
+        )
+        content = markdown[:1000] if markdown else src.get("snippet", "")[:500]
+        parts.append(
+            f"[{i}] {src['title']}\n"
+            f"URL: {src['url']}\n"
+            f"Content: {content}\n\n---\n"
+        )
+
+    user_msg = "\n".join(parts)[:8000]
+    if not user_msg.strip():
+        return []
+
+    messages = [
+        {"role": "system", "content": _EXTRACT_CLAIMS_PROMPT},
+        {"role": "user", "content": user_msg},
+    ]
+
+    try:
+        raw = llm.chat_sync(messages, timeout=10)
+        raw = raw.strip()
+        if raw.startswith("```"):
+            raw = raw.lstrip("`").lstrip("json").strip().rstrip("`").strip()
+        data = json.loads(raw)
+        claims = data.get("claims", [])
+        if isinstance(claims, list):
+            return claims
+    except Exception as exc:
+        logger.error("extract_claims.failed: %s", exc)
+    return []
+
+
+def reconcile_claims(claims: list[dict], enriched_sources: list[dict], llm) -> list[dict]:
+    """
+    Reconcile extracted claims against source credibility profiles.
+    Returns a list of reconciled claim dicts, or [] on failure.
+    """
+    if not claims:
+        return []
+
+    source_profiles_text = "\n".join(
+        f"[{i+1}] {s.get('outlet_name', s.get('title', 'Unknown'))} "
+        f"(tier={s.get('credibility_tier', '?')}, "
+        f"lean={s.get('editorial_lean', 'unknown')}, "
+        f"funding={s.get('funding_type', 'unknown')})"
+        for i, s in enumerate(enriched_sources)
+    )
+
+    user_msg = (
+        f"SOURCE PROFILES:\n{source_profiles_text}\n\n"
+        f"CLAIMS:\n{json.dumps(claims, indent=2)}"
+    )
+
+    messages = [
+        {"role": "system", "content": _RECONCILE_CLAIMS_PROMPT},
+        {"role": "user", "content": user_msg},
+    ]
+
+    try:
+        raw = llm.chat_sync(messages, timeout=12)
+        raw = raw.strip()
+        if raw.startswith("```"):
+            raw = raw.lstrip("`").lstrip("json").strip().rstrip("`").strip()
+        data = json.loads(raw)
+        reconciled = data.get("reconciled", [])
+        if isinstance(reconciled, list):
+            return reconciled
+    except Exception as exc:
+        logger.error("reconcile_claims.failed: %s", exc)
+    return []
+
 
 class AIService:
     def __init__(self):
@@ -394,10 +565,12 @@ class AIService:
         from services import finance_service
 
         sources: list[dict] = []
-
         scraped: list[dict] = []
+        results: list[dict] = []
+        results_count = 0
         try:
             results = search_service.web_search(query, max_results=5)
+            results_count = len(results)
             urls = [r["url"] for r in results if r.get("url")]
             scraped = search_service.scrape_urls(urls, max_pages=3)
             context_block, sources = search_service.build_context(results, scraped)
@@ -405,6 +578,16 @@ class AIService:
             logger.error("explore_the_web.search_failed: %s", exc)
             context_block = ""
             sources = []
+
+        # ── Enrich sources with outlet profiles ───────────────────────────────
+        if sources:
+            try:
+                from services.source_service import get_source_profile, profile_to_dict
+                for src in sources:
+                    profile = get_source_profile(src.get("url", ""))
+                    src.update(profile_to_dict(profile))
+            except Exception as exc:
+                logger.error("explore_the_web.profile_enrich_failed: %s", exc)
 
         live_scores_text = search_service.fetch_live_scores(query)
         if live_scores_text:
@@ -435,11 +618,32 @@ class AIService:
             except Exception as exc:
                 logger.error("explore_the_web.finance_inject_failed: %s", exc)
 
+        # ── Epistemic pipeline (extract + reconcile claims) ───────────────────
+        reconciled: list[dict] = []
+        if sources and not (is_fin and ticker):
+            import concurrent.futures as _cf
+            _llm = self._get_llm()
+            with _cf.ThreadPoolExecutor(max_workers=1) as _pool:
+                _efut = _pool.submit(extract_claims, sources, scraped, _llm)
+                try:
+                    raw_claims = _efut.result(timeout=10)
+                except Exception:
+                    raw_claims = []
+            if raw_claims:
+                with _cf.ThreadPoolExecutor(max_workers=1) as _pool:
+                    _rfut = _pool.submit(reconcile_claims, raw_claims, sources, _llm)
+                    try:
+                        reconciled = _rfut.result(timeout=12)
+                    except Exception:
+                        reconciled = []
+
         # ── Build system prompt ───────────────────────────────────────────────
         system_prompt = build_explore_system_prompt(
             context_block=context_block,
             stock_data=stock_data,
             live_scores=bool(live_scores_text),
+            use_epistemic=bool(reconciled),
+            reconciled_claims=reconciled,
         )
 
         if sources:
@@ -450,7 +654,7 @@ class AIService:
                     src["favicon"] = f"https://www.google.com/s2/favicons?domain={domain}&sz=32"
                 except Exception:
                     src["favicon"] = ""
-            yield f"data: {_json.dumps({'type': 'sources', 'sources': sources})}\n\n"
+            yield f"data: {_json.dumps({'type': 'sources', 'sources': sources, 'claims': reconciled, 'pipeline_trace': {'sources_retrieved': results_count, 'sources_enriched': len(sources), 'claims_extracted': len(reconciled)}})}\n\n"
 
         if stock_data:
             yield f"data: {_json.dumps({'type': 'stock', 'data': stock_data})}\n\n"

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { Box, Typography, Skeleton, Tooltip, CircularProgress } from '@mui/material';
-import { Search, BookmarkPlus, ExternalLink, Zap, FlaskConical, CornerDownRight, MoreHorizontal, ArrowUpRight, TrendingUp, RefreshCw, Copy, Check } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Search, BookmarkPlus, ExternalLink, Zap, FlaskConical, CornerDownRight, MoreHorizontal, ArrowUpRight, TrendingUp, RefreshCw, Copy, Check, Edit3 } from 'lucide-react';
+import { useNavigate, useSearchParams, Navigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import GlassCard from '../components/GlassCard';
@@ -9,13 +9,14 @@ import PerspectivesTab from '../components/PerspectivesTab';
 import ContradictionsTab from '../components/ContradictionsTab';
 import CitationsPanel from '../components/CitationsPanel';
 import { getSourceQuality, QUALITY_COLOR } from '../utils/sourceQuality';
+import { TIER_COLOR, LEAN_LABEL } from '../utils/sourceProfile';
 import Toast from '../components/Toast';
-import MonthlyFiguresMarquee from '../components/MonthlyFiguresMarquee';
 import FinanceCard from '../components/FinanceCard';
 import { useSettings, useTopOffset } from '../SettingsContext';
 import { useDarkMode } from '../DarkModeContext';
 import { addSourcesToLibrary } from '../utils/sourceLibrary';
 import NavControls from '../components/NavControls';
+import KnowledgeGraph from '../components/KnowledgeGraph';
 
 // ── Saved searches ────────────────────────────────────────────────────────────
 function getSaved() {
@@ -185,8 +186,9 @@ function deriveImageQuery(query, context = '') {
 // ── Source card ───────────────────────────────────────────────────────────────
 
 function SourceCard({ src, index }) {
-  const quality  = getSourceQuality(src.url);
-  const dotColor = QUALITY_COLOR[quality];
+  const dotColor = src.credibility_tier
+    ? TIER_COLOR[src.credibility_tier] ?? QUALITY_COLOR['medium']
+    : QUALITY_COLOR[getSourceQuality(src.url)];
   const domain   = (() => {
     try { return new URL(src.url).hostname.replace('www.', ''); }
     catch { return src.url; }
@@ -213,6 +215,7 @@ function SourceCard({ src, index }) {
           {index + 1}
         </Box>
         <Box sx={{ flex: 1, minWidth: 0 }}>
+          {/* Row 1: dot + favicon + domain + external link */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.3 }}>
             <Box sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: dotColor, flexShrink: 0 }} />
             {src.favicon && (
@@ -235,6 +238,44 @@ function SourceCard({ src, index }) {
           }}>
             {src.title || src.url}
           </Typography>
+
+          {/* Row 2 — outlet profile metadata */}
+          {(src.outlet_name || src.editorial_lean || src.funding_type === 'state') && (
+            <Box sx={{
+              display: 'flex', alignItems: 'center', gap: 0.75,
+              mt: 0.4, pl: '21px',
+            }}>
+              {src.outlet_name && (
+                <Typography sx={{
+                  fontFamily: 'var(--font-family)',
+                  fontSize: '0.6rem',
+                  color: 'var(--fg-dim)',
+                  fontWeight: 500,
+                }}>
+                  {src.outlet_name}
+                </Typography>
+              )}
+              {src.country && (
+                <Typography sx={{
+                  fontFamily: 'var(--font-family)',
+                  fontSize: '0.6rem',
+                  color: 'var(--fg-dim)',
+                }}>
+                  · {src.country}
+                </Typography>
+              )}
+              {src.editorial_lean && LEAN_LABEL[src.editorial_lean] && (
+                <Typography sx={{
+                  fontFamily: 'var(--font-family)',
+                  fontSize: '0.58rem',
+                  color: src.editorial_lean === 'state_aligned' ? '#b45309' : 'var(--fg-dim)',
+                  fontWeight: src.editorial_lean === 'state_aligned' ? 600 : 400,
+                }}>
+                  · {LEAN_LABEL[src.editorial_lean]}
+                </Typography>
+              )}
+            </Box>
+          )}
         </Box>
         <ExternalLink size={11} style={{ color: 'var(--fg-dim)', flexShrink: 0, marginTop: 4 }} />
       </Box>
@@ -371,6 +412,80 @@ function ThreadDivider() {
   return (
     <Box sx={{ display: 'flex', justifyContent: 'center', py: 0.5 }}>
       <Box sx={{ width: '1px', height: 28, bgcolor: 'var(--border)' }} />
+    </Box>
+  );
+}
+
+function PipelineTrace({ trace }) {
+  const [open, setOpen] = useState(false);
+  if (!trace) return null;
+
+  const summary = [
+    `${trace.sources_retrieved ?? 0} sources`,
+    `${trace.claims_extracted ?? 0} claims`,
+    trace.claims_verified   ? `${trace.claims_verified} verified`  : null,
+    trace.claims_contested  ? `${trace.claims_contested} contested` : null,
+  ].filter(Boolean).join(' · ');
+
+  return (
+    <Box sx={{ mt: 1 }}>
+      <Box
+        onClick={() => setOpen(o => !o)}
+        sx={{
+          display: 'inline-flex', alignItems: 'center', gap: 0.5,
+          cursor: 'pointer', userSelect: 'none',
+          px: 1, py: 0.35,
+          borderRadius: '6px',
+          border: '1px solid var(--border)',
+          bgcolor: 'rgba(255,255,255,0.4)',
+          '&:hover': { bgcolor: 'rgba(255,255,255,0.65)' },
+          transition: 'background 0.15s',
+        }}
+      >
+        <Typography sx={{
+          fontFamily: 'var(--font-family)',
+          fontSize: '0.65rem',
+          color: 'var(--fg-dim)',
+          fontWeight: 500,
+        }}>
+          {open ? '▾' : '▸'} Research pipeline: {summary}
+        </Typography>
+      </Box>
+
+      {open && (
+        <Box sx={{
+          mt: 0.75, px: 1.25, py: 0.9,
+          borderRadius: '8px',
+          border: '1px solid var(--border)',
+          bgcolor: 'rgba(255,255,255,0.5)',
+          display: 'flex', gap: 2, flexWrap: 'wrap',
+        }}>
+          {[
+            { label: 'Sources retrieved', value: trace.sources_retrieved ?? 0 },
+            { label: 'Claims extracted',  value: trace.claims_extracted  ?? 0 },
+            { label: 'Verified',          value: trace.claims_verified   ?? 0, color: '#22c55e' },
+            { label: 'Contested',         value: trace.claims_contested  ?? 0, color: '#ef4444' },
+          ].map(({ label, value, color }) => (
+            <Box key={label} sx={{ display: 'flex', flexDirection: 'column', gap: 0.1 }}>
+              <Typography sx={{
+                fontFamily: 'var(--font-family)',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                color: color ?? 'var(--fg-primary)',
+              }}>
+                {value}
+              </Typography>
+              <Typography sx={{
+                fontFamily: 'var(--font-family)',
+                fontSize: '0.6rem',
+                color: 'var(--fg-dim)',
+              }}>
+                {label}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+      )}
     </Box>
   );
 }
@@ -559,7 +674,7 @@ function OutlinePanel({ question, answerContext, onClose }) {
 
 // ── Result block ──────────────────────────────────────────────────────────────
 
-function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowUp, onNewSearch, isDeepSearch, deepLabel, relatedSearches = [], loadingRelated = false, visualQuery = '', contradictions = null, stockData = null }) {
+function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowUp, onNewSearch, isDeepSearch, deepLabel, relatedSearches = [], loadingRelated = false, visualQuery = '', contradictions = null, stockData = null, claims = [], pipelineTrace = null, onWrite }) {
   const [activeTab,    setActiveTab]    = useState('answer');
   const [showOutline,  setShowOutline]  = useState(false);
   const [copied,       setCopied]       = useState(false);
@@ -578,6 +693,21 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
   const title    = answer ? extractAnswerTitle(answer, question) : '';
   const lede     = answer ? extractLede(answer) : '';
   const chips    = answer ? extractKeywordChips(answer) : [];
+
+  const graphData = useMemo(() => {
+    if (!claims.length && !sources.length) return { nodes: [], links: [] };
+    const sNodes = sources.slice(0, 5).map((s, i) => ({
+      id: `src_${i}`,
+      name: s.outlet_name || (s.url || '').replace(/^https?:\/\/(www\.)?/, '').split('/')[0].slice(0, 20),
+      type: 'source',
+    }));
+    const nodes = [
+      { id: 'q', name: question.slice(0, 20), type: 'query' },
+      ...sNodes,
+    ];
+    const links = sNodes.map((_, i) => ({ source: 'q', target: `src_${i}` }));
+    return { nodes, links };
+  }, [claims, sources, question]);
 
   const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase();
 
@@ -600,11 +730,65 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
       {/* Finance card — shown when a stock/ticker was detected */}
       {stockData && <FinanceCard data={stockData} />}
 
-      {/* Two-column layout */}
-      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, alignItems: 'flex-start' }}>
+      {/* Three-column layout */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '240px 1fr', lg: '240px 1fr 260px' }, gap: 0 }}>
 
-        {/* ── Left: main answer card ── */}
-        <Box sx={{ flex: 1, minWidth: 0 }}>
+        {/* ── LEFT COLUMN: Source Intelligence ── */}
+        <Box sx={{
+          borderRight: '1px solid var(--border)',
+          padding: '16px 14px',
+          overflowY: 'auto',
+          display: { xs: 'none', md: 'block' },
+        }}>
+          <Typography sx={{
+            fontFamily: 'var(--font-family)', fontSize: '0.58rem', fontWeight: 600,
+            color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase',
+            display: 'block', mb: 1.25,
+          }}>
+            Source Intelligence
+          </Typography>
+
+          {/* Pipeline stats */}
+          {pipelineTrace && (
+            <Box sx={{
+              background: 'var(--glass-bg)',
+              border: '1px solid var(--border)',
+              borderRadius: '9px', padding: '10px 12px',
+              mb: 1.5,
+            }}>
+              <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.62rem', color: 'var(--fg-dim)', mb: 0.75, display: 'block' }}>
+                Research pipeline
+              </Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+                {[
+                  { label: 'sources',   value: pipelineTrace.sources_retrieved ?? 0, color: null },
+                  { label: 'claims',    value: pipelineTrace.claims_extracted  ?? 0, color: null },
+                  { label: 'verified',  value: pipelineTrace.claims_verified   ?? 0, color: '#22c55e' },
+                  { label: 'contested', value: pipelineTrace.claims_contested  ?? 0, color: '#ef4444' },
+                ].map(({ label, value, color }) => (
+                  <Box key={label}>
+                    <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '1rem', fontWeight: 600, color: color ?? 'var(--fg-primary)', lineHeight: 1 }}>
+                      {value}
+                    </Typography>
+                    <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.58rem', color: 'var(--fg-dim)', mt: 0.25 }}>
+                      {label}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          )}
+
+          {/* Sources list */}
+          {sources.length > 0 && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.6 }}>
+              {sources.map((src, i) => <SourceCard key={i} src={src} index={i} />)}
+            </Box>
+          )}
+        </Box>
+
+        {/* ── CENTER COLUMN: Answer ── */}
+        <Box sx={{ padding: '20px 24px', overflowY: 'auto', minWidth: 0 }}>
           {answer ? (
             <GlassCard style={{ padding: '22px 26px' }}>
 
@@ -630,9 +814,7 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
                       '&:hover': { background: 'rgba(0,0,0,0.05)', borderColor: 'var(--fg-dim)' },
                     }}
                   >
-                    {copied
-                      ? <Check size={11} color="#22c55e" />
-                      : <Copy size={11} color="var(--fg-dim)" />}
+                    {copied ? <Check size={11} color="#22c55e" /> : <Copy size={11} color="var(--fg-dim)" />}
                   </Box>
                 </Tooltip>
               </Box>
@@ -662,12 +844,68 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
                 </Box>
               )}
 
-              {/* Active tab content — fade in on switch */}
+              {/* Active tab content */}
               <Box key={activeTab} sx={{ animation: 'tabFadeIn 0.15s ease' }}>
                 {activeTab === 'answer' && (
                   <>
                     {visualQuery && <InlineImages visualQuery={visualQuery} />}
+
+                    {/* Confidence legend */}
+                    {claims.length > 0 && (
+                      <Box sx={{
+                        display: 'flex', flexWrap: 'wrap', gap: 1.25, alignItems: 'center',
+                        background: 'rgba(255,255,255,0.4)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '7px', padding: '7px 10px',
+                        mb: 1.75,
+                      }}>
+                        <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.62rem', color: 'var(--fg-dim)', fontWeight: 500 }}>
+                          Confidence:
+                        </Typography>
+                        {[
+                          { label: 'Verified',     color: '#22c55e' },
+                          { label: 'Corroborated', color: '#eab308' },
+                          { label: 'Single source',color: '#f97316' },
+                          { label: 'Contested',    color: '#ef4444' },
+                        ].map(({ label, color }) => (
+                          <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: color, flexShrink: 0 }} />
+                            <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.62rem', color: 'var(--fg-secondary)' }}>
+                              {label}
+                            </Typography>
+                          </Box>
+                        ))}
+                      </Box>
+                    )}
+
                     <CollapsibleAnswer answer={answer} streaming={streaming} sources={sources} />
+
+                    {/* Contested callout */}
+                    {(() => {
+                      const topContested = claims.find(c => c.status === 'contested');
+                      if (!topContested) return null;
+                      return (
+                        <Box sx={{
+                          borderLeft: '3px solid #ef4444',
+                          background: 'rgba(239,68,68,0.05)',
+                          borderRadius: '0 6px 6px 0',
+                          padding: '10px 14px',
+                          mt: 2,
+                        }}>
+                          <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.65rem', fontWeight: 600, color: '#dc2626', mb: 0.5, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                            Contested
+                          </Typography>
+                          <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.78rem', color: 'var(--fg-primary)', lineHeight: 1.5 }}>
+                            {topContested.claim_text || topContested.claim}
+                          </Typography>
+                          {topContested.note && (
+                            <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', color: 'var(--fg-secondary)', mt: 0.5, fontStyle: 'italic' }}>
+                              {topContested.note}
+                            </Typography>
+                          )}
+                        </Box>
+                      );
+                    })()}
                   </>
                 )}
                 {activeTab === 'perspectives'  && <PerspectivesTab query={question} />}
@@ -722,37 +960,19 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
               ))}
             </GlassCard>
           )}
-        </Box>
 
-        {/* ── Right: sources + related ── */}
-        <Box sx={{ width: { xs: '100%', md: '300px' }, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-          {/* Sources */}
-          {sources.length > 0 && (
-            <GlassCard style={{ padding: '16px 16px' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 1.25 }}>
-                <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'var(--accent)' }} />
-                <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.58rem', fontWeight: 500, color: 'var(--fg-dim)', letterSpacing: '0.10em', textTransform: 'uppercase' }}>
-                  Sources
-                </Typography>
-              </Box>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.6 }}>
-                {sources.map((src, i) => <SourceCard key={i} src={src} index={i} />)}
-              </Box>
-            </GlassCard>
-          )}
-
-          {/* Related searches */}
+          {/* Related searches — below answer in center column */}
           {(relatedSearches.length > 0 || loadingRelated) && answer && (
-            <GlassCard style={{ padding: '14px 16px' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 1.1 }}>
+            <Box sx={{ mt: 1.5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 1.1, px: 0.5 }}>
                 <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'var(--blue)' }} />
                 <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.58rem', fontWeight: 500, color: 'var(--fg-dim)', letterSpacing: '0.10em', textTransform: 'uppercase' }}>
                   Related
                 </Typography>
               </Box>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
                 {loadingRelated
-                  ? [0, 1, 2].map(i => <Skeleton key={i} variant="rectangular" height={28} sx={{ borderRadius: '8px', bgcolor: 'var(--bg-tertiary)', width: `${78 + i * 6}%` }} />)
+                  ? [0, 1, 2].map(i => <Skeleton key={i} variant="rectangular" height={28} sx={{ borderRadius: '8px', bgcolor: 'var(--bg-tertiary)', width: 160 }} />)
                   : relatedSearches.map(s => (
                       <Box
                         key={s} onClick={() => onNewSearch(s)}
@@ -771,9 +991,116 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
                     ))
                 }
               </Box>
-            </GlassCard>
+            </Box>
           )}
         </Box>
+
+        {/* ── RIGHT COLUMN: Claim Landscape ── */}
+        {(claims.length > 0 || sources.length > 0) && (
+          <Box sx={{
+            borderLeft: '1px solid var(--border)',
+            padding: '16px 14px',
+            overflowY: 'auto',
+            display: { xs: 'none', lg: 'flex' },
+            flexDirection: 'column',
+            gap: 1.5,
+          }}>
+            <Typography sx={{
+              fontFamily: 'var(--font-family)', fontSize: '0.58rem', fontWeight: 600,
+              color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase',
+              display: 'block',
+            }}>
+              Claim landscape
+            </Typography>
+
+            {/* KnowledgeGraph */}
+            <Box sx={{ height: 200, overflow: 'hidden', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <KnowledgeGraph
+                nodes={graphData.nodes}
+                links={graphData.links}
+                claimsData={claims}
+              />
+            </Box>
+
+            {/* Contested claims */}
+            {claims.some(c => c.status === 'contested') && (
+              <>
+                <Typography sx={{
+                  fontFamily: 'var(--font-family)', fontSize: '0.58rem', fontWeight: 600,
+                  color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase',
+                  display: 'block', mt: 0.5,
+                }}>
+                  Contested claims
+                </Typography>
+                {claims.filter(c => c.status === 'contested').slice(0, 3).map((c, i) => (
+                  <Box key={i} sx={{
+                    borderLeft: '3px solid #ef4444',
+                    background: 'rgba(239,68,68,0.05)',
+                    borderRadius: '0 6px 6px 0',
+                    padding: '8px 10px',
+                  }}>
+                    <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.72rem', color: 'var(--fg-primary)', lineHeight: 1.45 }}>
+                      {(c.claim_text || c.claim || '').slice(0, 120)}
+                    </Typography>
+                    {c.note && (
+                      <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.62rem', color: 'var(--fg-secondary)', mt: 0.4, fontStyle: 'italic' }}>
+                        {c.note}
+                      </Typography>
+                    )}
+                  </Box>
+                ))}
+              </>
+            )}
+
+            {/* Verified claims — insert into draft */}
+            {claims.some(c => c.status === 'verified' || c.status === 'corroborated') && (
+              <>
+                <Typography sx={{
+                  fontFamily: 'var(--font-family)', fontSize: '0.58rem', fontWeight: 600,
+                  color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase',
+                  display: 'block', mt: 0.5,
+                }}>
+                  Verified — insert into draft
+                </Typography>
+                {claims.filter(c => c.status === 'verified' || c.status === 'corroborated').slice(0, 4).map((c, i) => (
+                  <Box key={i} sx={{
+                    display: 'flex', alignItems: 'flex-start', gap: 0.75,
+                    padding: '7px 8px', borderRadius: 7,
+                    border: '1px solid var(--border)',
+                    background: 'rgba(255,255,255,0.40)',
+                    cursor: 'pointer', transition: 'border-color 0.14s',
+                    '&:hover': { borderColor: 'var(--accent)' },
+                  }}>
+                    <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: c.status === 'verified' ? '#22c55e' : '#eab308', flexShrink: 0, mt: 0.375 }} />
+                    <Typography sx={{
+                      fontFamily: 'var(--font-family)', fontSize: '0.67rem', color: 'var(--fg-primary)',
+                      lineHeight: 1.4, flex: 1,
+                      display: '-webkit-box', WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                    }}>
+                      {c.claim_text || c.claim}
+                    </Typography>
+                    {onWrite && (
+                      <Box
+                        component="button"
+                        onClick={e => { e.stopPropagation(); onWrite(); }}
+                        sx={{
+                          flexShrink: 0, padding: '2px 7px', borderRadius: 4,
+                          border: '1px solid rgba(249,115,22,0.35)',
+                          background: 'rgba(249,115,22,0.08)', cursor: 'pointer',
+                          fontFamily: 'var(--font-family)', fontSize: '0.60rem',
+                          color: 'var(--accent)', whiteSpace: 'nowrap',
+                        }}
+                      >
+                        Insert
+                      </Box>
+                    )}
+                  </Box>
+                ))}
+              </>
+            )}
+          </Box>
+        )}
       </Box>
 
       {/* ── Outline builder ── */}
@@ -873,7 +1200,7 @@ function OptionsMenu({ onReset, navigate }) {
   );
 }
 
-function TopBar({ query, setQuery, onSubmit, deepMode, onToggleDeep, onReset, answer, onSave, onShare, saved, navigate }) {
+function TopBar({ query, setQuery, onSubmit, deepMode, onToggleDeep, onReset, answer, onSave, onShare, saved, navigate, onWrite }) {
   const handleKey = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSubmit(); } };
 
   return (
@@ -961,6 +1288,32 @@ function TopBar({ query, setQuery, onSubmit, deepMode, onToggleDeep, onReset, an
                 Share
               </button>
             </>
+          )}
+
+          {onWrite && (
+            <Box
+              onClick={onWrite}
+              sx={{
+                display: 'flex', alignItems: 'center', gap: 0.5,
+                px: 1.25, py: 0.5,
+                background: 'rgba(249,115,22,0.10)',
+                border: '1px solid rgba(249,115,22,0.30)',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                '&:hover': { background: 'rgba(249,115,22,0.18)' },
+                transition: 'background 0.15s',
+              }}
+            >
+              <Edit3 size={13} color="var(--accent)" />
+              <Typography sx={{
+                fontFamily: 'var(--font-family)',
+                fontSize: '0.72rem',
+                fontWeight: 500,
+                color: 'var(--accent)',
+              }}>
+                Write
+              </Typography>
+            </Box>
           )}
 
           <OptionsMenu onReset={onReset} navigate={navigate} />
@@ -1191,6 +1544,7 @@ function HomeSearchBar({ query, setQuery, onSubmit, deepMode, onToggleDeep }) {
 
 export default function ExplorePage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [query,        setQuery]        = useState('');
   const [phase,        setPhase]        = useState('idle');
@@ -1211,6 +1565,11 @@ export default function ExplorePage() {
   const [loadingRelated,  setLoadingRelated]  = useState(false);
   const [visualQuery,     setVisualQuery]     = useState('');
   const [stockData,       setStockData]       = useState(null);
+  const [claimsData,      setClaimsData]      = useState([]);
+  const [pipelineTrace,   setPipelineTrace]   = useState(null);
+  const sourcesRef       = useRef([]);
+  const claimsDataRef    = useRef([]);
+  const pipelineTraceRef = useRef(null);
   const { articles: trendingArticles, trending: isTrending, spinning: trendingSpinning, refetch: refetchTrending } = useTrendingChips();
   const topOffset = useTopOffset();
   const [dark] = useDarkMode();
@@ -1226,11 +1585,15 @@ export default function ExplorePage() {
   }, [followUpBlocks.length]);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const qParam = params.get('q');
-    if (qParam?.trim()) {
-      setQuery(qParam.trim());
-      runSearch(qParam.trim(), false);
+    const q = searchParams.get('q');
+    const next = searchParams.get('next');
+
+    if (q && q.trim()) {
+      if (next === 'write') {
+        sessionStorage.setItem('quarry_next_action', 'write');
+      }
+      setQuery(q.trim());
+      runSearch(decodeURIComponent(q));
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1241,10 +1604,13 @@ export default function ExplorePage() {
     const signal = abortRef.current.signal;
 
     setPhase('searching');
-    setSources([]); setAnswer(''); setSaved(false); setErrorMsg('');
+    setSources([]); sourcesRef.current = [];
+    setAnswer(''); setSaved(false); setErrorMsg('');
     setStreaming(true); setContradictions(null); setFollowUpBlocks([]);
     setRelatedSearches([]); setLoadingRelated(false); setIsDeepSearch(false);
     setStockData(null);
+    setClaimsData([]); claimsDataRef.current = [];
+    setPipelineTrace(null); pipelineTraceRef.current = null;
     setDeepLabel(isDeep ? '1/2' : '');
     setVisualQuery(deriveImageQuery(q.trim()));
     submittedQueryRef.current = q.trim();
@@ -1277,7 +1643,7 @@ export default function ExplorePage() {
           if (raw === '[DONE]') { setStreaming(false); continue; }
           try {
             const evt = JSON.parse(raw);
-            if      (evt.type === 'sources' && !skipSources) { setSources(evt.sources || []); addSourcesToLibrary(evt.sources || [], submittedQueryRef.current); }
+            if      (evt.type === 'sources' && !skipSources) { const _s = evt.sources || []; setSources(_s); sourcesRef.current = _s; addSourcesToLibrary(_s, submittedQueryRef.current); if (evt.claims) { const normalised = evt.claims.map(c => ({ ...c, claim_text: c.claim_text ?? c.claim ?? '', status: c.status === 'uncertain' ? 'single_source' : (c.status ?? 'single_source'), source_outlets: c.source_outlets ?? (c.source_outlet ? [c.source_outlet] : []), })); setClaimsData(normalised); claimsDataRef.current = normalised; } if (evt.pipeline_trace) { setPipelineTrace(evt.pipeline_trace); pipelineTraceRef.current = evt.pipeline_trace; } }
             else if (evt.type === 'chunk')                   { accumulatedAnswer += evt.text; setAnswer(prev => prev + evt.text); }
             else if (evt.type === 'error')                   setErrorMsg(evt.text);
             else if (evt.type === 'contradictions')          setContradictions(evt.data === null ? false : evt.data);
@@ -1302,6 +1668,17 @@ export default function ExplorePage() {
       if (err.name !== 'AbortError') { setErrorMsg(err.message); setPhase('error'); }
     } finally {
       setStreaming(false); setDeepLabel(''); setDeepMode(false);
+      const nextAction = sessionStorage.getItem('quarry_next_action');
+      if (nextAction === 'write') {
+        sessionStorage.removeItem('quarry_next_action');
+        sessionStorage.setItem('quarry_write_session', JSON.stringify({
+          query: q.trim(),
+          sources: sourcesRef.current,
+          claims: claimsDataRef.current,
+          pipelineTrace: pipelineTraceRef.current,
+        }));
+        navigate('/write');
+      }
       if (searchSuccess && accumulatedAnswer) {
         setLoadingRelated(true);
         fetch(`${API}/explore/related`, {
@@ -1310,7 +1687,7 @@ export default function ExplorePage() {
         }).then(r => r.json()).then(data => setRelatedSearches(data.related || [])).catch(() => {}).finally(() => setLoadingRelated(false));
       }
     }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSubmit = () => { if (query.trim()) runSearch(query, deepMode); };
 
@@ -1339,6 +1716,16 @@ export default function ExplorePage() {
       setTimeout(() => setToast(t => ({ ...t, show: false })), 2000);
     });
   }, [query]);
+
+  const handleWrite = useCallback(() => {
+    sessionStorage.setItem('quarry_write_session', JSON.stringify({
+      query: query,
+      sources: sourcesRef.current,
+      claims: claimsDataRef.current,
+      pipelineTrace: pipelineTraceRef.current,
+    }));
+    navigate('/write');
+  }, [query, navigate]);
 
   const runFollowUp = useCallback(async followUpText => {
     if (followUpBlocks.length >= MAX_FOLLOW_UPS) return;
@@ -1395,15 +1782,20 @@ export default function ExplorePage() {
 
   const resetSearch = () => {
     if (followUpAbortRef.current) followUpAbortRef.current.abort();
-    setPhase('idle'); setAnswer(''); setSources([]);
+    setPhase('idle'); setAnswer(''); setSources([]); sourcesRef.current = [];
     setQuery(''); setErrorMsg(''); setFollowUpBlocks([]);
     setIsDeepSearch(false); setDeepLabel(''); setStockData(null);
+    setClaimsData([]); claimsDataRef.current = [];
+    setPipelineTrace(null); pipelineTraceRef.current = null;
   };
 
   const newSearch = q => { setQuery(q); runSearch(q); };
 
   // ── Home (idle) ──
   if (phase === 'idle') {
+    if (!searchParams.get('q')) {
+      return <Navigate to="/" replace />;
+    }
     return (
       <>
         {/* Top-right nav cluster — sits below calendar bar when visible */}
@@ -1413,20 +1805,6 @@ export default function ExplorePage() {
 
         <Box sx={{ ...PAGE_BG, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', minHeight: '100vh', gap: 1.5, px: 3, pb: 8, paddingTop: `${topOffset + 12}px` }}>
 
-          {/* ── Calendar marquee ── */}
-          {settings.showCalendar && (
-            <Box sx={{
-              width: '100vw', maxWidth: '100vw', mx: 'auto',
-              py: 0.85,
-              background: 'rgba(210,200,185,0.28)',
-              backdropFilter: 'blur(8px)',
-              WebkitBackdropFilter: 'blur(8px)',
-              borderBottom: '1px solid rgba(0,0,0,0.07)',
-              borderTop: '1px solid rgba(255,255,255,0.35)',
-            }}>
-              <MonthlyFiguresMarquee />
-            </Box>
-          )}
 
           {/* ── Masthead ── */}
           <Box sx={{ textAlign: 'center', mb: 0.5 }}>
@@ -1644,6 +2022,7 @@ export default function ExplorePage() {
           deepMode={deepMode} onToggleDeep={() => setDeepMode(d => !d)}
           onReset={resetSearch} answer={answer} onSave={handleSave} onShare={handleShare}
           saved={saved} navigate={navigate} streaming={streaming}
+          onWrite={sources.length > 0 ? handleWrite : undefined}
         />
         <Box sx={{ maxWidth: 1100, mx: 'auto', px: 3, pt: 4, pb: 8 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
@@ -1688,6 +2067,7 @@ export default function ExplorePage() {
         deepMode={deepMode} onToggleDeep={() => setDeepMode(d => !d)}
         onReset={resetSearch} answer={answer} onSave={handleSave} onShare={handleShare}
         saved={saved} navigate={navigate} streaming={streaming}
+        onWrite={sources.length > 0 ? handleWrite : undefined}
       />
 
       {/* Scrollable content */}
@@ -1702,6 +2082,8 @@ export default function ExplorePage() {
             relatedSearches={relatedSearches} loadingRelated={loadingRelated}
             visualQuery={visualQuery} contradictions={contradictions}
             stockData={stockData}
+            claims={claimsData} pipelineTrace={pipelineTrace}
+            onWrite={handleWrite}
           />
 
           {followUpBlocks.map((block, i) => (

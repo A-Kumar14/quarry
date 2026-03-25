@@ -82,8 +82,9 @@ This order must be preserved in the new pipeline.
 - Do NOT add ChromaDB, auth, or a database (in-memory source profiles only)
 - Do NOT install new npm packages without checking first
 - Do NOT change the sepia/newspaper design system
+- Do NOT mention any other collaborators on github, Do NOT mention claude
 
 ## Session State
 Phase: PHASE 1 — Foundation
-Last completed: Step 0 (branch created, dead pages archived)
+Last completed: Session 10: Three-column results, ArtifactsPage, document persistence to localStorage, pipeline fixes
 Branch: overhaul/epistemic-pipeline
