@@ -368,7 +368,7 @@ export default function KnowledgeGraph({ nodes = [], links = [], onNodeClick, cl
   const containerRef = useRef(null);
   const graphRef     = useRef(null);
 
-  const [dimensions,   setDimensions]   = useState({ width: 680, height: 420 });
+  const [dimensions,   setDimensions]   = useState({ width: 240, height: 200 });
   const [hovered,      setHovered]      = useState(null);
   const [mousePos,     setMousePos]     = useState({ x: 0, y: 0 });
   const [selectedNode, setSelectedNode] = useState(null);
@@ -410,7 +410,7 @@ export default function KnowledgeGraph({ nodes = [], links = [], onNodeClick, cl
 
   useEffect(() => {
     if (graphRef.current && nodes.length > 0) {
-      setTimeout(() => graphRef.current.zoomToFit(400, 40), 300);
+      setTimeout(() => graphRef.current?.zoomToFit(400, 40), 300);
     }
   }, [nodes]);
 
