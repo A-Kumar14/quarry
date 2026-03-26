@@ -4,12 +4,13 @@ import { Search, BookmarkPlus, ExternalLink, Zap, FlaskConical, CornerDownRight,
 import { useNavigate, useSearchParams, Navigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 import GlassCard from '../components/GlassCard';
 import PerspectivesTab from '../components/PerspectivesTab';
 import ContradictionsTab from '../components/ContradictionsTab';
 import CitationsPanel from '../components/CitationsPanel';
 import { getSourceQuality, QUALITY_COLOR } from '../utils/sourceQuality';
-import { TIER_COLOR, LEAN_LABEL } from '../utils/sourceProfile';
+import { TIER_COLOR } from '../utils/sourceProfile';
 import Toast from '../components/Toast';
 import FinanceCard from '../components/FinanceCard';
 import { useSettings, useTopOffset } from '../SettingsContext';
@@ -17,6 +18,7 @@ import { useDarkMode } from '../DarkModeContext';
 import { addSourcesToLibrary } from '../utils/sourceLibrary';
 import NavControls from '../components/NavControls';
 import KnowledgeGraph from '../components/KnowledgeGraph';
+import DiagramCard from '../components/DiagramCard';
 
 // ── Saved searches ────────────────────────────────────────────────────────────
 function getSaved() {
@@ -44,7 +46,7 @@ const ANSWER_BODY_STYLES = {
   '& p':              { fontFamily: 'var(--font-family)', fontWeight: 300, fontSize: '0.93rem', lineHeight: 1.85, color: 'var(--fg-primary)', my: 0.75 },
   '& h1, & h2, & h3': { fontFamily: 'var(--font-serif)', fontWeight: 600, color: 'var(--fg-primary)', mt: 2, mb: 0.5 },
   '& h1':             { fontSize: '1.05rem' },
-  '& h2':             { fontSize: '0.97rem' },
+  '& h2':             { fontSize: '1.05rem', mt: 3, mb: 1, pb: 0.5, borderBottom: '1px solid var(--border)' },
   '& h3':             { fontSize: '0.88rem' },
   '& code':           { fontFamily: 'var(--font-mono)', fontSize: '0.82rem', bgcolor: 'rgba(221,213,192,0.5)', px: '5px', py: '1px', borderRadius: '4px', border: '1px solid var(--border)' },
   '& pre':            { bgcolor: 'rgba(229,221,208,0.6)', border: '1px solid var(--border)', borderRadius: '8px', p: 1.5, overflowX: 'auto', '& code': { border: 'none', bgcolor: 'transparent' } },
@@ -62,31 +64,22 @@ const ANSWER_BODY_STYLES = {
 
 
 const GLASS_BTN = {
-  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-  padding: '7px 14px', borderRadius: 999, cursor: 'pointer',
-  background: 'var(--gbtn-bg)',
-  backdropFilter: 'blur(24px) saturate(190%) brightness(1.10)',
-  WebkitBackdropFilter: 'blur(24px) saturate(190%) brightness(1.10)',
-  borderTop: '1px solid var(--gbtn-border-t)',
-  borderLeft: '1px solid var(--gbtn-border-l)',
-  borderRight: '1px solid var(--gbtn-border-r)',
-  borderBottom: '1px solid var(--gbtn-border-b)',
-  boxShadow: 'var(--gbtn-shadow)',
-  fontFamily: 'var(--font-family)', fontSize: 12, fontWeight: 400,
-  letterSpacing: '0.02em', color: 'var(--gbtn-color)', whiteSpace: 'nowrap',
-  transition: 'all 0.14s ease', border: 'none',
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+  padding: '6px 14px', borderRadius: 20, cursor: 'pointer',
+  background: 'rgba(255,250,232,0.50)',
+  border: '1px solid var(--border)',
+  fontFamily: 'var(--font-family)', fontSize: 13, fontWeight: 500,
+  letterSpacing: '0.01em', color: 'var(--fg-secondary)', whiteSpace: 'nowrap',
+  transition: 'background 0.15s ease, color 0.15s ease', outline: 'none',
+  boxShadow: 'none',
 };
 
 const GLASS_BTN_ACCENT = {
   ...GLASS_BTN,
-  background: 'linear-gradient(158deg, rgba(249,115,22,0.90) 0%, rgba(217,79,10,0.96) 100%)',
-  borderTop: '1px solid rgba(255,185,115,0.75)',
-  borderLeft: '1px solid rgba(255,165,100,0.52)',
-  borderRight: '1px solid rgba(152,50,0,0.22)',
-  borderBottom: '1px solid rgba(152,50,0,0.28)',
-  boxShadow: '0 4px 16px rgba(249,115,22,0.32), 0 1.5px 0 rgba(255,205,148,0.68) inset, 0 -1px 0 rgba(130,40,0,0.18) inset',
-  color: '#fff', fontWeight: 500,
-  backdropFilter: 'none', WebkitBackdropFilter: 'none',
+  background: 'var(--accent)',
+  borderColor: 'var(--accent)',
+  color: '#fff',
+  boxShadow: '0 2px 8px rgba(249,115,22,0.25)',
 };
 
 const PAGE_BG = {
@@ -106,21 +99,24 @@ function CitationLink({ href, children, sources }) {
     const src = sources[num - 1];
     return (
       <Tooltip title={src?.url || href || ''} placement="top">
-        <a
+        <Box
+          component="a"
           href={src?.url || href || '#'}
           target="_blank"
           rel="noopener noreferrer"
-          style={{
+          sx={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 18, height: 16, fontSize: '0.6rem', fontWeight: 600,
+            px: '5px', height: 16, fontSize: '0.65rem', fontWeight: 600,
             fontFamily: 'var(--font-family)', color: 'var(--blue)',
-            background: 'rgba(30,58,138,0.12)', borderRadius: 5,
+            background: 'rgba(30,58,138,0.06)', borderRadius: '4px', border: '1px solid rgba(30,58,138,0.12)',
             textDecoration: 'none', verticalAlign: 'super',
-            lineHeight: 1, marginLeft: 2,
+            lineHeight: 1, mx: '3px',
+            transition: 'all 0.15s ease',
+            '&:hover': { background: 'rgba(30,58,138,0.12)', transform: 'translateY(-1px)' }
           }}
         >
           {num}
-        </a>
+        </Box>
       </Tooltip>
     );
   }
@@ -149,8 +145,9 @@ function extractLede(answer) {
       .replace(/\[.*?\]\(.*?\)/g, '')
       .trim();
     if (clean.length > 50 && !clean.startsWith('*') && !clean.startsWith('-') && !clean.startsWith('|')) {
-      const first = clean.match(/^(.+?[.!?])\s/)?.[1] || clean.slice(0, 160);
-      return first.trim().slice(0, 200);
+      const sentence = clean.match(/^(.+?[.!?])(?:\s|$)/)?.[1];
+      if (sentence) return sentence.trim().slice(0, 200);
+      return clean.slice(0, 160).trim() + (clean.length > 160 ? '…' : '');
     }
   }
   return '';
@@ -181,6 +178,41 @@ function deriveImageQuery(query, context = '') {
     return `${contextCore} ${stripped}`.trim().slice(0, 80);
   }
   return stripped.slice(0, 80) || query.trim().slice(0, 80);
+}
+
+// ── Inline confidence badge injection ─────────────────────────────────────────
+
+function injectConfidenceBadges(text, claims) {
+  if (!claims || claims.length === 0) return text;
+
+  let result = text;
+
+  claims.forEach(claim => {
+    if (!claim.claim_text || claim.claim_text.length < 10) return;
+
+    const words = claim.claim_text
+      .split(' ')
+      .slice(0, 5)
+      .join(' ')
+      .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    const regex = new RegExp(`(${words}[^.!?]*[.!?])`, 'i');
+
+    const statusMap = {
+      verified:     '<span class="conf-v">● verified</span>',
+      corroborated: '<span class="conf-c">● corroborated</span>',
+      single_source:'<span class="conf-s">● single source</span>',
+      uncertain:    '<span class="conf-s">● single source</span>',
+      contested:    '<span class="conf-x">● contested</span>',
+    };
+
+    const badge = statusMap[claim.status];
+    if (!badge) return;
+
+    result = result.replace(regex, `$1 ${badge}`);
+  });
+
+  return result;
 }
 
 // ── Source card ───────────────────────────────────────────────────────────────
@@ -239,43 +271,7 @@ function SourceCard({ src, index }) {
             {src.title || src.url}
           </Typography>
 
-          {/* Row 2 — outlet profile metadata */}
-          {(src.outlet_name || src.editorial_lean || src.funding_type === 'state') && (
-            <Box sx={{
-              display: 'flex', alignItems: 'center', gap: 0.75,
-              mt: 0.4, pl: '21px',
-            }}>
-              {src.outlet_name && (
-                <Typography sx={{
-                  fontFamily: 'var(--font-family)',
-                  fontSize: '0.6rem',
-                  color: 'var(--fg-dim)',
-                  fontWeight: 500,
-                }}>
-                  {src.outlet_name}
-                </Typography>
-              )}
-              {src.country && (
-                <Typography sx={{
-                  fontFamily: 'var(--font-family)',
-                  fontSize: '0.6rem',
-                  color: 'var(--fg-dim)',
-                }}>
-                  · {src.country}
-                </Typography>
-              )}
-              {src.editorial_lean && LEAN_LABEL[src.editorial_lean] && (
-                <Typography sx={{
-                  fontFamily: 'var(--font-family)',
-                  fontSize: '0.58rem',
-                  color: src.editorial_lean === 'state_aligned' ? '#b45309' : 'var(--fg-dim)',
-                  fontWeight: src.editorial_lean === 'state_aligned' ? 600 : 400,
-                }}>
-                  · {LEAN_LABEL[src.editorial_lean]}
-                </Typography>
-              )}
-            </Box>
-          )}
+          {/* (Row 2 outlet metadata removed for cleaner look) */}
         </Box>
         <ExternalLink size={11} style={{ color: 'var(--fg-dim)', flexShrink: 0, marginTop: 4 }} />
       </Box>
@@ -346,10 +342,10 @@ function BentoImages({ query }) {
     <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px' }}>
       {photos.map((photo, i) => (
         <a key={i} href={photo.source || photo.image || '#'} target="_blank" rel="noopener noreferrer"
-          style={{ borderRadius: 6, overflow: 'hidden', display: 'block', aspectRatio: '1', textDecoration: 'none' }}>
+          style={{ borderRadius: 6, overflow: 'hidden', display: 'block', textDecoration: 'none' }}>
           <img src={photo.image} alt={photo.title || ''}
             onError={e => { e.target.parentElement.style.display = 'none'; }}
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transition: 'transform 0.2s' }}
+            style={{ width: '100%', height: 110, objectFit: 'cover', display: 'block', transition: 'transform 0.2s' }}
             onMouseEnter={e => { e.target.style.transform = 'scale(1.04)'; }}
             onMouseLeave={e => { e.target.style.transform = 'scale(1)'; }}
           />
@@ -377,10 +373,10 @@ function InlineImages({ visualQuery }) {
     <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
       {photos.map((photo, i) => (
         <a key={i} href={photo.source || '#'} target="_blank" rel="noopener noreferrer"
-          style={{ flex: 1, borderRadius: 10, overflow: 'hidden', display: 'block', textDecoration: 'none' }}>
+          style={{ flex: 1, borderRadius: 10, overflow: 'hidden', display: 'block', textDecoration: 'none', aspectRatio: '16/10' }}>
           <img src={photo.image} alt={photo.title || visualQuery}
             onError={e => { e.target.parentElement.style.display = 'none'; }}
-            style={{ width: '100%', height: 100, objectFit: 'cover', display: 'block', transition: 'transform 0.2s' }}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transition: 'transform 0.2s', backgroundColor: '#e5ddd0' }}
             onMouseEnter={e => { e.target.style.transform = 'scale(1.03)'; }}
             onMouseLeave={e => { e.target.style.transform = 'scale(1)'; }}
           />
@@ -391,16 +387,70 @@ function InlineImages({ visualQuery }) {
 }
 
 
+// Split an answer string into alternating text / diagram segments.
+// During streaming, an unclosed [DIAGRAM] block is hidden to avoid raw
+// syntax leaking into the rendered output.
+function parseAnswerParts(answer, sources, streaming) {
+  const parts = [];
+  const regex = /\[DIAGRAM\]([\s\S]*?)\[\/DIAGRAM\]/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = regex.exec(answer)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ type: 'text', content: linkifyCitations(answer.slice(lastIndex, match.index), sources) });
+    }
+    parts.push({ type: 'diagram', content: match[1].trim() });
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Remaining text (may contain a partial [DIAGRAM] block while streaming)
+  if (lastIndex < answer.length) {
+    let remaining = answer.slice(lastIndex);
+    if (streaming) {
+      // Hide incomplete diagram so raw syntax never shows to the user
+      remaining = remaining.replace(/\[DIAGRAM\][\s\S]*$/, '').trim();
+    }
+    if (remaining) {
+      parts.push({ type: 'text', content: linkifyCitations(remaining, sources) });
+    }
+  }
+
+  // Fallback: whole answer is plain text (no diagram tags at all)
+  if (parts.length === 0 && answer) {
+    parts.push({ type: 'text', content: linkifyCitations(answer, sources) });
+  }
+
+  return parts;
+}
+
 function CollapsibleAnswer({ answer, streaming, sources }) {
-  const linked = useMemo(() => linkifyCitations(answer, sources), [answer, sources]);
+  const parts = useMemo(
+    () => parseAnswerParts(answer, sources, streaming),
+    [answer, sources, streaming],
+  );
+
   return (
     <Box sx={ANSWER_BODY_STYLES}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{ a: ({ href, children }) => <CitationLink href={href} sources={sources}>{children}</CitationLink> }}
-      >
-        {linked}
-      </ReactMarkdown>
+      {parts.map((part, index) => {
+        if (part.type === 'diagram') {
+          return (
+            <Box key={`diagram-${index}`} sx={{ my: 2 }}>
+              <DiagramCard chartCode={part.content} />
+            </Box>
+          );
+        }
+        return (
+          <ReactMarkdown
+            key={`text-${index}`}
+            remarkPlugins={[remarkGfm]}
+            rehypePlugins={[rehypeRaw]}
+            components={{ a: ({ href, children }) => <CitationLink href={href} sources={sources}>{children}</CitationLink> }}
+          >
+            {part.content}
+          </ReactMarkdown>
+        );
+      })}
       {streaming && (
         <Box component="span" sx={{ display: 'inline-block', width: 7, height: 15, bgcolor: 'var(--accent)', borderRadius: '2px', animation: 'blinkPulse 1s step-end infinite', verticalAlign: 'text-bottom', ml: 0.5 }} />
       )}
@@ -416,6 +466,7 @@ function ThreadDivider() {
   );
 }
 
+// eslint-disable-next-line no-unused-vars
 function PipelineTrace({ trace }) {
   const [open, setOpen] = useState(false);
   if (!trace) return null;
@@ -674,10 +725,21 @@ function OutlinePanel({ question, answerContext, onClose }) {
 
 // ── Result block ──────────────────────────────────────────────────────────────
 
-function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowUp, onNewSearch, isDeepSearch, deepLabel, relatedSearches = [], loadingRelated = false, visualQuery = '', contradictions = null, stockData = null, claims = [], pipelineTrace = null, onWrite }) {
-  const [activeTab,    setActiveTab]    = useState('answer');
-  const [showOutline,  setShowOutline]  = useState(false);
-  const [copied,       setCopied]       = useState(false);
+function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowUp, onNewSearch, isDeepSearch, deepLabel, relatedSearches = [], loadingRelated = false, visualQuery = '', contradictions = null, stockData = null, claims = [], pipelineTrace = null, onWrite, onInsertClaim }) {
+  const [activeTab,       setActiveTab]       = useState('answer');
+  const [showOutline,     setShowOutline]     = useState(false);
+  const [copied,          setCopied]          = useState(false);
+  const [processedAnswer, setProcessedAnswer] = useState('');
+
+  useEffect(() => {
+    if (!streaming && answer) {
+      if (claims && claims.length > 0) {
+        setProcessedAnswer(injectConfidenceBadges(answer, claims));
+      } else {
+        setProcessedAnswer(answer);
+      }
+    }
+  }, [streaming, answer, claims]);
 
   const handleCopy = useCallback(() => {
     if (!answer) return;
@@ -761,10 +823,10 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
               </Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
                 {[
-                  { label: 'sources',   value: pipelineTrace.sources_retrieved ?? 0, color: null },
-                  { label: 'claims',    value: pipelineTrace.claims_extracted  ?? 0, color: null },
-                  { label: 'verified',  value: pipelineTrace.claims_verified   ?? 0, color: '#22c55e' },
-                  { label: 'contested', value: pipelineTrace.claims_contested  ?? 0, color: '#ef4444' },
+                  { label: 'sources',   value: sources.length, color: null },
+                  { label: 'claims',    value: claims.length, color: null },
+                  { label: 'verified',  value: claims.filter(c => ['verified', 'corroborated'].includes(c.status)).length, color: '#22c55e' },
+                  { label: 'contested', value: claims.filter(c => c.status === 'contested').length, color: '#ef4444' },
                 ].map(({ label, value, color }) => (
                   <Box key={label}>
                     <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '1rem', fontWeight: 600, color: color ?? 'var(--fg-primary)', lineHeight: 1 }}>
@@ -834,6 +896,34 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
               {/* Divider */}
               <Box sx={{ height: '1px', bgcolor: 'var(--border)', mb: 1.75 }} />
 
+              {/* Confidence legend */}
+              {claims.length > 0 && (
+                <Box sx={{
+                  display: 'flex', flexWrap: 'wrap', gap: 1.25, alignItems: 'center',
+                  background: 'rgba(255,255,255,0.4)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '7px', padding: '7px 10px',
+                  mb: 1.75,
+                }}>
+                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.62rem', color: 'var(--fg-dim)', fontWeight: 500 }}>
+                    Confidence:
+                  </Typography>
+                  {[
+                    { label: 'Verified',     color: '#22c55e' },
+                    { label: 'Corroborated', color: '#eab308' },
+                    { label: 'Single source',color: '#f97316' },
+                    { label: 'Contested',    color: '#ef4444' },
+                  ].map(({ label, color }) => (
+                    <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: color, flexShrink: 0 }} />
+                      <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.62rem', color: 'var(--fg-secondary)' }}>
+                        {label}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+              )}
+
               {/* Deep search status banner */}
               {deepLabel === '2/2' && streaming && (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, px: 1.25, py: 0.75, borderRadius: '10px', background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.20)' }}>
@@ -850,35 +940,9 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
                   <>
                     {visualQuery && <InlineImages visualQuery={visualQuery} />}
 
-                    {/* Confidence legend */}
-                    {claims.length > 0 && (
-                      <Box sx={{
-                        display: 'flex', flexWrap: 'wrap', gap: 1.25, alignItems: 'center',
-                        background: 'rgba(255,255,255,0.4)',
-                        border: '1px solid var(--border)',
-                        borderRadius: '7px', padding: '7px 10px',
-                        mb: 1.75,
-                      }}>
-                        <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.62rem', color: 'var(--fg-dim)', fontWeight: 500 }}>
-                          Confidence:
-                        </Typography>
-                        {[
-                          { label: 'Verified',     color: '#22c55e' },
-                          { label: 'Corroborated', color: '#eab308' },
-                          { label: 'Single source',color: '#f97316' },
-                          { label: 'Contested',    color: '#ef4444' },
-                        ].map(({ label, color }) => (
-                          <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: color, flexShrink: 0 }} />
-                            <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.62rem', color: 'var(--fg-secondary)' }}>
-                              {label}
-                            </Typography>
-                          </Box>
-                        ))}
-                      </Box>
-                    )}
 
-                    <CollapsibleAnswer answer={answer} streaming={streaming} sources={sources} />
+
+                    <CollapsibleAnswer answer={processedAnswer || answer} streaming={streaming} sources={sources} />
 
                     {/* Contested callout */}
                     {(() => {
@@ -1080,10 +1144,10 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
                     }}>
                       {c.claim_text || c.claim}
                     </Typography>
-                    {onWrite && (
+                    {onInsertClaim && (
                       <Box
                         component="button"
-                        onClick={e => { e.stopPropagation(); onWrite(); }}
+                        onClick={e => { e.stopPropagation(); onInsertClaim(c); }}
                         sx={{
                           flexShrink: 0, padding: '2px 7px', borderRadius: 4,
                           border: '1px solid rgba(249,115,22,0.35)',
@@ -1599,6 +1663,15 @@ export default function ExplorePage() {
 
   const runSearch = useCallback(async (q, isDeep = false) => {
     if (!q?.trim()) return;
+
+    // Persist to search history (max 20, deduplicated, most recent first)
+    try {
+      const HIST_KEY = 'quarry_search_history';
+      const prev = JSON.parse(localStorage.getItem(HIST_KEY) || '[]');
+      const next = [q.trim(), ...prev.filter(x => x !== q.trim())].slice(0, 20);
+      localStorage.setItem(HIST_KEY, JSON.stringify(next));
+    } catch (_) {}
+
     if (abortRef.current) abortRef.current.abort();
     abortRef.current = new AbortController();
     const signal = abortRef.current.signal;
@@ -1723,6 +1796,29 @@ export default function ExplorePage() {
       sources: sourcesRef.current,
       claims: claimsDataRef.current,
       pipelineTrace: pipelineTraceRef.current,
+    }));
+    navigate('/write');
+  }, [query, navigate]);
+
+  const handleInsertClaim = useCallback((claim) => {
+    const claimText =
+      '\n' + (claim.claim_text || claim.claim || '') +
+      ' [' + (claim.source_outlets?.[0] || 'Source') + ']\n';
+
+    const existing = (() => {
+      try {
+        const s = sessionStorage.getItem('quarry_write_session');
+        return s ? JSON.parse(s) : {};
+      } catch { return {}; }
+    })();
+
+    sessionStorage.setItem('quarry_write_session', JSON.stringify({
+      ...existing,
+      query:         existing.query || query,
+      sources:       sourcesRef.current,
+      claims:        claimsDataRef.current,
+      pipelineTrace: pipelineTraceRef.current,
+      insertedClaim: claimText,
     }));
     navigate('/write');
   }, [query, navigate]);
@@ -2084,6 +2180,7 @@ export default function ExplorePage() {
             stockData={stockData}
             claims={claimsData} pipelineTrace={pipelineTrace}
             onWrite={handleWrite}
+            onInsertClaim={handleInsertClaim}
           />
 
           {followUpBlocks.map((block, i) => (

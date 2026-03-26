@@ -1,6 +1,8 @@
-import React, { useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Search, BookOpen, FlaskConical, TrendingUp, ChevronRight, Zap } from 'lucide-react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Search, BookOpen, FlaskConical, TrendingUp, ChevronRight, Zap, Clock, FileText, RefreshCw, PenLine } from 'lucide-react';
+
+const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 /* ── Design tokens (mirrors index.css vars) ─────────────────────────────── */
 const T = {
@@ -19,8 +21,8 @@ const T = {
   mono:        "'IBM Plex Mono',monospace",
 };
 
-/* ── Hardcoded content ───────────────────────────────────────────────────── */
-const SUGGESTIONS = [
+/* ── Static fallback content ─────────────────────────────────────────────── */
+const FALLBACK_SUGGESTIONS = [
   'Sudan humanitarian crisis 2025',
   'Gaza reconstruction funding',
   'Haiti gang violence displacement',
@@ -28,7 +30,7 @@ const SUGGESTIONS = [
   'Sahel drought food insecurity',
 ];
 
-const FEATURED_STORY = {
+const FALLBACK_FEATURED = {
   kicker:  'CRISIS INTELLIGENCE',
   headline:'Sudan: 18 months of conflict, 10 million displaced — where are international donors?',
   summary: 'A Quarry deep-dive across 34 sources surfaced significant contradictions between UN funding pledges and actual disbursements. Three competing narratives identified.',
@@ -36,32 +38,20 @@ const FEATURED_STORY = {
   meta:    'Updated 2 h ago',
 };
 
-const SMALLER_STORIES = [
-  {
-    kicker:  'ACCOUNTABILITY',
-    headline:'Gaza reconstruction: who controls the $50 bn pledge?',
-    meta:    '12 sources · 4 h ago',
-  },
-  {
-    kicker:  'DISPLACEMENT',
-    headline:'Haiti displacement rises 28% as gang violence expands north',
-    meta:    '9 sources · 7 h ago',
-  },
-  {
-    kicker:  'CLIMATE',
-    headline:'Sahel drought: conflicting data on crop-failure projections',
-    meta:    '15 sources · 1 d ago',
-  },
+const FALLBACK_SMALLER = [
+  { kicker: 'ACCOUNTABILITY', headline: 'Gaza reconstruction: who controls the $50 bn pledge?',             meta: '12 sources · 4 h ago' },
+  { kicker: 'DISPLACEMENT',   headline: 'Haiti displacement rises 28% as gang violence expands north',       meta: '9 sources · 7 h ago'  },
+  { kicker: 'CLIMATE',        headline: 'Sahel drought: conflicting data on crop-failure projections',        meta: '15 sources · 1 d ago' },
 ];
 
-const ENTRY_STORIES = [
+const FALLBACK_ENTRY = [
   'Myanmar junta air campaign: verified strike locations vs. claimed civilian deaths',
   'DRC: eastern province mineral revenue flows — three contradictory assessments',
   'Yemen: Red Sea shipping disruption — economic modelling divergence',
   'Bangladesh floods 2025: early-warning system failure timeline',
 ];
 
-const TRENDING = [
+const FALLBACK_TRENDING = [
   { label: 'Sudan ceasefire', count: 42 },
   { label: 'Gaza aid corridor', count: 37 },
   { label: 'Haiti kidnappings', count: 29 },
@@ -77,16 +67,76 @@ const MARKETS = [
 ];
 
 const MODES = [
-  { id: 'search',   label: 'Search',   icon: Search,        desc: 'Find sources & contradictions' },
-  { id: 'write',    label: 'Write',    icon: BookOpen,       desc: 'Draft with citations' },
-  { id: 'research', label: 'Research', icon: FlaskConical,   desc: 'Deep multi-step analysis' },
-  { id: 'finance',  label: 'Markets',  icon: TrendingUp,     desc: 'Stocks & commodities' },
+  { id: 'search',   label: 'Search',   icon: Search,      desc: 'Find sources & contradictions' },
+  { id: 'write',    label: 'Write',    icon: BookOpen,     desc: 'Draft with citations' },
+  { id: 'research', label: 'Research', icon: FlaskConical, desc: 'Deep multi-step analysis' },
+  { id: 'finance',  label: 'Markets',  icon: TrendingUp,   desc: 'Stocks & commodities' },
 ];
+
+/* ── Live trending hook ──────────────────────────────────────────────────── */
+function useTrendingNews() {
+  const [articles, setArticles] = useState([]);
+  const [isLive,   setIsLive]   = useState(false);
+  const [spinning, setSpinning] = useState(false);
+
+  const fetch_ = useCallback(async (force = false) => {
+    setSpinning(true);
+    try {
+      const url = `${API}/explore/trending-news?max=6${force ? '&force=true' : ''}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('trending error');
+      const data = await res.json();
+      const arts = (data.articles || []).filter(a => a.title).slice(0, 6);
+      if (arts.length >= 3) { setArticles(arts); setIsLive(true); }
+    } catch { /* silent — caller uses fallbacks */ }
+    finally { setSpinning(false); }
+  }, []);
+
+  useEffect(() => { fetch_(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return { articles, isLive, spinning, refetch: () => fetch_(true) };
+}
+
+/* ── localStorage helpers ────────────────────────────────────────────────── */
+
+function loadArtifacts() {
+  try { return JSON.parse(localStorage.getItem('quarry_documents') || '[]'); } catch (_) { return []; }
+}
+
+function loadSearchHistory() {
+  try { return JSON.parse(localStorage.getItem('quarry_search_history') || '[]'); } catch (_) { return []; }
+}
+
+function ago(ts) {
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 60)    return 'just now';
+  if (s < 3600)  return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
+function stripMd(text) {
+  return (text || '').replace(/#{1,6}\s+/g, '').replace(/\*+/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/`[^`]+`/g, '').trim();
+}
+
+function wordCount(text) {
+  return (text || '').trim().split(/\s+/).filter(Boolean).length;
+}
 
 /* ── Sub-components ──────────────────────────────────────────────────────── */
 
 function Topbar() {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const NAV = [
+    { label: 'Write',     path: '/write'     },
+    { label: 'Artifacts', path: '/artifacts' },
+    { label: 'Research',  path: '/research'  },
+    { label: 'Sources',   path: '/sources'   },
+    { label: 'Settings',  path: '/settings'  },
+  ];
+
   return (
     <header style={{
       position: 'sticky', top: 0, zIndex: 100,
@@ -114,31 +164,37 @@ function Topbar() {
       <div style={{ flex: 1 }} />
 
       {/* Nav buttons */}
-      {[
-        { label: 'Artifacts', path: '/artifacts' },
-        { label: 'Research', path: '/research' },
-        { label: 'Sources',  path: '/sources'  },
-        { label: 'Settings', path: '/settings' },
-      ].map(({ label, path }) => (
-        <button
-          key={path}
-          onClick={() => navigate(path)}
-          style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            fontFamily: T.sans, fontSize: '0.78rem', fontWeight: 500,
-            color: T.fgSec, letterSpacing: '0.01em',
-            padding: '4px 8px', borderRadius: 6,
-            transition: 'color 0.15s',
-          }}
-          onMouseEnter={e => e.target.style.color = T.fg}
-          onMouseLeave={e => e.target.style.color = T.fgSec}
-        >
-          {label}
-        </button>
-      ))}
+      {NAV.map(({ label, path }) => {
+        const isActive = location.pathname === path;
+        return (
+          <button
+            key={path}
+            onClick={() => navigate(path)}
+            style={{
+              background: isActive ? T.accentDim : 'none',
+              border: isActive ? `1px solid rgba(249,115,22,0.22)` : 'none',
+              borderRadius: 6,
+              cursor: 'pointer',
+              fontFamily: T.sans, fontSize: '0.78rem', fontWeight: isActive ? 600 : 500,
+              color: isActive ? T.accent : T.fgSec,
+              letterSpacing: '0.01em',
+              padding: '4px 8px',
+              transition: 'color 0.15s, background 0.15s',
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+            }}
+            onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = T.fg; }}
+            onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = T.fgSec; }}
+          >
+            {label === 'Write' && <PenLine size={11} />}
+            {label}
+          </button>
+        );
+      })}
     </header>
   );
 }
+
+
 
 function SearchSurface({ query, setQuery, mode, setMode, onSubmit }) {
   const handleKey = useCallback((e) => {
@@ -233,13 +289,14 @@ function SearchSurface({ query, setQuery, mode, setMode, onSubmit }) {
   );
 }
 
-function SuggestionChips({ onChip }) {
+function SuggestionChips({ onChip, suggestions }) {
+  const items = suggestions && suggestions.length >= 3 ? suggestions : FALLBACK_SUGGESTIONS;
   return (
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 720, margin: '0 auto' }}>
-      {SUGGESTIONS.map(s => (
+      {items.map((s, i) => (
         <button
-          key={s}
-          onClick={() => onChip(s)}
+          key={i}
+          onClick={() => onChip(typeof s === 'string' ? s : s.title)}
           style={{
             background: 'rgba(255,250,232,0.50)',
             border: `1px solid ${T.border}`,
@@ -259,7 +316,7 @@ function SuggestionChips({ onChip }) {
             e.currentTarget.style.borderColor = T.border;
           }}
         >
-          {s}
+          {typeof s === 'string' ? s : s.title}
         </button>
       ))}
     </div>
@@ -380,7 +437,12 @@ function EntryList({ stories, onSearch }) {
   );
 }
 
-function TrendingPanel() {
+function TrendingPanel({ articles, isLive, spinning, onRefresh }) {
+  // Build display items from live articles or static fallback
+  const items = isLive && articles.length >= 3
+    ? articles.slice(0, 5).map((a, i) => ({ label: a.title, source: a.source?.name, count: null, href: a.url }))
+    : FALLBACK_TRENDING;
+
   return (
     <div style={{
       background: T.glass,
@@ -392,32 +454,59 @@ function TrendingPanel() {
       marginBottom: 14,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 16 }}>
-        <TrendingUp size={14} color={T.accent} />
-        <span style={{ fontFamily: T.mono, fontSize: '0.70rem', fontWeight: 600, color: T.accent, letterSpacing: '0.10em' }}>
-          TRENDING QUERIES
+        {/* Live pulse dot */}
+        <div style={{
+          width: 6, height: 6, borderRadius: '50%',
+          background: isLive ? T.accent : T.fgDim,
+          animation: isLive ? 'trendPulse 1.6s ease-in-out infinite' : 'none',
+          flexShrink: 0,
+        }} />
+        <span style={{ fontFamily: T.mono, fontSize: '0.70rem', fontWeight: 600, color: isLive ? T.accent : T.fgSec, letterSpacing: '0.10em' }}>
+          {isLive ? 'LIVE TRENDING' : 'TRENDING'}
         </span>
+        {/* Refresh */}
+        <div
+          onClick={onRefresh}
+          style={{ marginLeft: 'auto', cursor: 'pointer', opacity: 0.5, transition: 'opacity 0.15s' }}
+          onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+          onMouseLeave={e => e.currentTarget.style.opacity = '0.5'}
+        >
+          <RefreshCw size={10} color={T.fgDim} style={{ animation: spinning ? 'spin 1s linear infinite' : 'none' }} />
+        </div>
       </div>
-      {TRENDING.map((item, i) => (
-        <div key={item.label} style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          padding: '8px 0',
-          borderBottom: i < TRENDING.length - 1 ? `1px solid ${T.border}` : 'none',
-        }}>
-          <span style={{ fontFamily: T.mono, fontSize: '0.68rem', color: T.fgDim, flex: '0 0 18px' }}>
+      {items.map((item, i) => (
+        <div
+          key={i}
+          onClick={() => item.href && window.open(item.href, '_blank', 'noopener,noreferrer')}
+          style={{
+            display: 'flex', alignItems: 'flex-start', gap: 10,
+            padding: '8px 0',
+            borderBottom: i < items.length - 1 ? `1px solid ${T.border}` : 'none',
+            cursor: item.href ? 'pointer' : 'default',
+          }}
+          onMouseEnter={e => { if (item.href) e.currentTarget.style.opacity = '0.75'; }}
+          onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
+        >
+          <span style={{ fontFamily: T.mono, fontSize: '0.68rem', color: T.fgDim, flex: '0 0 18px', mt: '2px' }}>
             {String(i + 1).padStart(2, '0')}
           </span>
-          <span style={{ fontFamily: T.sans, fontSize: '0.82rem', fontWeight: 400, color: T.fg, flex: 1 }}>
+          <span style={{ fontFamily: T.sans, fontSize: '0.80rem', fontWeight: 400, color: T.fg, flex: 1, lineHeight: 1.4,
+            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+            {item.source && <span style={{ color: T.accent, fontSize: '0.62rem', fontFamily: T.mono, letterSpacing: '0.08em', display: 'block', marginBottom: 1 }}>{item.source}</span>}
             {item.label}
           </span>
-          <span style={{
-            fontFamily: T.mono, fontSize: '0.68rem', fontWeight: 500,
-            color: T.accent, background: T.accentDim,
-            padding: '2px 7px', borderRadius: 8,
-          }}>
-            {item.count}
-          </span>
+          {item.count !== null && (
+            <span style={{
+              fontFamily: T.mono, fontSize: '0.68rem', fontWeight: 500,
+              color: T.accent, background: T.accentDim,
+              padding: '2px 7px', borderRadius: 8, flexShrink: 0,
+            }}>
+              {item.count}
+            </span>
+          )}
         </div>
       ))}
+      <style>{`@keyframes trendPulse { 0%,100%{opacity:1} 50%{opacity:0.3} } @keyframes spin { from{transform:rotate(0)} to{transform:rotate(360deg)} }`}</style>
     </div>
   );
 }
@@ -466,8 +555,17 @@ function MarketsPanel() {
 /* ── Main export ─────────────────────────────────────────────────────────── */
 
 export default function HomePage({ onSearch }) {
+  const navigate   = useNavigate();
   const [query, setQuery] = useState('');
-  const [mode, setMode] = useState('search');
+  const [mode,  setMode]  = useState('search');
+  const [artifacts,     setArtifacts]     = useState([]);
+  const [searchHistory, setSearchHistory] = useState([]);
+  const { articles: trendingArticles, isLive, spinning, refetch } = useTrendingNews();
+
+  useEffect(() => {
+    setArtifacts(loadArtifacts());
+    setSearchHistory(loadSearchHistory());
+  }, []);
 
   const handleSubmit = useCallback(() => {
     if (!query.trim()) return;
@@ -483,6 +581,40 @@ export default function HomePage({ onSearch }) {
     setQuery(text);
     if (onSearch) onSearch(text, m || mode);
   }, [mode, onSearch]);
+
+  // Open a saved artifact in WritePage (same bridge as ArtifactsPage)
+  const handleOpenArtifact = useCallback((doc) => {
+    sessionStorage.setItem('quarry_write_session', JSON.stringify({
+      query:   doc.query || doc.title || '',
+      content: doc.content || '',
+      docId:   doc.id,
+    }));
+    navigate('/write');
+  }, [navigate]);
+
+  // Derive live story cards from trending articles
+  const liveHasStories = isLive && trendingArticles.length >= 3;
+  const featuredStory = liveHasStories
+    ? {
+        kicker:   (trendingArticles[0].source?.name || 'BREAKING').toUpperCase(),
+        headline:  trendingArticles[0].title,
+        summary:   trendingArticles[0].description || '',
+        tags:      [trendingArticles[0].source?.name].filter(Boolean),
+        meta:      trendingArticles[0].publishedAt ? new Date(trendingArticles[0].publishedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Today',
+        url:       trendingArticles[0].url,
+      }
+    : FALLBACK_FEATURED;
+  const smallerStories = liveHasStories
+    ? trendingArticles.slice(1, 4).map(a => ({
+        kicker:   (a.source?.name || 'NEWS').toUpperCase(),
+        headline:  a.title,
+        meta:      a.publishedAt ? new Date(a.publishedAt).toLocaleString('en-US', { month: 'short', day: 'numeric' }) : '',
+        url:       a.url,
+      }))
+    : FALLBACK_SMALLER;
+  const entryStories = liveHasStories
+    ? trendingArticles.slice(4).map(a => a.title)
+    : FALLBACK_ENTRY;
 
   return (
     <div style={{ minHeight: '100vh', fontFamily: T.sans }}>
@@ -523,7 +655,7 @@ export default function HomePage({ onSearch }) {
         />
 
         <div style={{ marginTop: 16 }}>
-          <SuggestionChips onChip={handleChip} />
+          <SuggestionChips onChip={handleChip} suggestions={trendingArticles} />
         </div>
       </section>
 
@@ -537,23 +669,154 @@ export default function HomePage({ onSearch }) {
       }}>
         {/* Left: stories feed */}
         <div>
-          <div style={{
-            fontFamily: T.mono, fontSize: '0.68rem', fontWeight: 600,
-            color: T.fgDim, letterSpacing: '0.12em', textTransform: 'uppercase',
-            marginBottom: 14,
-          }}>
-            Recent intelligence
-          </div>
+          {artifacts.length > 0 ? (
+            <>
+              <div style={{
+                fontFamily: T.mono, fontSize: '0.68rem', fontWeight: 600,
+                color: T.fgDim, letterSpacing: '0.12em', textTransform: 'uppercase',
+                marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8,
+              }}>
+                <FileText size={11} color={T.fgDim} />
+                Your research
+                <span style={{ fontWeight: 400, opacity: 0.7 }}>· {artifacts.length} {artifacts.length === 1 ? 'story' : 'stories'}</span>
+              </div>
 
-          <FeaturedCard story={FEATURED_STORY} onSearch={handleStorySearch} />
+              {/* Most recent as featured */}
+              {(() => {
+                const doc = artifacts[0];
+                const plain = stripMd(doc.content);
+                const wc    = wordCount(doc.content);
+                const sc    = (doc.sources || []).length;
+                return (
+                  <div
+                    onClick={() => handleOpenArtifact(doc)}
+                    style={{
+                      background: T.glass, border: T.glassBorder, boxShadow: T.glassShadow,
+                      backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
+                      borderRadius: 14, padding: '24px 28px',
+                      cursor: 'pointer', marginBottom: 12,
+                      transition: 'transform 0.16s, box-shadow 0.16s',
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                      e.currentTarget.style.boxShadow = '0 16px 48px rgba(140,110,60,0.13),0 2px 0 rgba(255,254,225,0.65) inset';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = T.glassShadow;
+                    }}
+                  >
+                    <div style={{ fontFamily: T.mono, fontSize: '0.68rem', fontWeight: 600, color: T.accent, letterSpacing: '0.12em', marginBottom: 10 }}>
+                      DRAFTED · {ago(doc.savedAt || doc.updatedAt || Date.now())}
+                    </div>
+                    <h2 style={{ fontFamily: T.serif, fontSize: '1.35rem', fontWeight: 400, color: T.fg, lineHeight: 1.3, marginBottom: 10, letterSpacing: '-0.01em' }}>
+                      {doc.title || '(Untitled)'}
+                    </h2>
+                    {plain.length > 0 && (
+                      <p style={{ fontFamily: T.sans, fontSize: '0.84rem', fontWeight: 300, color: T.fgSec, lineHeight: 1.6, marginBottom: 14 }}>
+                        {plain.slice(0, 180)}{plain.length > 180 ? '…' : ''}
+                      </p>
+                    )}
+                    <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+                      {wc > 0 && <span style={{ padding: '3px 10px', borderRadius: 12, background: T.accentDim, border: '1px solid rgba(249,115,22,0.20)', fontFamily: T.sans, fontSize: '0.72rem', fontWeight: 500, color: '#c2540a' }}>{wc} words</span>}
+                      {sc > 0  && <span style={{ padding: '3px 10px', borderRadius: 12, background: T.accentDim, border: '1px solid rgba(249,115,22,0.20)', fontFamily: T.sans, fontSize: '0.72rem', fontWeight: 500, color: '#c2540a' }}>{sc} sources</span>}
+                    </div>
+                  </div>
+                );
+              })()}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 12 }}>
-            {SMALLER_STORIES.map((s, i) => (
-              <SmallStoryCard key={i} story={s} onSearch={handleStorySearch} />
-            ))}
-          </div>
+              {/* Next 2 as small cards */}
+              {artifacts.length > 1 && (
+                <div style={{ display: 'grid', gridTemplateColumns: artifacts.length >= 3 ? '1fr 1fr' : '1fr', gap: 10, marginBottom: 12 }}>
+                  {artifacts.slice(1, 3).map((doc) => (
+                    <div
+                      key={doc.id}
+                      onClick={() => handleOpenArtifact(doc)}
+                      style={{
+                        background: 'rgba(255,250,232,0.38)', border: `1px solid ${T.border}`,
+                        borderRadius: 12, padding: '14px 18px', cursor: 'pointer',
+                        transition: 'transform 0.15s, background 0.15s',
+                        display: 'flex', flexDirection: 'column', gap: 6,
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.background = 'rgba(255,250,232,0.60)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.background = 'rgba(255,250,232,0.38)'; }}
+                    >
+                      <div style={{ fontFamily: T.mono, fontSize: '0.63rem', fontWeight: 600, color: T.accent, letterSpacing: '0.10em' }}>
+                        DRAFTED
+                      </div>
+                      <div style={{ fontFamily: T.serif, fontSize: '0.92rem', fontWeight: 400, color: T.fg, lineHeight: 1.35,
+                        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                        {doc.title || '(Untitled)'}
+                      </div>
+                      <div style={{ fontFamily: T.mono, fontSize: '0.67rem', color: T.fgDim }}>
+                        {wordCount(doc.content)} words · {ago(doc.savedAt || doc.updatedAt || Date.now())}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
-          <EntryList stories={ENTRY_STORIES} onSearch={handleStorySearch} />
+              {/* Remaining as entry list */}
+              {artifacts.length > 3 && (
+                <div style={{ background: 'rgba(255,250,232,0.38)', border: `1px solid ${T.border}`, borderRadius: 12, overflow: 'hidden' }}>
+                  {artifacts.slice(3, 8).map((doc, i, arr) => (
+                    <div
+                      key={doc.id}
+                      onClick={() => handleOpenArtifact(doc)}
+                      style={{
+                        padding: '11px 18px',
+                        borderBottom: i < arr.length - 1 ? `1px solid ${T.border}` : 'none',
+                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
+                        transition: 'background 0.13s',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,250,232,0.60)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <span style={{ fontFamily: T.mono, fontSize: '0.7rem', color: T.fgDim, flex: '0 0 auto' }}>
+                        {String(i + 4).padStart(2, '0')}
+                      </span>
+                      <span style={{ fontFamily: T.sans, fontSize: '0.82rem', fontWeight: 400, color: T.fg, lineHeight: 1.4, flex: 1,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {doc.title || '(Untitled)'}
+                      </span>
+                      <span style={{ fontFamily: T.mono, fontSize: '0.67rem', color: T.fgDim, flex: '0 0 auto' }}>
+                        {ago(doc.savedAt || doc.updatedAt || Date.now())}
+                      </span>
+                      <ChevronRight size={12} color={T.fgDim} style={{ flex: '0 0 auto' }} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div style={{
+                fontFamily: T.mono, fontSize: '0.68rem', fontWeight: 600,
+                color: T.fgDim, letterSpacing: '0.12em', textTransform: 'uppercase',
+                marginBottom: 14,
+              }}>
+                Suggested investigations
+              </div>
+
+              {/* story thumbnail cards driven by live or fallback */}
+              <FeaturedCard
+                story={featuredStory}
+                onSearch={(text, m) => { if (featuredStory.url) window.open(featuredStory.url, '_blank', 'noopener,noreferrer'); else handleStorySearch(text, m); }}
+              />
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 12 }}>
+                {smallerStories.map((s, i) => (
+                  <SmallStoryCard
+                    key={i}
+                    story={s}
+                    onSearch={(text, m) => { if (s.url) window.open(s.url, '_blank', 'noopener,noreferrer'); else handleStorySearch(text, m); }}
+                  />
+                ))}
+              </div>
+
+              <EntryList stories={entryStories} onSearch={handleStorySearch} />
+            </>
+          )}
         </div>
 
         {/* Right: trending + markets */}
@@ -565,7 +828,54 @@ export default function HomePage({ onSearch }) {
           }}>
             Signals
           </div>
-          <TrendingPanel />
+
+          {/* Recent searches (live) or hardcoded trending (fallback) */}
+          {searchHistory.length > 0 ? (
+            <div style={{
+              background: T.glass, border: T.glassBorder, boxShadow: T.glassShadow,
+              backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
+              borderRadius: 14, padding: '20px 22px', marginBottom: 14,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 16 }}>
+                <Clock size={14} color={T.accent} />
+                <span style={{ fontFamily: T.mono, fontSize: '0.70rem', fontWeight: 600, color: T.accent, letterSpacing: '0.10em' }}>
+                  RECENT SEARCHES
+                </span>
+              </div>
+              {searchHistory.slice(0, 8).map((q, i) => (
+                <div
+                  key={i}
+                  onClick={() => handleStorySearch(q, 'search')}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '8px 0',
+                    borderBottom: i < Math.min(searchHistory.length, 8) - 1 ? `1px solid ${T.border}` : 'none',
+                    cursor: 'pointer',
+                    transition: 'opacity 0.13s',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.opacity = '0.72'}
+                  onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                >
+                  <span style={{ fontFamily: T.mono, fontSize: '0.68rem', color: T.fgDim, flex: '0 0 18px' }}>
+                    {String(i + 1).padStart(2, '0')}
+                  </span>
+                  <span style={{ fontFamily: T.sans, fontSize: '0.80rem', fontWeight: 400, color: T.fg, flex: 1,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {q}
+                  </span>
+                  <ChevronRight size={11} color={T.fgDim} style={{ flex: '0 0 auto' }} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <TrendingPanel
+              articles={trendingArticles}
+              isLive={isLive}
+              spinning={spinning}
+              onRefresh={refetch}
+            />
+          )}
+
           <MarketsPanel />
         </div>
       </section>
