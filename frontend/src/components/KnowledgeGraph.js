@@ -96,22 +96,41 @@ function ClaimLandscapeCanvas({ claims, width, height, onNodeClick }) {
   // don't overlap perfectly but position is stable across re-renders)
   const nodes = useMemo(() => {
     if (!claims || claims.length === 0) return [];
+
+    const leanMap = {
+      'Associated Press':   'center',
+      'Reuters':            'center',
+      'BBC':                'center',
+      'BBC News':           'center',
+      'Al Jazeera':         'center',
+      'Al Jazeera English': 'center',
+      'Haaretz':            'left',
+      'Guardian':           'center',
+      'The Guardian':       'center',
+      'IRNA':               'state_aligned',
+      'Press TV':           'state_aligned',
+      'RT':                 'state_aligned',
+      'Global Times':       'state_aligned',
+      'CGTN':               'state_aligned',
+      'Fox News':           'right',
+      'CNN':                'left',
+    };
+
     return claims.map((claim, i) => {
-      const lean = (claim.source_outlets || []).length > 0
-        ? 'unknown'   // fallback — backend doesn't send lean per claim yet
-        : 'unknown';
-      // Use first source_outlet to guess lean if possible
+      const firstOutlet = (claim.source_outlets || [])[0] || '';
+      const lean   = leanMap[firstOutlet] ?? 'unknown';
       const status = claim.status || 'single_source';
       const baseX  = (LEAN_X[lean] ?? 0.75) * width;
       const baseY  = (STATUS_Y[status] ?? 0.56) * height;
-      // Deterministic jitter from claim_text length + index
-      const jitter = ((claim.claim_text || '').length % 20) - 10;
+      const jitter  = ((claim.claim_text || '').length % 30) - 15;
+      const spreadX = (i % 4) * (width * 0.18);
+      const spreadY = (i % 3) * 12;
       return {
-        x:      baseX + jitter + (i % 5) * 6,
-        y:      baseY + jitter * 0.5 + (i % 3) * 5,
-        color:  CLAIM_COLOR[status] ?? '#f97316',
+        x:     baseX + jitter + spreadX,
+        y:     baseY + jitter * 0.4 + spreadY,
+        color: CLAIM_COLOR[status] ?? '#f97316',
         claim,
-        index:  i,
+        index: i,
       };
     });
   }, [claims, width, height]);

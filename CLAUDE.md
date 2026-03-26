@@ -85,6 +85,10 @@ This order must be preserved in the new pipeline.
 - Do NOT mention any other collaborators on github, Do NOT mention claude
 
 ## Session State
-Phase: PHASE 1 — Foundation
-Last completed: Session 11: Writing surface overhaul — document-first layout, story sidebar, confidence bar, drawer default collapsed, unsourced detection improved
+Phase: PHASE 1 — Foundation (COMPLETE)
+Last completed: Sessions 12–15
+- Session 12: Three-column ExplorePage layout verified (was already implemented)
+- Session 13: HomePage live trending (useTrendingNews hook, SuggestionChips, TrendingPanel, FeaturedCard all wired to /explore/trending-news); Topbar rebuilt with useLocation active-route highlighting + Write nav button
+- Session 14: Build verified (CI=false npm run build → Compiled with warnings, no errors). Backend pytest → 124 passing, pre-existing failures untouched.
+- Session 15: Inline confidence badges in brief (rehype-raw + injectConfidenceBadges, .conf-v/c/s/x CSS classes); Claim Landscape spread fix (leanMap by outlet name, wider jitter/spreadX/spreadY); Insert claim to editor (handleInsertClaim writes insertedClaim to sessionStorage, WritePage reads it on mount)
 Branch: overhaul/epistemic-pipeline

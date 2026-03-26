@@ -416,7 +416,8 @@ export default function WritePage() {
         if (session.claims?.length)   setSessionClaims(session.claims);
         if (session.pipelineTrace)    setPipelineTrace(session.pipelineTrace);
         if (session.query)            setTitle(session.query);
-        if (session.content)          setContent(session.content);
+        if (session.insertedClaim)    setContent(session.insertedClaim);
+        else if (session.content)     setContent(session.content);
         if (session.docId)            docIdRef.current = session.docId;
       }
     } catch {}

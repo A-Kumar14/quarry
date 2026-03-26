@@ -126,3 +126,36 @@ html.dark #root {
   --gbtn-shadow:    0 3px 14px rgba(0,0,0,0.30), 0 1.5px 0 rgba(255,255,255,0.07) inset, 0 -1px 0 rgba(0,0,0,0.20) inset;
   --gbtn-color:     #e6edf3;
 }
+
+/* ── Inline confidence badges (injected into ReactMarkdown output) ─────────── */
+.conf-v, .conf-c, .conf-s, .conf-x {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 3px;
+  padding: 0 4px;
+  font-size: 0.57rem;
+  font-weight: 500;
+  vertical-align: middle;
+  margin-left: 3px;
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+.conf-v {
+  background: rgba(34,197,94,0.10);
+  border: 1px solid rgba(34,197,94,0.25);
+  color: #15803d;
+}
+.conf-c {
+  background: rgba(234,179,8,0.12);
+  border: 1px solid rgba(234,179,8,0.30);
+  color: #a16207;
+}
+.conf-s {
+  background: rgba(249,115,22,0.10);
+  border: 1px solid rgba(249,115,22,0.25);
+  color: #c2540a;
+}
+.conf-x {
+  background: rgba(239,68,68,0.10);
+  border: 1px solid rgba(239,68,68,0.25);
+  color: #dc2626;
+}
