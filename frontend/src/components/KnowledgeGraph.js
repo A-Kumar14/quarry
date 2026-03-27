@@ -1,6 +1,7 @@
 import React, { useRef, useCallback, useEffect, useState, useMemo } from 'react';
 import { Box, Typography } from '@mui/material';
 import ForceGraph2D from 'react-force-graph-2d';
+import { useDarkMode } from '../DarkModeContext';
 
 // Node color / radius by type
 const NODE_COLOR = {
@@ -91,6 +92,7 @@ function ClaimLandscapeCanvas({ claims, width, height, onNodeClick }) {
   const canvasRef = useRef(null);
   const [tooltip, setTooltip]   = useState(null); // {x, y, claim}
   const [selected, setSelected] = useState(null);
+  const [dark] = useDarkMode();
 
   // Compute stable node positions (deterministic jitter so nodes
   // don't overlap perfectly but position is stable across re-renders)
@@ -147,7 +149,12 @@ function ClaimLandscapeCanvas({ claims, width, height, onNodeClick }) {
     ctx.fillRect(0, 0, width, height);
 
     // Axis guide lines (subtle)
-    ctx.strokeStyle = 'rgba(156,163,175,0.18)';
+    const axisStroke = dark ? 'rgba(255,255,255,0.18)' : 'rgba(156,163,175,0.18)';
+    const axisLabel  = dark ? '#E6EDF3' : '#9CA3AF';
+    const edgeStroke  = dark ? 'rgba(255,255,255,0.25)' : 'rgba(156,163,175,0.25)';
+    const nodeOutline = dark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)';
+
+    ctx.strokeStyle = axisStroke;
     ctx.lineWidth = 1;
     // Horizontal thirds
     [0.33, 0.66].forEach(f => {
@@ -159,7 +166,7 @@ function ClaimLandscapeCanvas({ claims, width, height, onNodeClick }) {
 
     // Axis labels
     ctx.font = '10px Inter, system-ui, sans-serif';
-    ctx.fillStyle = '#9CA3AF';
+    ctx.fillStyle = axisLabel;
     ctx.textAlign = 'left';
     ctx.fillText('Verified', 8, 16);
     ctx.fillText('Contested', 8, height - 8);
@@ -167,7 +174,7 @@ function ClaimLandscapeCanvas({ claims, width, height, onNodeClick }) {
     ctx.fillText('← State / Official          Independent          Unverified →', width / 2, height - 8);
 
     // Edges — connect claims that share a source outlet
-    ctx.strokeStyle = 'rgba(156,163,175,0.25)';
+    ctx.strokeStyle = edgeStroke;
     ctx.lineWidth = 1;
     for (let i = 0; i < nodes.length; i++) {
       for (let j = i + 1; j < nodes.length; j++) {
@@ -193,11 +200,11 @@ function ClaimLandscapeCanvas({ claims, width, height, onNodeClick }) {
       ctx.globalAlpha = 0.85;
       ctx.fill();
       ctx.globalAlpha = 1;
-      ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+      ctx.strokeStyle = nodeOutline;
       ctx.lineWidth = 1.5;
       ctx.stroke();
     });
-  }, [nodes, tooltip, width, height]);
+  }, [nodes, tooltip, width, height, dark]);
 
   // Hover detection
   const handleMouseMove = useCallback(e => {
@@ -264,14 +271,14 @@ function ClaimLandscapeCanvas({ claims, width, height, onNodeClick }) {
             left: Math.min(tooltip.x + 12, width - 220),
             top:  Math.max(tooltip.y - 60, 4),
             width: 210,
-            bgcolor: 'rgba(255,255,255,0.95)',
-            backdropFilter: 'blur(8px)',
+            bgcolor: dark ? 'rgba(13,17,23,0.95)' : 'rgba(255,255,255,0.95)',
+            backdropFilter: 'none',
             border: '1px solid var(--border)',
             borderRadius: '8px',
             p: '8px 10px',
             pointerEvents: 'none',
             zIndex: 10,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
+            boxShadow: dark ? '0 2px 10px rgba(0,0,0,0.35)' : '0 2px 8px rgba(0,0,0,0.10)',
           }}>
             <Typography sx={{
               fontFamily: 'var(--font-family)', fontSize: '0.72rem',
@@ -312,11 +319,11 @@ function ClaimLandscapeCanvas({ claims, width, height, onNodeClick }) {
       {selected && (
         <Box sx={{
           width: 220, flexShrink: 0,
-          bgcolor: 'rgba(255,255,255,0.82)',
-          backdropFilter: 'blur(12px)',
-          border: '1px solid rgba(255,255,255,0.35)',
+          bgcolor: dark ? 'rgba(13,17,23,0.95)' : 'rgba(255,255,255,0.82)',
+          backdropFilter: 'none',
+          border: dark ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(255,255,255,0.35)',
           borderRadius: '12px',
-          boxShadow: '0 4px 24px rgba(0,0,0,0.07)',
+          boxShadow: dark ? '0 4px 24px rgba(0,0,0,0.35)' : '0 4px 24px rgba(0,0,0,0.07)',
           p: 2,
           display: 'flex', flexDirection: 'column', gap: 1.5,
           alignSelf: 'flex-start',
@@ -386,6 +393,7 @@ function ClaimLandscapeCanvas({ claims, width, height, onNodeClick }) {
 export default function KnowledgeGraph({ nodes = [], links = [], onNodeClick, claimsData = [] }) {
   const containerRef = useRef(null);
   const graphRef     = useRef(null);
+  const [dark]       = useDarkMode();
 
   const [dimensions,   setDimensions]   = useState({ width: 240, height: 200 });
   const [hovered,      setHovered]      = useState(null);
@@ -466,11 +474,11 @@ export default function KnowledgeGraph({ nodes = [], links = [], onNodeClick, cl
       ctx.font         = `600 ${fontSize}px 'DM Sans', system-ui, sans-serif`;
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillStyle    = '#111827';
+      ctx.fillStyle    = dark ? '#E6EDF3' : '#111827';
       const label = node.name.length > 20 ? node.name.slice(0, 18) + '…' : node.name;
       ctx.fillText(label, node.x, node.y + r + fontSize * 1.2);
     }
-  }, [hovered]);
+  }, [hovered, dark]);
 
   if (nodes.length === 0 && (!claimsData || claimsData.length === 0)) {
     return (
@@ -596,7 +604,7 @@ export default function KnowledgeGraph({ nodes = [], links = [], onNodeClick, cl
                 nodeCanvasObject={drawNode}
                 nodeCanvasObjectMode={() => 'replace'}
                 nodeVal={node => (NODE_RADIUS[node.type] || 5) * 2}
-                linkColor={() => 'rgba(0,0,0,0.12)'}
+                linkColor={() => (dark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)')}
                 linkWidth={1}
                 linkDirectionalParticles={1}
                 linkDirectionalParticleWidth={1.5}

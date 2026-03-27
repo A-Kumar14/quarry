@@ -121,7 +121,7 @@ def _scrape_one(url: str) -> dict[str, str] | None:
     """Fetch a URL and return clean Markdown, or None on failure."""
     try:
         import trafilatura
-        downloaded = trafilatura.fetch_url(url, no_ssl=False, timeout=4)
+        downloaded = trafilatura.fetch_url(url, no_ssl=False)
         if not downloaded:
             return None
         text = trafilatura.extract(

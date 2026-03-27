@@ -22,13 +22,21 @@
   --font-serif:     'Playfair Display', Georgia, serif;
   --font-mono:      'IBM Plex Mono', 'JetBrains Mono', 'Fira Code', monospace;
 
+  /* Document card */
+  --doc-surface:    #FFFFFF;
+  --doc-shadow:     0 2px 24px rgba(0,0,0,0.07);
+  --doc-fg:         #1a1a1a;
+  --doc-fg-dim:     #555555;
+
   /* Glass surface tokens */
   --glass-bg:       rgba(255,250,235,0.22);
+  --glass-border:   rgba(255,255,245,0.92);
   --glass-border-t: rgba(255,255,245,0.92);
   --glass-border-l: rgba(255,252,238,0.72);
   --glass-border-r: rgba(185,165,128,0.12);
   --glass-border-b: rgba(178,158,120,0.12);
   --glass-shadow:   0 8px 32px rgba(140,110,60,0.08), 0 2px 0 rgba(255,254,225,0.65) inset, 0 -1px 0 rgba(100,75,28,0.03) inset;
+  --glass-blur:     blur(16px) saturate(180%);
 
   /* Glass button tokens */
   --gbtn-bg:        rgba(255,250,232,0.32);
@@ -44,6 +52,35 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+}
+
+/* ── Global minimalistic scrollbar ───────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 80, 40, 0.22);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 80, 40, 0.42);
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 80, 40, 0.22) transparent;
+}
+.dark * {
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
 }
 
 html, body, #root {
@@ -109,13 +146,21 @@ html.dark #root {
   --border:       rgba(255,255,255,0.08);
   --error:        #f87171;
 
+  /* Document card */
+  --doc-surface:    #1E1C18;
+  --doc-shadow:     0 2px 24px rgba(0,0,0,0.35);
+  --doc-fg:         #ddd8d0;
+  --doc-fg-dim:     #8a8278;
+
   /* Glass surface — dark glass elevation */
-  --glass-bg:       rgba(255,255,255,0.04);
-  --glass-border-t: rgba(255,255,255,0.10);
-  --glass-border-l: rgba(255,255,255,0.07);
+  --glass-bg:       rgba(255,255,255,0.06);
+  --glass-border:   rgba(255,255,255,0.14);
+  --glass-border-t: rgba(255,255,255,0.16);
+  --glass-border-l: rgba(255,255,255,0.12);
   --glass-border-r: rgba(0,0,0,0.25);
   --glass-border-b: rgba(0,0,0,0.25);
   --glass-shadow:   0 8px 32px rgba(0,0,0,0.40), 0 2px 0 rgba(255,255,255,0.05) inset, 0 -1px 0 rgba(0,0,0,0.30) inset;
+  --glass-blur:     blur(16px) saturate(180%);
 
   /* Glass button tokens */
   --gbtn-bg:        rgba(255,255,255,0.06);
@@ -158,4 +203,113 @@ html.dark #root {
   background: rgba(239,68,68,0.10);
   border: 1px solid rgba(239,68,68,0.25);
   color: #dc2626;
+}
+
+/* ── contentEditable placeholder ─────────────────────────────────────────── */
+[contenteditable][data-placeholder]:empty:before {
+  content: attr(data-placeholder);
+  color: #aaaaaa;
+  pointer-events: none;
+  font-style: normal;
+  font-family: var(--font-family);
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+/* ── Rich editor content styles ───────────────────────────────────────────── */
+.quarry-editor h1 {
+  font-family: var(--font-serif);
+  font-size: 1.8rem;
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 1.2rem 0 0.4rem;
+  color: var(--doc-fg);
+}
+.quarry-editor h2 {
+  font-family: var(--font-serif);
+  font-size: 1.35rem;
+  font-weight: 600;
+  margin: 1rem 0 0.3rem;
+  color: var(--doc-fg);
+}
+.quarry-editor h3 {
+  font-family: var(--font-serif);
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0.8rem 0 0.25rem;
+  color: var(--doc-fg);
+}
+.quarry-editor blockquote {
+  border-left: 3px solid var(--accent);
+  border-radius: 0;
+  margin: 0.8rem 0;
+  padding: 0.3rem 0 0.3rem 1rem;
+  color: var(--doc-fg-dim);
+  font-style: italic;
+}
+.quarry-editor ul, .quarry-editor ol {
+  padding-left: 1.4rem;
+  margin: 0.4rem 0;
+}
+.quarry-editor li {
+  line-height: 1.75;
+  color: var(--doc-fg);
+}
+.quarry-editor strong { font-weight: 700; }
+.quarry-editor em    { font-style: italic; }
+.quarry-editor p     { margin: 0 0 0.4rem; }
+.quarry-editor img, .quarry-img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 1rem 0;
+  border-radius: 6px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.10);
+}
+
+/* ── Floating toolbar caret triangle ─────────────────────────────────────── */
+.floating-toolbar {
+  position: relative;
+}
+.floating-toolbar::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0; height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 5px solid var(--glass-border);
+}
+
+/* ── Focus mode overlay ───────────────────────────────────────────────────── */
+.focus-word-overlay {
+  opacity: 0;
+  transition: opacity 0.25s ease !important;
+}
+.focus-active:hover .focus-word-overlay {
+  opacity: 0.75 !important;
+}
+.focus-word-overlay:hover {
+  opacity: 1 !important;
+}
+
+/* ── Citation marker pill ─────────────────────────────────────────────────── */
+.citation-marker {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-family: var(--font-family);
+  color: #F97316;
+  background: rgba(249,115,22,0.10);
+  border: 0.5px solid rgba(249,115,22,0.35);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin: 0 2px;
+  cursor: pointer;
+  user-select: none;
+  vertical-align: baseline;
+}
+.citation-marker:hover {
+  background: rgba(249,115,22,0.18);
 }

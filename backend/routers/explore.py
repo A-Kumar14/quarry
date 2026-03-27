@@ -2,16 +2,19 @@
 routers/explore.py — Streaming search-augmented generation endpoint.
 """
 
+import asyncio
 import collections
 import hashlib
 import json
 import logging
 import os
+import re
 import time
 
 import httpx
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel
 
 from schemas import ExploreSearchRequest, RelatedSearchRequest, ResearchRequest, CiteRequest, OutlineRequest
 from services.registry import ai_service, llm_service
@@ -48,7 +51,11 @@ def _check_query_rate(query: str) -> bool:
 
 @router.post("/explore/search")
 @limiter.limit("15/minute")
-async def explore_search(request: Request, body: ExploreSearchRequest):
+async def explore_search(
+    request: Request,
+    body: ExploreSearchRequest,
+    deep: bool = Query(False),
+):
     """Stream a Search-Augmented Generation response."""
 
     query = body.query
@@ -62,9 +69,21 @@ async def explore_search(request: Request, body: ExploreSearchRequest):
             headers={"Retry-After": "60"},
         )
 
-    def _stream():
+    async def _stream():
         try:
-            yield from ai_service.explore_the_web(query=query)
+            try:
+                stream = ai_service.explore_the_web(query=query, deep=deep)
+            except TypeError:
+                # Backward-compatible with older mocks/signatures (tests monkeypatch
+                # explore_the_web with a sync generator that only accepts `query`).
+                stream = ai_service.explore_the_web(query=query)
+
+            if hasattr(stream, "__aiter__"):
+                async for chunk in stream:
+                    yield chunk
+            else:
+                for chunk in stream:
+                    yield chunk
         except Exception as exc:
             logger.error("explore_search.failed: %s", exc)
             yield f"data: {json.dumps({'type': 'error', 'text': 'An error occurred. Please try again.'})}\n\n"
@@ -119,19 +138,21 @@ async def explore_trending_news(
     request: Request,
     max: int = Query(6, ge=1, le=10),
     force: bool = Query(False),
+    topic: str = Query("", max_length=32),
 ):
     """Proxy GNews top-headlines server-side."""
     gnews_key = os.getenv("GNEWS_API_KEY", "")
     if not gnews_key:
         raise HTTPException(status_code=503, detail="News service not configured")
 
-    cache_key = f"trending:{max}"
+    cache_key = f"trending:{max}:{topic}"
     if not force:
         cached = _news_cache.get(cache_key)
         if cached and time.time() - cached["ts"] < _NEWS_CACHE_TTL:
             return cached["data"]
 
-    url = f"https://gnews.io/api/v4/top-headlines?lang=en&max={max}&apikey={gnews_key}"
+    topic_param = f"&topic={topic}" if topic else ""
+    url = f"https://gnews.io/api/v4/top-headlines?lang=en&max={max}{topic_param}&apikey={gnews_key}"
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(url)
@@ -224,6 +245,97 @@ async def explore_outline(request: Request, body: OutlineRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.get("/explore/search-sources")
+@limiter.limit("20/minute")
+async def explore_search_sources(
+    request: Request,
+    query: str = Query(...)
+):
+    from services import search_service
+    from services.ai_service import retrieve
+    from services.source_service import get_source_profile, profile_to_dict
+
+    try:
+        retrieved_sources = await retrieve(query, search_service, max_results=8)
+        sources = [
+            {
+                "title": r.get("title", ""),
+                "url": r.get("url", ""),
+                "snippet": r.get("snippet", ""),
+            }
+            for r in (retrieved_sources or [])
+            if r.get("url")
+        ]
+
+        # Enrich with source profiles
+        for src in sources:
+            profile = get_source_profile(src.get("url", ""))
+            src.update(profile_to_dict(profile))
+
+        return {"sources": sources}
+    except Exception as exc:
+        logger.error("explore_search_sources.failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to research sources")
+
+
+class SummarizeRequest(BaseModel):
+    url: str
+    snippet: str = ""   # fallback if scraping fails
+
+@router.post("/explore/summarize-source")
+@limiter.limit("30/minute")
+async def explore_summarize_source(request: Request, body: SummarizeRequest):
+    from services.registry import llm_service
+    import trafilatura
+    import asyncio
+
+    try:
+        # Run blocking scrape in a thread so we don't stall the event loop.
+        loop = asyncio.get_running_loop()
+
+        def _scrape():
+            try:
+                dl = trafilatura.fetch_url(body.url, no_ssl=False)
+                text = trafilatura.extract(dl) if dl else ""
+                return (text or "")[:6000]
+            except Exception:
+                return ""
+
+        try:
+            content = await asyncio.wait_for(
+                loop.run_in_executor(None, _scrape),
+                timeout=12,
+            )
+        except asyncio.TimeoutError:
+            content = ""
+
+        # Fallback to snippet when scraping fails or is blocked
+        if not content:
+            content = (body.snippet or "").strip()
+
+        if not content:
+            return {"summary": "Could not retrieve content for this source."}
+
+        prompt = (
+            "Give a concise, factual 3-4 sentence summary of the article below. "
+            "State the core facts directly — no preamble like 'This article discusses'.\n\n"
+            f"ARTICLE:\n{content}"
+        )
+
+        # chat_sync passes timeout directly to the HTTP call — no asyncio wrapper needed.
+        # Run in a thread so we don't block the event loop.
+        messages = [{"role": "user", "content": prompt}]
+        summary = await loop.run_in_executor(
+            None,
+            lambda: llm_service.chat_sync(messages, model="openai/gpt-4o-mini", timeout=20),
+        )
+
+        return {"summary": summary.strip()}
+    except Exception as exc:
+        logger.error("explore_summarize_source.failed url=%s error=%s", body.url, exc)
+        return {"summary": "Could not summarize this source right now."}
 
 
 _MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB
@@ -567,3 +679,152 @@ async def explore_images(
     except Exception as exc:
         logger.error("explore_images.failed: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+from fastapi.responses import Response as FastAPIResponse
+
+@router.get("/explore/img-proxy")
+@limiter.limit("120/minute")
+async def image_proxy(
+    request: Request,
+    url: str = Query(..., max_length=2000),
+):
+    """Proxy external news images to avoid CORS/hotlink issues."""
+    # Only allow http/https URLs
+    if not url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="Invalid URL")
+    try:
+        async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
+            resp = await client.get(url, headers={
+                "User-Agent": "Mozilla/5.0 (compatible; Quarry/1.0)",
+                "Referer": "",
+            })
+        content_type = resp.headers.get("content-type", "image/jpeg")
+        if not content_type.startswith("image/"):
+            raise HTTPException(status_code=502, detail="Not an image")
+        return FastAPIResponse(
+            content=resp.content,
+            media_type=content_type,
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("img_proxy.failed url=%s error=%s", url[:80], exc)
+        raise HTTPException(status_code=502, detail="Image fetch failed")
+
+
+# ── Topic map ─────────────────────────────────────────────────────────────────
+
+class TopicMapRequest(BaseModel):
+    sources: list[dict]  # [{title, url, domain, queries}]
+    focus_query: str = ""  # optional: narrow the graph to a specific theme/question
+
+
+@router.post("/explore/topic-map")
+@limiter.limit("10/minute")
+async def explore_topic_map(request: Request, body: TopicMapRequest):
+    """Two-step LLM pipeline: extract per-source topics, then build the connection graph."""
+    if not body.sources:
+        return {"nodes": [], "links": []}
+
+    sources = body.sources[:60]
+    summaries = []
+    for s in sources:
+        q = ", ".join((s.get("queries") or [])[:3])
+        summaries.append(
+            f'- title="{s.get("title") or s.get("domain", "")}" '
+            f'domain={s.get("domain", "")} '
+            f'url={s.get("url", "")} '
+            f'queries=[{q}]'
+        )
+
+    loop = asyncio.get_running_loop()
+
+    # ── Step 1: extract key topics per source ────────────────────────────────
+    step1_prompt = (
+        "You are a research analyst. For each source below, extract 2–3 concise topic tags "
+        "(e.g. 'climate finance', 'Sudan conflict', 'IMF policy'). "
+        "Return ONLY a JSON array — no markdown — like:\n"
+        '[{"url":"...","topics":["tag1","tag2"]}]\n\n'
+        "Sources:\n" + "\n".join(summaries) + "\n\nReturn ONLY the JSON array."
+    )
+
+    topic_tags: list[dict] = []
+    try:
+        raw1 = await asyncio.wait_for(
+            loop.run_in_executor(
+                None,
+                lambda: llm_service.chat_sync(
+                    [{"role": "user", "content": step1_prompt}],
+                    model="openai/gpt-4o-mini",
+                    timeout=25,
+                ),
+            ),
+            timeout=30,
+        )
+        m1 = re.search(r'\[[\s\S]*\]', raw1)
+        if m1:
+            topic_tags = json.loads(m1.group())
+    except Exception as exc:
+        logger.warning("topic_map.step1.failed: %s", exc)
+
+    # Build enriched source descriptions from step-1 tags
+    enriched = []
+    tag_map = {t.get("url", ""): t.get("topics", []) for t in topic_tags}
+    for s in sources:
+        url = s.get("url", "")
+        tags = tag_map.get(url, [])
+        tag_str = ", ".join(tags) if tags else ", ".join((s.get("queries") or [])[:2])
+        enriched.append(
+            f'- url={url} domain={s.get("domain", "")} '
+            f'title="{s.get("title") or s.get("domain", "")}" '
+            f'topics=[{tag_str}]'
+        )
+
+    # ── Step 2: cluster into nodes and find connections ───────────────────────
+    focus_clause = (
+        f'\nIMPORTANT: The user wants to explore "{body.focus_query}". '
+        "Prioritise nodes and links that are relevant to this theme. "
+        "Still include other major clusters but make sure connections to this theme are prominent.\n"
+        if body.focus_query.strip() else ""
+    )
+    step2_prompt = (
+        "You are a knowledge-graph builder for a journalist's research library. "
+        "Using the source-topic data below, create a well-connected topic graph.\n"
+        + focus_clause + "\n"
+        "Sources with topics:\n" + "\n".join(enriched) + "\n\n"
+        "Return ONLY a JSON object — no markdown — with this exact shape:\n"
+        '{"nodes":[{"id":"snake_case_id","label":"Human Label","description":"1-sentence summary of what this cluster covers","urls":["url1","url2"]}],'
+        '"links":[{"source":"node_id1","target":"node_id2","label":"≤6 words: shared theme","strength":1}]}\n'
+        "Rules:\n"
+        "- 6–14 nodes, each grouping sources that share a genuine theme\n"
+        "- node id: lowercase_underscore, unique\n"
+        "- description: one sentence explaining what unites the sources in this cluster\n"
+        "- each node urls list: actual URLs from the sources above\n"
+        "- 10–24 links; only connect nodes with real thematic overlap\n"
+        "- link label: ≤6 words describing the connection (e.g. 'shared funding actors', 'overlapping regions')\n"
+        "- strength: 1 (weak), 2 (moderate), 3 (strong) — how closely the topics are related\n"
+        "- no duplicate or self-referencing links\n"
+        "Return ONLY the JSON."
+    )
+
+    try:
+        raw2 = await asyncio.wait_for(
+            loop.run_in_executor(
+                None,
+                lambda: llm_service.chat_sync(
+                    [{"role": "user", "content": step2_prompt}],
+                    model="openai/gpt-4o-mini",
+                    timeout=35,
+                ),
+            ),
+            timeout=40,
+        )
+        m2 = re.search(r'\{[\s\S]*\}', raw2)
+        if m2:
+            return json.loads(m2.group())
+    except Exception as exc:
+        logger.error("topic_map.step2.failed: %s", exc)
+
+    return {"nodes": [], "links": []}

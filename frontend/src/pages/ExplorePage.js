@@ -1,21 +1,25 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { Box, Typography, Skeleton, Tooltip, CircularProgress } from '@mui/material';
-import { Search, BookmarkPlus, ExternalLink, Zap, FlaskConical, CornerDownRight, MoreHorizontal, ArrowUpRight, TrendingUp, RefreshCw, Copy, Check, Edit3 } from 'lucide-react';
+import { Search, BookmarkPlus, ExternalLink, Zap, CornerDownRight, ArrowUpRight, TrendingUp, RefreshCw, Copy, Check, Edit3 } from 'lucide-react';
 import { useNavigate, useSearchParams, Navigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
+import { motion, AnimatePresence } from 'framer-motion';
+import { RadialBarChart, RadialBar, PolarAngleAxis } from 'recharts';
 import GlassCard from '../components/GlassCard';
+import { saveContestedClaims } from './HomePage';
 import PerspectivesTab from '../components/PerspectivesTab';
 import ContradictionsTab from '../components/ContradictionsTab';
 import CitationsPanel from '../components/CitationsPanel';
+import GapsTab from '../components/GapsTab';
+import QuoteBankTab from '../components/QuoteBankTab';
 import { getSourceQuality, QUALITY_COLOR } from '../utils/sourceQuality';
 import { TIER_COLOR } from '../utils/sourceProfile';
 import Toast from '../components/Toast';
 import FinanceCard from '../components/FinanceCard';
 import { useSettings, useTopOffset } from '../SettingsContext';
 import { useDarkMode } from '../DarkModeContext';
-import { addSourcesToLibrary } from '../utils/sourceLibrary';
 import NavControls from '../components/NavControls';
 import KnowledgeGraph from '../components/KnowledgeGraph';
 import DiagramCard from '../components/DiagramCard';
@@ -39,6 +43,23 @@ function addSaved(query, excerpt, fullAnswer) {
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 const MAX_FOLLOW_UPS = 5;
+
+// ── Source database hook ───────────────────────────────────────────────────────
+function useSources() {
+  const [sourceMap, setSourceMap] = useState({});
+  useEffect(() => {
+    fetch(`${API}/api/sources`)
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(data => {
+        const list = data.sources || data || [];
+        const map = {};
+        list.forEach(s => { if (s.domain) map[s.domain] = s; });
+        setSourceMap(map);
+      })
+      .catch(() => {});
+  }, []);
+  return sourceMap;
+}
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -87,6 +108,89 @@ const PAGE_BG = {
   minHeight: '100vh',
 };
 
+// ── Research completeness score ───────────────────────────────────────────────
+
+function calcCompletenessScore(sources, claims, contradictions) {
+  // Source diversity (0–30 pts)
+  const srcScore = Math.min(sources.length / 5, 1) * 30;
+
+  // Verification rate (0–35 pts)
+  const verified = claims.filter(c => ['verified', 'corroborated'].includes(c.status)).length;
+  const verifyRate = claims.length > 0 ? verified / claims.length : 0;
+  const verifyScore = verifyRate * 35;
+
+  // Claim extraction (0–20 pts)
+  const claimScore = Math.min(claims.length / 8, 1) * 20;
+
+  // Contradiction penalty (up to –15 pts)
+  const contested = claims.filter(c => c.status === 'contested').length;
+  const contradictionPenalty = Math.min(contested * 5, 15);
+
+  return Math.round(Math.max(0, Math.min(100, srcScore + verifyScore + claimScore - contradictionPenalty)));
+}
+
+// ── Completeness radial gauge ─────────────────────────────────────────────────
+
+function CompletenessGauge({ score }) {
+  const color = score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#ef4444';
+  const data = [{ value: score, fill: color }];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, marginTop: 8 }}>
+      <div style={{ position: 'relative', width: 64, height: 64 }}>
+        <RadialBarChart
+          width={64} height={64}
+          cx={32} cy={32}
+          innerRadius={22} outerRadius={30}
+          startAngle={210} endAngle={-30}
+          data={data}
+          style={{ pointerEvents: 'none' }}
+        >
+          <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
+          <RadialBar
+            dataKey="value"
+            cornerRadius={4}
+            background={{ fill: 'var(--border)' }}
+          />
+        </RadialBarChart>
+        <div style={{
+          position: 'absolute', inset: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontFamily: 'var(--font-mono)', fontSize: '0.70rem', fontWeight: 700,
+          color,
+        }}>
+          {score}
+        </div>
+      </div>
+      <div style={{
+        fontFamily: 'var(--font-family)', fontSize: '0.58rem',
+        color: 'var(--fg-dim)', textTransform: 'uppercase', letterSpacing: '0.06em',
+      }}>
+        completeness
+      </div>
+    </div>
+  );
+}
+
+// ── Confidence-gated chip gain estimator ──────────────────────────────────────
+
+function estimateClaimGain(suggestion, claims) {
+  if (!claims || claims.length === 0) return 0;
+  const weakClaims = claims.filter(c =>
+    c.status === 'contested' || c.status === 'single_source' || c.status === 'uncertain'
+  );
+  if (weakClaims.length === 0) return 0;
+
+  const suggWords = new Set(
+    suggestion.toLowerCase().split(/\W+/).filter(w => w.length > 3)
+  );
+  let matches = 0;
+  for (const claim of weakClaims) {
+    const claimWords = (claim.claim_text || '').toLowerCase().split(/\W+/);
+    if (claimWords.some(w => suggWords.has(w))) matches++;
+  }
+  return matches;
+}
+
 // ── Utility helpers ───────────────────────────────────────────────────────────
 
 function CitationLink({ href, children, sources }) {
@@ -125,32 +229,6 @@ function CitationLink({ href, children, sources }) {
       {children}
     </a>
   );
-}
-
-function extractAnswerTitle(answer, query) {
-  const h1 = answer.match(/^#\s+(.+?)$/m);
-  if (h1) return h1[1].replace(/\*\*/g, '').trim();
-  const h2 = answer.match(/^##\s+(.+?)$/m);
-  if (h2) return h2[1].replace(/\*\*/g, '').trim();
-  return query.charAt(0).toUpperCase() + query.slice(1);
-}
-
-function extractLede(answer) {
-  const paragraphs = answer.split('\n\n');
-  for (const para of paragraphs) {
-    const clean = para
-      .replace(/^#+\s+.+/gm, '')
-      .replace(/\*\*/g, '')
-      .replace(/\[(\d+)\]/g, '')
-      .replace(/\[.*?\]\(.*?\)/g, '')
-      .trim();
-    if (clean.length > 50 && !clean.startsWith('*') && !clean.startsWith('-') && !clean.startsWith('|')) {
-      const sentence = clean.match(/^(.+?[.!?])(?:\s|$)/)?.[1];
-      if (sentence) return sentence.trim().slice(0, 200);
-      return clean.slice(0, 160).trim() + (clean.length > 160 ? '…' : '');
-    }
-  }
-  return '';
 }
 
 function extractKeywordChips(answer) {
@@ -217,7 +295,758 @@ function injectConfidenceBadges(text, claims) {
 
 // ── Source card ───────────────────────────────────────────────────────────────
 
-function SourceCard({ src, index }) {
+// ── Tier badge helper ──────────────────────────────────────────────────────────
+function TierBadge({ tier, stateAffiliated }) {
+  if (stateAffiliated) {
+    return (
+      <span style={{
+        fontSize: '0.64rem', fontWeight: 600, padding: '2px 7px', borderRadius: 5,
+        background: 'rgba(239,68,68,0.15)', color: '#991B1B',
+        border: '0.5px solid rgba(239,68,68,0.3)',
+      }}>State-backed</span>
+    );
+  }
+  const styles = {
+    1: { bg: 'rgba(16,185,129,0.18)', color: '#065F46', border: 'rgba(16,185,129,0.3)', label: 'Tier 1' },
+    2: { bg: 'rgba(245,158,11,0.15)',  color: '#92400E', border: 'rgba(245,158,11,0.3)',  label: 'Tier 2' },
+    3: { bg: 'rgba(0,0,0,0.08)',       color: 'var(--fg-secondary)', border: 'var(--glass-border)', label: 'Tier 3' },
+  };
+  const s = styles[tier];
+  if (!s) return null;
+  return (
+    <span style={{
+      fontSize: '0.64rem', fontWeight: 600, padding: '2px 7px', borderRadius: 5,
+      background: s.bg, color: s.color,
+      border: `0.5px solid ${s.border}`,
+    }}>{s.label}</span>
+  );
+}
+
+// ── Source Intelligence Modal ──────────────────────────────────────────────────
+function SaveToProjectDropdown({ source, onClose }) {
+  const [docs, setDocs] = useState([]);
+  const [isOpen, setIsOpen] = useState(false);
+  const [savedStatus, setSavedStatus] = useState(null); // null, 'success', 'exists'
+
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('quarry_documents') || '[]');
+      setDocs(stored);
+    } catch { setDocs([]); }
+  }, []);
+
+  const handleSave = (doc) => {
+    try {
+      const allDocs = JSON.parse(localStorage.getItem('quarry_documents') || '[]');
+      const idx = allDocs.findIndex(d => d.id === doc.id);
+      if (idx > -1) {
+        if (!allDocs[idx].preloadedSources) allDocs[idx].preloadedSources = [];
+        const exists = allDocs[idx].preloadedSources.find(s => s.url === source.url);
+        if (exists) {
+          setSavedStatus('exists');
+        } else {
+          allDocs[idx].preloadedSources.push({
+            title: source.title || 'Source article',
+            url: source.url,
+            outlet_name: source.outlet_name || '',
+            snippet: source.snippet || '',
+            credibility_tier: source.credibility_tier,
+          });
+          localStorage.setItem('quarry_documents', JSON.stringify(allDocs));
+          setSavedStatus('success');
+        }
+      }
+      setTimeout(() => { setIsOpen(false); setSavedStatus(null); }, 2000);
+    } catch (err) {
+      console.error("Save to project failed", err);
+    }
+  };
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          fontSize: '0.69rem', fontWeight: 600, color: '#fff',
+          background: 'var(--accent)', border: 'none', borderRadius: 7,
+          padding: '5px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
+        }}
+      >
+        <BookmarkPlus size={13} /> Add to Project
+      </button>
+
+      {isOpen && (
+        <div style={{
+          position: 'absolute', bottom: '100%', left: 0, marginBottom: 8,
+          width: 220, background: 'var(--bg-primary)', border: '1px solid var(--border)',
+          borderRadius: 10, boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+          zIndex: 1100, overflow: 'hidden', padding: 4,
+          animation: 'fadeInUp 0.2s ease-out'
+        }}>
+          {savedStatus === 'success' ? (
+            <div style={{ padding: '12px', textAlign: 'center', color: '#10B981', fontSize: '0.78rem' }}>
+              Saved to project!
+            </div>
+          ) : savedStatus === 'exists' ? (
+            <div style={{ padding: '12px', textAlign: 'center', color: 'var(--fg-dim)', fontSize: '0.78rem' }}>
+              Already in project
+            </div>
+          ) : (
+            <>
+              <div style={{ padding: '8px 10px', fontSize: '0.65rem', fontWeight: 700, color: 'var(--fg-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Choose Project
+              </div>
+              <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                {docs.length === 0 ? (
+                  <div style={{ padding: '10px', fontSize: '0.75rem', color: 'var(--fg-dim)', fontStyle: 'italic' }}>No projects found</div>
+                ) : (
+                  docs.map(doc => (
+                    <button
+                      key={doc.id}
+                      onClick={() => handleSave(doc)}
+                      style={{
+                        width: '100%', textAlign: 'left', padding: '8px 10px',
+                        background: 'transparent', border: 'none', borderRadius: 6,
+                        color: 'var(--fg-primary)', cursor: 'pointer', fontSize: '0.78rem',
+                        transition: 'background 0.1s', display: 'flex', alignItems: 'center', gap: 8
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <Edit3 size={12} color="var(--accent)" />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.title}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SourceModal({ source, sourceProfile, claims, onClose, onInsert }) {
+  const domain = (() => {
+    try { return new URL(source.url).hostname.replace('www.', ''); }
+    catch { return source.url || ''; }
+  })();
+
+  const outletName = sourceProfile?.outlet_name || source.outlet_name || domain;
+  const firstLetter = outletName.charAt(0).toUpperCase();
+
+  // Filter claims attributed to this source
+  const matchedClaims = (claims || []).filter(c => {
+    const outlets = c.source_outlets || [];
+    const domainLower = domain.toLowerCase();
+    const nameLower = outletName.toLowerCase();
+    return outlets.some(o =>
+      o.toLowerCase().includes(domainLower) ||
+      domainLower.includes(o.toLowerCase()) ||
+      o.toLowerCase().includes(nameLower) ||
+      nameLower.includes(o.toLowerCase())
+    );
+  });
+
+  const corroboratedCount = matchedClaims.filter(c =>
+    c.status === 'verified' || c.status === 'corroborated'
+  ).length;
+
+  const STATUS_DOT = {
+    verified:      '#10B981',
+    corroborated:  '#F59E0B',
+    single_source: '#9CA3AF',
+    contested:     '#EF4444',
+  };
+  const STATUS_NOTE = {
+    verified:      'Corroborated by 3+ sources',
+    corroborated:  'Corroborated by 2 sources',
+    single_source: 'Single source',
+    contested:     'Contested',
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0,
+        background: 'rgba(0,0,0,0.35)',
+        zIndex: 1000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: 480,
+          maxWidth: '90vw',
+          maxHeight: '80vh',
+          overflowY: 'auto',
+          background: 'var(--glass-bg)',
+          border: '1px solid var(--glass-border)',
+          borderRadius: 16,
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          zIndex: 1001,
+        }}
+      >
+        {/* Header */}
+        <div style={{ padding: '20px 20px 0' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
+            {/* Outlet icon */}
+            <div style={{
+              width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+              background: 'rgba(30,20,10,0.82)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontFamily: 'var(--font-serif)', fontSize: '1.1rem', fontWeight: 700,
+              color: '#fff',
+            }}>
+              {firstLetter}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 3 }}>
+                <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.94rem', fontWeight: 500, color: 'var(--fg-primary)' }}>
+                  {outletName}
+                </span>
+                <TierBadge
+                  tier={sourceProfile?.credibility_tier}
+                  stateAffiliated={sourceProfile?.state_affiliation && sourceProfile.state_affiliation !== false && sourceProfile.state_affiliation !== null}
+                />
+              </div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'var(--fg-dim)' }}>
+                {domain}
+              </div>
+            </div>
+            {/* Close button */}
+            <button
+              onClick={onClose}
+              style={{
+                width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
+                background: 'rgba(0,0,0,0.10)', border: 'none',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', fontSize: '1rem', color: 'var(--fg-secondary)',
+                lineHeight: 1,
+              }}
+            >×</button>
+          </div>
+
+          {/* Profile grid or unavailable */}
+          {sourceProfile ? (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
+              {[
+                { label: 'Country',    value: sourceProfile.country || '—' },
+                { label: 'Funding',    value: sourceProfile.funding_type || '—' },
+                { label: 'Editorial lean', value: sourceProfile.editorial_lean || '—' },
+                { label: 'State affiliation', value: (sourceProfile.state_affiliation && sourceProfile.state_affiliation !== false) ? (typeof sourceProfile.state_affiliation === 'string' ? sourceProfile.state_affiliation : 'Yes') : 'None' },
+              ].map(({ label, value }) => (
+                <div key={label} style={{
+                  background: 'var(--glass-bg)', border: '1px solid var(--border)',
+                  borderRadius: 8, padding: '8px 10px',
+                }}>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', fontWeight: 600, color: 'var(--fg-dim)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>
+                    {label}
+                  </div>
+                  <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.78rem', color: 'var(--fg-primary)', fontWeight: 400, textTransform: 'capitalize' }}>
+                    {value.replace(/_/g, ' ')}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{
+              padding: '10px 12px', marginBottom: 20,
+              background: 'rgba(0,0,0,0.06)', borderRadius: 8,
+              fontSize: '0.75rem', color: 'var(--fg-dim)', fontStyle: 'italic',
+            }}>
+              Source profile unavailable — not in database.
+            </div>
+          )}
+        </div>
+
+        {/* Divider */}
+        <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.25)', margin: '0 20px' }} />
+
+        {/* Claims section */}
+        <div style={{ padding: '16px 20px' }}>
+          <div style={{
+            fontFamily: 'var(--font-mono)', fontSize: '0.62rem', fontWeight: 600,
+            color: 'var(--fg-dim)', textTransform: 'uppercase', letterSpacing: '0.10em',
+            marginBottom: 12,
+          }}>
+            Claims from this source
+          </div>
+
+          {matchedClaims.length === 0 ? (
+            <div style={{ fontSize: '0.8rem', color: 'var(--fg-dim)', fontStyle: 'italic', padding: '12px 0' }}>
+              No claims attributed to this source.
+            </div>
+          ) : (
+            matchedClaims.map((claim, i) => {
+              const status = claim.status || 'single_source';
+              const dotColor = STATUS_DOT[status] || '#9CA3AF';
+              const noteText = status === 'contested' && claim.note
+                ? `Contested — ${claim.note}`
+                : STATUS_NOTE[status] || 'Unknown';
+              return (
+                <div
+                  key={i}
+                  style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 10,
+                    padding: '10px 0',
+                    borderBottom: i < matchedClaims.length - 1 ? '0.5px solid rgba(255,255,255,0.25)' : 'none',
+                  }}
+                >
+                  <div style={{
+                    width: 7, height: 7, borderRadius: '50%',
+                    background: dotColor, flexShrink: 0, marginTop: 5,
+                  }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.78rem', color: 'var(--fg-primary)', lineHeight: 1.45, marginBottom: 3 }}>
+                      {claim.claim_text || claim.claim}
+                    </div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--fg-dim)' }}>
+                      {noteText}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => onInsert(claim)}
+                    style={{
+                      flexShrink: 0, fontSize: '0.69rem', fontWeight: 500,
+                      color: '#F97316',
+                      background: 'rgba(249,115,22,0.12)',
+                      border: '0.5px solid rgba(249,115,22,0.45)',
+                      borderRadius: 7, padding: '4px 10px',
+                      cursor: 'pointer', fontFamily: 'var(--font-family)',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Insert
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '12px 20px',
+          borderTop: '0.5px solid rgba(255,255,255,0.25)',
+        }}>
+          <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.75rem', color: 'var(--fg-secondary)' }}>
+            <span style={{ color: '#0A6E3F', fontWeight: 500 }}>{corroboratedCount}</span>
+            {' of '}{matchedClaims.length} claims corroborated by other sources
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <SaveToProjectDropdown source={{ ...source, ...sourceProfile }} />
+            {source.url && (
+              <a
+                href={source.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  fontFamily: 'var(--font-family)', fontSize: '0.75rem',
+                  color: 'var(--fg-secondary)', textDecoration: 'none',
+                  display: 'flex', alignItems: 'center', gap: 4,
+                }}
+              >
+                View source
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+                </svg>
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SourceIntelligencePopup({
+  sources,
+  claims,
+  pipelineTrace,
+  isDeepSearch,
+  selectedSource,
+  onSelectSource,
+  onClose,
+}) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.35)',
+        zIndex: 1000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 16,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: 560,
+          maxWidth: '92vw',
+          maxHeight: '84vh',
+          overflowY: 'auto',
+          background: 'var(--bg-primary)',
+          border: '1px solid var(--border)',
+          borderRadius: 16,
+          zIndex: 1001,
+        }}
+      >
+        {/* Header */}
+        <div style={{ padding: '18px 18px 0' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.70rem', fontWeight: 700, color: 'var(--fg-dim)', letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 6 }}>
+                Source Intelligence
+              </div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', padding: '6px 10px', borderRadius: 10 }}>
+                  <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.82rem', fontWeight: 800, color: 'var(--fg-primary)' }}>{sources.length}</span>
+                  <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.62rem', color: 'var(--fg-dim)', marginLeft: 6 }}>sources</span>
+                </div>
+                <div style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.25)', padding: '6px 10px', borderRadius: 10 }}>
+                  <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.82rem', fontWeight: 800, color: '#22c55e' }}>
+                    {pipelineTrace?.claims_verified ?? claims.filter(c => ['verified', 'corroborated'].includes(c.status)).length}
+                  </span>
+                  <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.62rem', color: 'var(--fg-dim)', marginLeft: 6 }}>verified</span>
+                </div>
+                <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.25)', padding: '6px 10px', borderRadius: 10 }}>
+                  <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.82rem', fontWeight: 800, color: '#ef4444' }}>
+                    {pipelineTrace?.claims_contested ?? claims.filter(c => c.status === 'contested').length}
+                  </span>
+                  <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.62rem', color: 'var(--fg-dim)', marginLeft: 6 }}>contested</span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={onClose}
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: '50%',
+                flexShrink: 0,
+                background: 'rgba(0,0,0,0.10)',
+                border: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                fontSize: '1rem',
+                color: 'var(--fg-secondary)',
+                lineHeight: 1,
+              }}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+
+        <div style={{ padding: '0 18px 18px' }}>
+          {/* Pipeline stats card */}
+          {pipelineTrace && (
+            <Box
+              sx={{
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--border)',
+                borderRadius: '12px',
+                padding: '16px 18px',
+                mb: 14 / 6, // slightly less spacing than default
+              }}
+            >
+              <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.70rem', fontWeight: 600, color: 'var(--fg-secondary)', mb: 1.25, display: 'block', letterSpacing: '0.04em' }}>
+                Research pipeline
+              </Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
+                {[
+                  { label: 'sources', value: sources.length, color: null },
+                  { label: 'claims', value: pipelineTrace.claims_extracted ?? claims.length, color: null },
+                  { label: 'verified', value: pipelineTrace.claims_verified, color: '#22c55e' },
+                  { label: 'contested', value: pipelineTrace.claims_contested, color: '#ef4444' },
+                ].map(({ label, value, color }) => (
+                  <Box key={label}>
+                    <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '1.5rem', fontWeight: 700, color: color ?? 'var(--fg-primary)', lineHeight: 1 }}>
+                      {value}
+                    </Typography>
+                    <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', color: 'var(--fg-dim)', mt: 0.4 }}>
+                      {label}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+
+              {/* Pass-through mode indicator */}
+              {(pipelineTrace.pipeline_mode ?? 'epistemic') === 'pass_through' && (
+                <div style={{
+                  marginTop: 12,
+                  padding: '7px 10px',
+                  background: 'rgba(249,115,22,0.08)',
+                  borderRadius: 8,
+                  fontSize: '0.72rem',
+                  color: 'var(--fg-secondary)',
+                  lineHeight: 1.45,
+                }}>
+                  <span style={{ fontWeight: 600, color: 'var(--accent)' }}>Live query</span> — source verification not run.
+                </div>
+              )}
+            </Box>
+          )}
+
+          {/* Deep-mode transparency: show which sub-queries were executed */}
+          {pipelineTrace?.sub_queries && isDeepSearch && Array.isArray(pipelineTrace.sub_queries) && (
+            <div style={{
+              marginTop: 10,
+              marginBottom: 14,
+              padding: '10px 12px',
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border)',
+              borderRadius: 8,
+            }}>
+              <div style={{
+                fontSize: '0.65rem',
+                fontWeight: 500,
+                color: 'var(--fg-dim)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.07em',
+                marginBottom: 7,
+              }}>
+                Sub-queries run
+              </div>
+              {pipelineTrace.sub_queries.map((q, i) => (
+                <div
+                  key={i}
+                  style={{
+                    fontSize: '0.72rem',
+                    color: 'var(--fg-secondary)',
+                    lineHeight: 1.5,
+                    paddingLeft: 8,
+                    borderLeft: '2px solid rgba(249,115,22,0.3)',
+                    marginBottom: 5,
+                  }}
+                >
+                  {q}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Sources list */}
+          {sources.length > 0 && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+              {sources.map((src, i) => (
+                <SourceCard
+                  key={i}
+                  src={src}
+                  index={i}
+                  isSelected={selectedSource === src}
+                  onClick={() => onSelectSource(src)}
+                />
+              ))}
+            </Box>
+          )}
+
+          {sources.length === 0 && (
+            <div style={{ padding: '14px 0', fontSize: '0.8rem', color: 'var(--fg-dim)', fontStyle: 'italic' }}>
+              No sources retrieved yet.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Claim group section ─────────────────────────────────────────────────── */
+const CLAIM_GROUPS = [
+  { key: 'contested',     label: 'Contested',     dotColor: '#ef4444', bg: 'rgba(239,68,68,0.06)',  border: 'rgba(239,68,68,0.18)'  },
+  { key: 'verified',      label: 'Verified',      dotColor: '#22c55e', bg: 'rgba(34,197,94,0.06)',  border: 'rgba(34,197,94,0.18)'  },
+  { key: 'corroborated',  label: 'Corroborated',  dotColor: '#eab308', bg: 'rgba(234,179,8,0.06)',  border: 'rgba(234,179,8,0.18)'  },
+  { key: 'single_source', label: 'Single Source', dotColor: '#9ca3af', bg: 'rgba(156,163,175,0.06)', border: 'rgba(156,163,175,0.18)' },
+];
+
+function ClaimCard({ c, group, onInsertClaim, onClose }) {
+  const srcCount = c.source_outlets?.length || (c.source_outlet ? 1 : 0);
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'flex-start', gap: 10,
+      padding: '10px 12px', marginBottom: 7,
+      background: group.bg,
+      border: `1px solid ${group.border}`,
+      borderRadius: 10,
+    }}>
+      <div style={{
+        width: 8, height: 8, borderRadius: '50%',
+        background: group.dotColor, flexShrink: 0, marginTop: 5,
+      }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontFamily: 'var(--font-family)', fontSize: '0.8rem',
+          color: 'var(--fg-primary)', lineHeight: 1.45, marginBottom: srcCount ? 4 : 0,
+        }}>
+          {c.claim_text || c.claim}
+        </div>
+        {srcCount > 0 && (
+          <div style={{
+            fontFamily: 'var(--font-mono)', fontSize: '0.60rem',
+            color: 'var(--fg-dim)',
+          }}>
+            {srcCount} source{srcCount !== 1 ? 's' : ''}
+          </div>
+        )}
+        {c.note && (
+          <div style={{
+            fontFamily: 'var(--font-family)', fontSize: '0.72rem',
+            color: 'var(--fg-secondary)', fontStyle: 'italic', marginTop: 3,
+          }}>
+            {c.note}
+          </div>
+        )}
+      </div>
+      {onInsertClaim && (
+        <button
+          onClick={e => { e.stopPropagation(); onInsertClaim(c); onClose(); }}
+          style={{
+            flexShrink: 0, padding: '3px 10px', borderRadius: 6,
+            border: '1px solid rgba(249,115,22,0.35)',
+            background: 'rgba(249,115,22,0.08)',
+            cursor: 'pointer', fontFamily: 'var(--font-family)',
+            fontSize: '0.65rem', color: 'var(--accent)', whiteSpace: 'nowrap',
+          }}
+        >
+          Insert
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ClaimLandscapeModal({ graphData, claims, onInsertClaim, onClose }) {
+  const allClaims = claims || [];
+  const hasAnyClaims = allClaims.length > 0;
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0,
+        background: 'rgba(0,0,0,0.45)',
+        backdropFilter: 'blur(4px)',
+        zIndex: 1000,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: 620, maxWidth: '95vw', maxHeight: '90vh',
+          overflowY: 'auto',
+          background: 'var(--bg-primary)',
+          border: '1px solid var(--border)',
+          borderRadius: 18, zIndex: 1001,
+          boxShadow: '0 24px 60px rgba(0,0,0,0.28)',
+        }}
+      >
+        {/* Header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '18px 22px', borderBottom: '1px solid var(--border)',
+          position: 'sticky', top: 0, background: 'var(--bg-primary)', zIndex: 2,
+        }}>
+          <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.92rem', fontWeight: 600, color: 'var(--fg-primary)' }}>
+            Claim Landscape
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {hasAnyClaims && (
+              <span style={{
+                fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--fg-dim)',
+              }}>
+                {allClaims.length} claim{allClaims.length !== 1 ? 's' : ''}
+              </span>
+            )}
+            <button
+              onClick={onClose}
+              style={{
+                width: 26, height: 26, borderRadius: '50%',
+                background: 'rgba(0,0,0,0.08)', border: 'none',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', fontSize: '1rem', color: 'var(--fg-secondary)',
+              }}
+            >×</button>
+          </div>
+        </div>
+
+        <div style={{ padding: '18px 22px' }}>
+          {/* KnowledgeGraph */}
+          <Box sx={{ height: 240, overflow: 'hidden', borderRadius: '10px', border: '1px solid var(--border)', mb: 3 }}>
+            <KnowledgeGraph nodes={graphData.nodes} links={graphData.links} claimsData={allClaims} />
+          </Box>
+
+          {/* Empty state */}
+          {!hasAnyClaims && (
+            <div style={{
+              textAlign: 'center', padding: '24px 0',
+              fontFamily: 'var(--font-family)', fontSize: '0.85rem', color: 'var(--fg-dim)',
+            }}>
+              No claims extracted yet. Run a search to populate the landscape.
+            </div>
+          )}
+
+          {/* Four sections */}
+          {CLAIM_GROUPS.map(group => {
+            const groupClaims = allClaims.filter(c => {
+              const s = c.status || 'single_source';
+              return s === group.key || (group.key === 'single_source' && s === 'uncertain');
+            });
+            if (groupClaims.length === 0) return null;
+            return (
+              <div key={group.key} style={{ marginBottom: 20 }}>
+                {/* Section label */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8,
+                }}>
+                  <div style={{ width: 7, height: 7, borderRadius: '50%', background: group.dotColor }} />
+                  <span style={{
+                    fontFamily: 'var(--font-family)', fontSize: '0.60rem',
+                    fontWeight: 700, color: 'var(--fg-dim)',
+                    letterSpacing: '0.10em', textTransform: 'uppercase',
+                  }}>
+                    {group.label}
+                  </span>
+                  <span style={{
+                    fontFamily: 'var(--font-mono)', fontSize: '0.60rem',
+                    color: 'var(--fg-dim)',
+                  }}>
+                    ({groupClaims.length})
+                  </span>
+                </div>
+                {groupClaims.map((c, i) => (
+                  <ClaimCard
+                    key={i} c={c} group={group}
+                    onInsertClaim={group.key !== 'contested' ? onInsertClaim : null}
+                    onClose={onClose}
+                  />
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SourceCard({ src, index, onClick, isSelected }) {
   const dotColor = src.credibility_tier
     ? TIER_COLOR[src.credibility_tier] ?? QUALITY_COLOR['medium']
     : QUALITY_COLOR[getSourceQuality(src.url)];
@@ -227,55 +1056,64 @@ function SourceCard({ src, index }) {
   })().toUpperCase();
 
   return (
-    <a href={src.url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
-      <Box sx={{
-        display: 'flex', alignItems: 'flex-start', gap: 1.25,
-        px: 1.25, py: 1, borderRadius: '12px',
-        background: 'var(--gbtn-bg)',
-        border: '1px solid var(--border)',
+    <Box
+      onClick={onClick}
+      sx={{
+        display: 'flex', alignItems: 'flex-start', gap: 1.5,
+        px: 1.5, py: 1.25, borderRadius: '12px',
+        background: isSelected ? 'rgba(255,255,255,0.42)' : 'var(--gbtn-bg)',
+        border: isSelected ? '1px solid rgba(249,115,22,0.7)' : '1px solid var(--border)',
         transition: 'all 0.16s ease',
-        '&:hover': { background: 'var(--glass-bg)', borderColor: 'rgba(249,115,22,0.22)', transform: 'translateY(-1px)', boxShadow: '0 4px 12px rgba(140,110,60,0.10)' },
+        cursor: 'pointer',
+        '&:hover': {
+          background: 'var(--glass-bg)',
+          borderColor: 'rgba(249,115,22,0.5)',
+          transform: 'translateY(-1px)',
+          boxShadow: '0 4px 12px rgba(140,110,60,0.10)',
+        },
+      }}
+    >
+      {/* Number badge */}
+      <Box sx={{
+        width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'rgba(249,115,22,0.10)', border: '1px solid rgba(249,115,22,0.20)',
+        fontFamily: 'var(--font-family)', fontSize: '0.72rem', fontWeight: 600,
+        color: 'var(--accent)',
       }}>
-        {/* Number badge */}
-        <Box sx={{
-          width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'rgba(249,115,22,0.10)', border: '1px solid rgba(249,115,22,0.20)',
-          fontFamily: 'var(--font-family)', fontSize: '0.62rem', fontWeight: 500,
-          color: 'var(--accent)',
-        }}>
-          {index + 1}
-        </Box>
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          {/* Row 1: dot + favicon + domain + external link */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.3 }}>
-            <Box sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: dotColor, flexShrink: 0 }} />
-            {src.favicon && (
-              <img src={src.favicon} alt="" width={11} height={11}
-                style={{ borderRadius: 2, opacity: 0.7 }}
-                onError={e => { e.target.style.display = 'none'; }} />
-            )}
-            <Typography sx={{
-              fontFamily: 'var(--font-family)', fontSize: '0.58rem', fontWeight: 500,
-              color: 'var(--blue)', letterSpacing: '0.07em', lineHeight: 1,
-            }}>
-              {domain}
-            </Typography>
-          </Box>
-          <Typography sx={{
-            fontFamily: 'var(--font-family)', fontSize: '0.76rem', fontWeight: 400,
-            color: 'var(--fg-primary)', lineHeight: 1.35,
-            display: '-webkit-box', WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical', overflow: 'hidden',
-          }}>
-            {src.title || src.url}
-          </Typography>
-
-          {/* (Row 2 outlet metadata removed for cleaner look) */}
-        </Box>
-        <ExternalLink size={11} style={{ color: 'var(--fg-dim)', flexShrink: 0, marginTop: 4 }} />
+        {index + 1}
       </Box>
-    </a>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        {/* Row 1: dot + favicon + domain */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.4 }}>
+          <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: dotColor, flexShrink: 0 }} />
+          {src.favicon && (
+            <img src={src.favicon} alt="" width={13} height={13}
+              style={{ borderRadius: 2, opacity: 0.8 }}
+              onError={e => { e.target.style.display = 'none'; }} />
+          )}
+          <Typography sx={{
+            fontFamily: 'var(--font-family)', fontSize: '0.64rem', fontWeight: 600,
+            color: 'var(--blue)', letterSpacing: '0.07em', lineHeight: 1,
+          }}>
+            {domain}
+          </Typography>
+        </Box>
+        <Typography sx={{
+          fontFamily: 'var(--font-family)', fontSize: '0.83rem', fontWeight: 400,
+          color: 'var(--fg-primary)', lineHeight: 1.4,
+          display: '-webkit-box', WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical', overflow: 'hidden',
+        }}>
+          {src.title || src.url}
+        </Typography>
+      </Box>
+      <ExternalLink
+        size={13}
+        style={{ color: 'var(--fg-dim)', flexShrink: 0, marginTop: 4 }}
+        onClick={e => { e.stopPropagation(); window.open(src.url, '_blank', 'noopener,noreferrer'); }}
+      />
+    </Box>
   );
 }
 
@@ -425,10 +1263,25 @@ function parseAnswerParts(answer, sources, streaming) {
 }
 
 function CollapsibleAnswer({ answer, streaming, sources }) {
+  const isEmpty = !streaming && (
+    !answer ||
+    /i couldn.{0,10}t find relevant results/i.test(answer) ||
+    /no (relevant |search )?results/i.test(answer)
+  );
+
   const parts = useMemo(
     () => parseAnswerParts(answer, sources, streaming),
     [answer, sources, streaming],
   );
+
+  if (isEmpty) {
+    return (
+      <div style={{ padding: '24px 0', color: 'var(--fg-dim)', fontSize: '0.85rem', fontStyle: 'italic' }}>
+        No summary could be generated for this query.
+        Try rephrasing or searching a more specific claim.
+      </div>
+    );
+  }
 
   return (
     <Box sx={ANSWER_BODY_STYLES}>
@@ -618,118 +1471,16 @@ function MiniTabStrip({ active, onChange, hasContradictions, contradictionsLoadi
   );
 }
 
-// ── Outline panel ─────────────────────────────────────────────────────────────
-
-function OutlinePanel({ question, answerContext, onClose }) {
-  const [outline, setOutline] = useState('');
-  const [streaming, setStreaming] = useState(true);
-  const [copied, setCopied]   = useState(false);
-  const abortRef = useRef(null);
-
-  useEffect(() => {
-    abortRef.current = new AbortController();
-    let buf = '', accumulated = '';
-    (async () => {
-      try {
-        const res = await fetch(`${API}/explore/outline`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: question, context: answerContext.slice(0, 2000) }),
-          signal: abortRef.current.signal,
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          const parts = buf.split('\n\n');
-          buf = parts.pop();
-          for (const part of parts) {
-            const line = part.trim();
-            if (!line.startsWith('data: ')) continue;
-            const raw = line.slice(6).trim();
-            if (raw === '[DONE]') { setStreaming(false); continue; }
-            try {
-              const evt = JSON.parse(raw);
-              if (evt.type === 'chunk') { accumulated += evt.text; setOutline(accumulated); }
-            } catch { /* ignore */ }
-          }
-        }
-      } catch (err) {
-        if (err.name !== 'AbortError') setOutline('Failed to generate outline. Please try again.');
-      } finally {
-        setStreaming(false);
-      }
-    })();
-    return () => abortRef.current.abort();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const copyOutline = () => {
-    navigator.clipboard.writeText(outline).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    });
-  };
-
-  const downloadOutline = () => {
-    const blob = new Blob([outline], { type: 'text/markdown' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `outline-${question.slice(0, 40).replace(/[^a-z0-9]/gi, '-').toLowerCase()}.md`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
-
-  return (
-    <GlassCard style={{ padding: '20px 24px', marginTop: 8 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
-        <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'var(--accent)', flexShrink: 0 }} />
-        <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.58rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.10em', textTransform: 'uppercase', flex: 1 }}>
-          Paper Outline
-        </Typography>
-        {!streaming && outline && (
-          <>
-            <Box onClick={copyOutline} sx={{ px: 1, py: 0.3, borderRadius: '6px', border: '1px solid var(--border)', cursor: 'pointer', fontFamily: 'var(--font-family)', fontSize: '0.65rem', color: copied ? '#16a34a' : 'var(--fg-dim)', transition: 'color 0.15s', '&:hover': { color: 'var(--fg-primary)' } }}>
-              {copied ? '✓ Copied' : 'Copy'}
-            </Box>
-            <Box onClick={downloadOutline} sx={{ px: 1, py: 0.3, borderRadius: '6px', border: '1px solid var(--border)', cursor: 'pointer', fontFamily: 'var(--font-family)', fontSize: '0.65rem', color: 'var(--fg-dim)', '&:hover': { color: 'var(--fg-primary)' } }}>
-              .md
-            </Box>
-          </>
-        )}
-        <Box onClick={onClose} sx={{ px: 1, py: 0.3, borderRadius: '6px', cursor: 'pointer', fontFamily: 'var(--font-family)', fontSize: '0.65rem', color: 'var(--fg-dim)', '&:hover': { color: 'var(--fg-primary)' } }}>
-          ✕
-        </Box>
-      </Box>
-      <Box sx={{
-        '& p':        { fontFamily: 'var(--font-family)', fontSize: '0.84rem', lineHeight: 1.7, color: 'var(--fg-primary)', my: 0.4 },
-        '& h1':       { fontFamily: 'var(--font-family)', fontSize: '0.92rem', fontWeight: 700, color: 'var(--fg-primary)', mt: 0, mb: 1 },
-        '& h2':       { fontFamily: 'var(--font-family)', fontSize: '0.82rem', fontWeight: 600, color: 'var(--fg-primary)', mt: 1.5, mb: 0.4, borderBottom: '1px solid var(--border)', pb: 0.3 },
-        '& ul, & ol': { pl: 2.5, my: 0.3 },
-        '& li':       { fontFamily: 'var(--font-family)', fontSize: '0.80rem', lineHeight: 1.65, color: 'var(--fg-secondary)', mb: 0.15 },
-        '& strong':   { fontWeight: 600, color: 'var(--fg-primary)' },
-      }}>
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{outline}</ReactMarkdown>
-      </Box>
-      {streaming && (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 1 }}>
-          <CircularProgress size={10} sx={{ color: 'var(--accent)' }} />
-          <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.65rem', color: 'var(--fg-dim)' }}>Generating outline…</Typography>
-        </Box>
-      )}
-    </GlassCard>
-  );
-}
-
 // ── Result block ──────────────────────────────────────────────────────────────
 
 function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowUp, onNewSearch, isDeepSearch, deepLabel, relatedSearches = [], loadingRelated = false, visualQuery = '', contradictions = null, stockData = null, claims = [], pipelineTrace = null, onWrite, onInsertClaim }) {
   const [activeTab,       setActiveTab]       = useState('answer');
-  const [showOutline,     setShowOutline]     = useState(false);
   const [copied,          setCopied]          = useState(false);
   const [processedAnswer, setProcessedAnswer] = useState('');
+  const [selectedSource,  setSelectedSource]  = useState(null);
+  const [showSourceIntelPopup, setShowSourceIntelPopup] = useState(false);
+  const [showClaimLandscapePopup, setShowClaimLandscapePopup] = useState(false);
+  const sourceMap = useSources();
 
   useEffect(() => {
     if (!streaming && answer) {
@@ -751,10 +1502,14 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
 
   const contradictionsLoading = contradictions === null;
   const hasContradictions     = contradictions?.contradictions?.length > 0;
-
-  const title    = answer ? extractAnswerTitle(answer, question) : '';
-  const lede     = answer ? extractLede(answer) : '';
   const chips    = answer ? extractKeywordChips(answer) : [];
+  const sourcesCount = sources.length;
+  const verifiedCount =
+    pipelineTrace?.claims_verified ??
+    claims.filter(c => ['verified', 'corroborated'].includes(c.status)).length;
+  const contestedCount =
+    pipelineTrace?.claims_contested ??
+    claims.filter(c => c.status === 'contested').length;
 
   const graphData = useMemo(() => {
     if (!claims.length && !sources.length) return { nodes: [], links: [] };
@@ -770,8 +1525,6 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
     const links = sNodes.map((_, i) => ({ source: 'q', target: `src_${i}` }));
     return { nodes, links };
   }, [claims, sources, question]);
-
-  const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase();
 
   return (
     <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 1.5 }}>
@@ -792,137 +1545,202 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
       {/* Finance card — shown when a stock/ticker was detected */}
       {stockData && <FinanceCard data={stockData} />}
 
-      {/* Three-column layout (single-column for finance queries) */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: stockData ? '1fr' : { xs: '1fr', md: '240px 1fr', lg: '240px 1fr 260px' }, gap: 0 }}>
+      {/* Sidebar + Main Content Layout */}
+      <Box sx={{ display: 'flex', flexDirection: stockData ? 'column' : { xs: 'column', md: 'row' }, gap: 3, width: '100%', alignItems: 'flex-start' }}>
 
-        {/* ── LEFT COLUMN: Source Intelligence ── */}
-        <Box sx={{
-          borderRight: '1px solid var(--border)',
-          padding: '16px 14px',
-          overflowY: 'auto',
-          display: stockData ? 'none' : { xs: 'none', md: 'block' },
-        }}>
-          <Typography sx={{
-            fontFamily: 'var(--font-family)', fontSize: '0.58rem', fontWeight: 600,
-            color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase',
-            display: 'block', mb: 1.25,
+        {/* ── LEFT SIDEBAR ── */}
+        {!stockData && (
+          <Box sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            width: { xs: '100%', md: '300px' },
+            flexShrink: 0,
+            gap: 2,
+            mt: '16px'
           }}>
-            Source Intelligence
-          </Typography>
-
-          {/* Pipeline stats */}
-          {pipelineTrace && (
-            <Box sx={{
-              background: 'var(--glass-bg)',
-              border: '1px solid var(--border)',
-              borderRadius: '9px', padding: '10px 12px',
-              mb: 1.5,
-            }}>
-              <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.62rem', color: 'var(--fg-dim)', mb: 0.75, display: 'block' }}>
-                Research pipeline
+            {/* Source Intelligence Card */}
+            <Box
+              component="button"
+              onClick={() => setShowSourceIntelPopup(true)}
+              sx={{
+                width: '100%',
+                textAlign: 'left',
+                borderRadius: '16px',
+                padding: '16px',
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--border)',
+                cursor: 'pointer',
+                transition: 'all 0.16s ease',
+                '&:hover': {
+                  borderColor: 'rgba(249,115,22,0.6)',
+                  transform: 'translateY(-1px)',
+                },
+              }}
+            >
+              <Typography sx={{
+                fontFamily: 'var(--font-family)',
+                fontSize: '0.625rem',
+                fontWeight: 600,
+                color: 'var(--fg-dim)',
+                letterSpacing: '0.14em',
+                textTransform: 'uppercase',
+                mb: 2,
+                opacity: 0.8,
+              }}>
+                Source Intelligence
               </Typography>
-              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
-                {[
-                  { label: 'sources',   value: sources.length, color: null },
-                  { label: 'claims',    value: claims.length, color: null },
-                  { label: 'verified',  value: claims.filter(c => ['verified', 'corroborated'].includes(c.status)).length, color: '#22c55e' },
-                  { label: 'contested', value: claims.filter(c => c.status === 'contested').length, color: '#ef4444' },
-                ].map(({ label, value, color }) => (
-                  <Box key={label}>
-                    <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '1rem', fontWeight: 600, color: color ?? 'var(--fg-primary)', lineHeight: 1 }}>
-                      {value}
-                    </Typography>
-                    <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.58rem', color: 'var(--fg-dim)', mt: 0.25 }}>
-                      {label}
-                    </Typography>
-                  </Box>
-                ))}
+
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                <Box>
+                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '2.25rem', fontWeight: 500, color: 'var(--fg-primary)', lineHeight: 1 }}>
+                    {sourcesCount}
+                  </Typography>
+                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.75rem', color: 'var(--fg-dim)', mt: 0.25, textTransform: 'uppercase', opacity: 0.8 }}>
+                    sources
+                  </Typography>
+                </Box>
+                <Box sx={{ textAlign: 'right' }}>
+                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.85rem', fontWeight: 500, color: '#22c55e', lineHeight: 1.4 }}>
+                    {verifiedCount} verified
+                  </Typography>
+                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.85rem', fontWeight: 500, color: '#ef4444', lineHeight: 1.4 }}>
+                    {contestedCount} contested
+                  </Typography>
+                </Box>
               </Box>
             </Box>
-          )}
 
-          {/* Sources list */}
-          {sources.length > 0 && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.6 }}>
-              {sources.map((src, i) => <SourceCard key={i} src={src} index={i} />)}
-            </Box>
-          )}
-        </Box>
-
-        {/* ── CENTER COLUMN: Answer ── */}
-        <Box sx={{ padding: '20px 24px', overflowY: 'auto', minWidth: 0 }}>
-          {answer ? (
-            <GlassCard style={{ padding: '22px 26px' }}>
-
-              {/* Metadata line */}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
-                <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: 'var(--accent)', flexShrink: 0 }} />
-                <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.58rem', fontWeight: 500, color: 'var(--fg-dim)', letterSpacing: '0.10em', textTransform: 'uppercase' }}>
-                  Result
-                  {sources.length > 0 && ` · ${sources.length} Sources`}
-                  {` · ${today}`}
-                  {isDeepSearch && ' · Deep'}
+            {/* Claim Landscape Card */}
+            {(claims.length > 0 || sources.length > 0) && (
+              <Box
+                component="button"
+                onClick={() => setShowClaimLandscapePopup(true)}
+                sx={{
+                  width: '100%',
+                  textAlign: 'left',
+                  borderRadius: '16px',
+                  padding: '16px',
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border)',
+                  cursor: 'pointer',
+                  transition: 'all 0.16s ease',
+                  '&:hover': {
+                    borderColor: 'rgba(249,115,22,0.6)',
+                    transform: 'translateY(-1px)',
+                  },
+                }}
+              >
+                <Typography sx={{
+                  fontFamily: 'var(--font-family)',
+                  fontSize: '0.625rem',
+                  fontWeight: 600,
+                  color: 'var(--fg-dim)',
+                  letterSpacing: '0.14em',
+                  textTransform: 'uppercase',
+                  mb: 2,
+                  opacity: 0.8,
+                }}>
+                  Claim Landscape
                 </Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  {/* Mini visual indicator of the landscape */}
+                  <Box sx={{ display: 'flex', gap: '4px', mb: 1 }}>
+                    {(() => {
+                        const verified = claims.filter(c => c.status === 'verified' || c.status === 'corroborated').length;
+                        const contested = claims.filter(c => c.status === 'contested').length;
+                        const other = claims.length - verified - contested;
+                        const total = claims.length || 1;
+                        if (total === 1 && claims.length === 0) {
+                          return <Box sx={{ height: 4, width: '100%', bgcolor: '#9ca3af', borderRadius: 999 }} />;
+                        }
+                        const vPct = (verified / total) * 100;
+                        const cPct = (contested / total) * 100;
+                        const oPct = (other / total) * 100;
+                        return (
+                          <>
+                            {vPct > 0 && <Box sx={{ height: 4, width: `${vPct}%`, bgcolor: '#22c55e', borderRadius: 999 }} />}
+                            {oPct > 0 && <Box sx={{ height: 4, width: `${oPct}%`, bgcolor: '#3b82f6', borderRadius: 999 }} />}
+                            {cPct > 0 && <Box sx={{ height: 4, width: `${cPct}%`, bgcolor: '#ef4444', borderRadius: 999 }} />}
+                          </>
+                        );
+                    })()}
+                  </Box>
+                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.75rem', color: 'var(--fg-dim)', lineHeight: 1.4, opacity: 0.8, textAlign: 'left' }}>
+                    Click to view {claims.length || 0} analyzed claims across the knowledge graph.
+                  </Typography>
+                </Box>
+              </Box>
+            )}
+          </Box>
+        )}
+
+        {showSourceIntelPopup && (
+          <SourceIntelligencePopup
+            sources={sources}
+            claims={claims}
+            pipelineTrace={pipelineTrace}
+            isDeepSearch={isDeepSearch}
+            selectedSource={selectedSource}
+            onSelectSource={src => { setSelectedSource(src); setShowSourceIntelPopup(false); }}
+            onClose={() => setShowSourceIntelPopup(false)}
+          />
+        )}
+
+        {showClaimLandscapePopup && (
+          <ClaimLandscapeModal
+            graphData={graphData}
+            claims={claims}
+            onInsertClaim={onInsertClaim}
+            onClose={() => setShowClaimLandscapePopup(false)}
+          />
+        )}
+
+        {/* Source Intelligence Modal */}
+        {selectedSource && (
+          <SourceModal
+            source={selectedSource}
+            sourceProfile={(() => {
+              try {
+                const domain = new URL(selectedSource.url).hostname.replace('www.', '');
+                return sourceMap[domain] || null;
+              } catch { return null; }
+            })()}
+            claims={claims}
+            onClose={() => setSelectedSource(null)}
+            onInsert={claim => {
+              if (onInsertClaim) onInsertClaim(claim);
+              setSelectedSource(null);
+            }}
+          />
+        )}
+
+        {/* ── MAIN CONTENT: AI Response ── */}
+        <Box sx={{ flex: 1, minWidth: 0, padding: { xs: '16px 0', md: '16px 0' } }}>
+          {answer ? (
+            <GlassCard style={{ padding: '24px 28px' }}>
+
+              {/* Images — always shown first when on answer tab */}
+              {activeTab === 'answer' && visualQuery && <InlineImages visualQuery={visualQuery} />}
+
+              {/* Copy button — floating top-right */}
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
                 <Tooltip title={copied ? 'Copied!' : 'Copy answer'} placement="top">
                   <Box
                     component="button"
                     onClick={handleCopy}
                     sx={{
-                      ml: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      width: 24, height: 24, borderRadius: '6px', border: '1px solid var(--border)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      width: 28, height: 28, borderRadius: '8px', border: '1px solid var(--border)',
                       background: copied ? 'rgba(34,197,94,0.10)' : 'transparent',
                       borderColor: copied ? 'rgba(34,197,94,0.35)' : 'var(--border)',
                       cursor: 'pointer', transition: 'all 0.14s ease', padding: 0,
                       '&:hover': { background: 'rgba(0,0,0,0.05)', borderColor: 'var(--fg-dim)' },
                     }}
                   >
-                    {copied ? <Check size={11} color="#22c55e" /> : <Copy size={11} color="var(--fg-dim)" />}
+                    {copied ? <Check size={12} color="#22c55e" /> : <Copy size={12} color="var(--fg-dim)" />}
                   </Box>
                 </Tooltip>
               </Box>
-
-              {/* Serif title */}
-              <Typography sx={{ fontFamily: 'var(--font-serif)', fontSize: { xs: '1.35rem', md: '1.6rem' }, fontWeight: 600, color: 'var(--fg-primary)', lineHeight: 1.22, mb: 0.75 }}>
-                {title}
-              </Typography>
-
-              {/* Italic lede */}
-              {lede && (
-                <Typography sx={{ fontFamily: 'var(--font-serif)', fontSize: '0.88rem', fontStyle: 'italic', fontWeight: 400, color: 'var(--fg-secondary)', lineHeight: 1.6, mb: 1.5 }}>
-                  {lede}
-                </Typography>
-              )}
-
-              {/* Divider */}
-              <Box sx={{ height: '1px', bgcolor: 'var(--border)', mb: 1.75 }} />
-
-              {/* Confidence legend */}
-              {claims.length > 0 && (
-                <Box sx={{
-                  display: 'flex', flexWrap: 'wrap', gap: 1.25, alignItems: 'center',
-                  background: 'rgba(255,255,255,0.4)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '7px', padding: '7px 10px',
-                  mb: 1.75,
-                }}>
-                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.62rem', color: 'var(--fg-dim)', fontWeight: 500 }}>
-                    Confidence:
-                  </Typography>
-                  {[
-                    { label: 'Verified',     color: '#22c55e' },
-                    { label: 'Corroborated', color: '#eab308' },
-                    { label: 'Single source',color: '#f97316' },
-                    { label: 'Contested',    color: '#ef4444' },
-                  ].map(({ label, color }) => (
-                    <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: color, flexShrink: 0 }} />
-                      <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.62rem', color: 'var(--fg-secondary)' }}>
-                        {label}
-                      </Typography>
-                    </Box>
-                  ))}
-                </Box>
-              )}
 
               {/* Deep search status banner */}
               {deepLabel === '2/2' && streaming && (
@@ -938,10 +1756,6 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
               <Box key={activeTab} sx={{ animation: 'tabFadeIn 0.15s ease' }}>
                 {activeTab === 'answer' && (
                   <>
-                    {visualQuery && <InlineImages visualQuery={visualQuery} />}
-
-
-
                     <CollapsibleAnswer answer={processedAnswer || answer} streaming={streaming} sources={sources} />
 
                     {/* Contested callout */}
@@ -972,8 +1786,8 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
                     })()}
                   </>
                 )}
-                {activeTab === 'perspectives'  && <PerspectivesTab query={question} />}
-                {activeTab === 'citations'     && <CitationsPanel sources={sources} />}
+                {activeTab === 'perspectives'  && <PerspectivesTab query={question} isDeepMode={isDeepSearch} subQueries={pipelineTrace?.sub_queries || []} sources={sources} />}
+                {activeTab === 'citations'     && <CitationsPanel sources={sources} query={question} />}
                 {activeTab === 'images'        && <BentoImages query={visualQuery || question} />}
                 {activeTab === 'contradictions' && (
                   contradictionsLoading
@@ -1058,141 +1872,9 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
             </Box>
           )}
         </Box>
-
-        {/* ── RIGHT COLUMN: Claim Landscape ── */}
-        {!stockData && (claims.length > 0 || sources.length > 0) && (
-          <Box sx={{
-            borderLeft: '1px solid var(--border)',
-            padding: '16px 14px',
-            overflowY: 'auto',
-            display: { xs: 'none', lg: 'flex' },
-            flexDirection: 'column',
-            gap: 1.5,
-          }}>
-            <Typography sx={{
-              fontFamily: 'var(--font-family)', fontSize: '0.58rem', fontWeight: 600,
-              color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase',
-              display: 'block',
-            }}>
-              Claim landscape
-            </Typography>
-
-            {/* KnowledgeGraph */}
-            <Box sx={{ height: 200, overflow: 'hidden', borderRadius: '8px', border: '1px solid var(--border)' }}>
-              <KnowledgeGraph
-                nodes={graphData.nodes}
-                links={graphData.links}
-                claimsData={claims}
-              />
-            </Box>
-
-            {/* Contested claims */}
-            {claims.some(c => c.status === 'contested') && (
-              <>
-                <Typography sx={{
-                  fontFamily: 'var(--font-family)', fontSize: '0.58rem', fontWeight: 600,
-                  color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase',
-                  display: 'block', mt: 0.5,
-                }}>
-                  Contested claims
-                </Typography>
-                {claims.filter(c => c.status === 'contested').slice(0, 3).map((c, i) => (
-                  <Box key={i} sx={{
-                    borderLeft: '3px solid #ef4444',
-                    background: 'rgba(239,68,68,0.05)',
-                    borderRadius: '0 6px 6px 0',
-                    padding: '8px 10px',
-                  }}>
-                    <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.72rem', color: 'var(--fg-primary)', lineHeight: 1.45 }}>
-                      {(c.claim_text || c.claim || '').slice(0, 120)}
-                    </Typography>
-                    {c.note && (
-                      <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.62rem', color: 'var(--fg-secondary)', mt: 0.4, fontStyle: 'italic' }}>
-                        {c.note}
-                      </Typography>
-                    )}
-                  </Box>
-                ))}
-              </>
-            )}
-
-            {/* Verified claims — insert into draft */}
-            {claims.some(c => c.status === 'verified' || c.status === 'corroborated') && (
-              <>
-                <Typography sx={{
-                  fontFamily: 'var(--font-family)', fontSize: '0.58rem', fontWeight: 600,
-                  color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase',
-                  display: 'block', mt: 0.5,
-                }}>
-                  Verified — insert into draft
-                </Typography>
-                {claims.filter(c => c.status === 'verified' || c.status === 'corroborated').slice(0, 4).map((c, i) => (
-                  <Box key={i} sx={{
-                    display: 'flex', alignItems: 'flex-start', gap: 0.75,
-                    padding: '7px 8px', borderRadius: 7,
-                    border: '1px solid var(--border)',
-                    background: 'rgba(255,255,255,0.40)',
-                    cursor: 'pointer', transition: 'border-color 0.14s',
-                    '&:hover': { borderColor: 'var(--accent)' },
-                  }}>
-                    <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: c.status === 'verified' ? '#22c55e' : '#eab308', flexShrink: 0, mt: 0.375 }} />
-                    <Typography sx={{
-                      fontFamily: 'var(--font-family)', fontSize: '0.67rem', color: 'var(--fg-primary)',
-                      lineHeight: 1.4, flex: 1,
-                      display: '-webkit-box', WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical', overflow: 'hidden',
-                    }}>
-                      {c.claim_text || c.claim}
-                    </Typography>
-                    {onInsertClaim && (
-                      <Box
-                        component="button"
-                        onClick={e => { e.stopPropagation(); onInsertClaim(c); }}
-                        sx={{
-                          flexShrink: 0, padding: '2px 7px', borderRadius: 4,
-                          border: '1px solid rgba(249,115,22,0.35)',
-                          background: 'rgba(249,115,22,0.08)', cursor: 'pointer',
-                          fontFamily: 'var(--font-family)', fontSize: '0.60rem',
-                          color: 'var(--accent)', whiteSpace: 'nowrap',
-                        }}
-                      >
-                        Insert
-                      </Box>
-                    )}
-                  </Box>
-                ))}
-              </>
-            )}
-          </Box>
-        )}
       </Box>
 
-      {/* ── Outline builder ── */}
-      {!streaming && answer && (
-        <Box sx={{ mt: 1 }}>
-          {!showOutline ? (
-            <Box
-              onClick={() => setShowOutline(true)}
-              sx={{
-                display: 'inline-flex', alignItems: 'center', gap: 0.75,
-                px: 1.25, py: 0.5, borderRadius: 999, cursor: 'pointer',
-                border: '1px solid var(--border)', background: 'var(--gbtn-bg)',
-                fontFamily: 'var(--font-family)', fontSize: '0.72rem', color: 'var(--fg-secondary)',
-                transition: 'all 0.13s',
-                '&:hover': { borderColor: 'rgba(249,115,22,0.3)', color: 'var(--fg-primary)', background: 'rgba(249,115,22,0.05)' },
-              }}
-            >
-              <span style={{ fontSize: '0.7rem' }}>📄</span> Build paper outline
-            </Box>
-          ) : (
-            <OutlinePanel
-              question={question}
-              answerContext={answer}
-              onClose={() => setShowOutline(false)}
-            />
-          )}
-        </Box>
-      )}
+      {/* Outline builder removed per user request */}
 
     </Box>
   );
@@ -1200,77 +1882,13 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
 
 // ── Top bar (results + searching) ─────────────────────────────────────────────
 
-function OptionsMenu({ onReset, navigate }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
-
-  const items = [
-    { label: 'New search',           action: () => { onReset(); setOpen(false); } },
-    { label: 'Saved searches',       action: () => { navigate('/saved'); setOpen(false); } },
-    { label: 'Source library',       action: () => { navigate('/sources'); setOpen(false); } },
-    { label: 'Research mode',        action: () => { navigate('/research'); setOpen(false); } },
-    { label: 'Session history',      action: () => { navigate('/research/sessions'); setOpen(false); } },
-  ];
-
-  return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <button
-        style={{ ...GLASS_BTN, padding: '7px 9px', ...(open ? { background: 'rgba(249,115,22,0.10)', borderColor: 'rgba(249,115,22,0.3)' } : {}) }}
-        onClick={() => setOpen(o => !o)}
-      >
-        <MoreHorizontal size={13} />
-      </button>
-      {open && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 8px)', right: 0,
-          background: 'rgba(250,246,238,0.95)',
-          backdropFilter: 'blur(24px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(24px) saturate(180%)',
-          borderRadius: 12,
-          borderTop: '1px solid rgba(255,255,235,0.90)',
-          borderLeft: '1px solid rgba(255,252,225,0.70)',
-          borderRight: '1px solid rgba(185,165,128,0.18)',
-          borderBottom: '1px solid rgba(178,158,120,0.18)',
-          boxShadow: '0 8px 32px rgba(140,110,60,0.14)',
-          minWidth: 180, zIndex: 100, overflow: 'hidden',
-        }}>
-          {items.map((item, i) => (
-            <div
-              key={i}
-              onClick={item.action}
-              style={{
-                padding: '9px 16px',
-                fontFamily: 'var(--font-family)', fontSize: '0.82rem', fontWeight: 400,
-                color: 'var(--fg-primary)', cursor: 'pointer',
-                borderBottom: i < items.length - 1 ? '1px solid var(--border)' : 'none',
-                transition: 'background 0.12s',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(249,115,22,0.07)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-            >
-              {item.label}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function TopBar({ query, setQuery, onSubmit, deepMode, onToggleDeep, onReset, answer, onSave, onShare, saved, navigate, onWrite }) {
   const handleKey = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSubmit(); } };
 
   return (
     <Box sx={{
       position: 'sticky', top: 0, zIndex: 30,
-      background: 'rgba(237,232,223,0.82)',
+      background: 'rgba(26,22,20,0.82)',
       backdropFilter: 'blur(20px) saturate(180%)',
       WebkitBackdropFilter: 'blur(20px) saturate(180%)',
       borderBottom: '1px solid var(--border)',
@@ -1278,8 +1896,8 @@ function TopBar({ query, setQuery, onSubmit, deepMode, onToggleDeep, onReset, an
     }}>
       <Box sx={{ maxWidth: 1100, mx: 'auto', display: 'flex', alignItems: 'center', gap: 1.5 }}>
 
-        {/* Quarry wordmark — clicking resets to home */}
-        <Box onClick={onReset} sx={{ cursor: 'pointer', flexShrink: 0, mr: 0.5, userSelect: 'none' }}>
+        {/* Quarry wordmark — clicking redirects to home */}
+        <Box onClick={() => { onReset(); navigate('/'); }} sx={{ cursor: 'pointer', flexShrink: 0, mr: 0.5, userSelect: 'none' }}>
           <Typography sx={{
             fontFamily: 'var(--font-serif)', fontSize: '1.25rem', fontWeight: 600,
             color: 'var(--fg-primary)', letterSpacing: '-0.02em', lineHeight: 1,
@@ -1328,27 +1946,24 @@ function TopBar({ query, setQuery, onSubmit, deepMode, onToggleDeep, onReset, an
           <button
             style={{
               ...GLASS_BTN,
-              ...(deepMode ? { background: 'rgba(249,115,22,0.15)', borderTop: '1px solid rgba(249,115,22,0.35)', color: 'var(--accent)' } : {}),
+              background: deepMode ? 'rgba(249,115,22,0.12)' : 'var(--glass-bg)',
+              border: deepMode ? '1px solid rgba(249,115,22,0.5)' : '1px solid var(--glass-border)',
+              color: deepMode ? '#F97316' : 'var(--fg-secondary)',
             }}
             onClick={onToggleDeep}
           >
-            <Zap size={11} fill={deepMode ? 'var(--accent)' : 'none'} color={deepMode ? 'var(--accent)' : '#3a2c18'} />
+            <Zap size={11} fill={deepMode ? 'var(--accent)' : 'none'} color={deepMode ? 'var(--accent)' : 'var(--fg-secondary)'} />
             Deep
-          </button>
-
-          <button style={GLASS_BTN} onClick={() => navigate('/research')}>
-            <FlaskConical size={11} />
-            Research
           </button>
 
           {answer && (
             <>
-              <button style={GLASS_BTN} onClick={onSave}>
-                <BookmarkPlus size={11} color={saved ? 'var(--accent)' : '#3a2c18'} />
+              <button style={{ ...GLASS_BTN, color: '#000000' }} onClick={onSave}>
+                <BookmarkPlus size={11} color={saved ? 'var(--accent)' : '#000000'} />
                 {saved ? 'Saved' : 'Save'}
               </button>
-              <button style={GLASS_BTN} onClick={onShare}>
-                <ArrowUpRight size={11} />
+              <button style={{ ...GLASS_BTN, color: '#000000' }} onClick={onShare}>
+                <ArrowUpRight size={11} color="#000000" />
                 Share
               </button>
             </>
@@ -1380,7 +1995,6 @@ function TopBar({ query, setQuery, onSubmit, deepMode, onToggleDeep, onReset, an
             </Box>
           )}
 
-          <OptionsMenu onReset={onReset} navigate={navigate} />
           <NavControls />
         </Box>
       </Box>
@@ -1548,10 +2162,10 @@ function HomeSearchBar({ query, setQuery, onSubmit, deepMode, onToggleDeep }) {
         />
         <Box onClick={e => { e.preventDefault(); onToggleDeep?.(); }} sx={{
           display: 'flex', alignItems: 'center', gap: '3px', px: 1, py: 0.4, borderRadius: '6px', cursor: 'pointer', flexShrink: 0,
-          border: deepMode ? '1px solid rgba(249,115,22,0.40)' : '1px solid var(--border)',
-          bgcolor: deepMode ? 'rgba(249,115,22,0.08)' : 'transparent',
+          border: deepMode ? '1px solid rgba(249,115,22,0.5)' : '1px solid var(--glass-border)',
+          bgcolor: deepMode ? 'rgba(249,115,22,0.12)' : 'var(--glass-bg)',
           boxShadow: deepMode ? 'inset 0 2px 5px rgba(0,0,0,0.13), inset 0 1px 2px rgba(0,0,0,0.08)' : 'none',
-          color: deepMode ? 'var(--accent)' : 'var(--fg-dim)',
+          color: deepMode ? '#F97316' : 'var(--fg-secondary)',
           fontFamily: 'var(--font-family)', fontSize: '0.72rem', fontWeight: 400, transition: 'all 0.15s',
           '&:hover': { borderColor: 'var(--accent)', color: 'var(--accent)' },
         }}>
@@ -1617,7 +2231,7 @@ export default function ExplorePage() {
   const [errorMsg,     setErrorMsg]     = useState('');
   const [saved,        setSaved]        = useState(false);
   const [streaming,    setStreaming]    = useState(false);
-  const [deepMode,     setDeepMode]     = useState(false);
+  const [isDeep,       setIsDeep]       = useState(false);
   const [isDeepSearch, setIsDeepSearch] = useState(false);
   const [deepLabel,    setDeepLabel]    = useState('');
   const [toast,        setToast]        = useState({ show: false, message: '' });
@@ -1661,7 +2275,7 @@ export default function ExplorePage() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const runSearch = useCallback(async (q, isDeep = false) => {
+  const runSearch = useCallback(async (q, deepEnabled = false) => {
     if (!q?.trim()) return;
 
     // Persist to search history (max 20, deduplicated, most recent first)
@@ -1680,11 +2294,11 @@ export default function ExplorePage() {
     setSources([]); sourcesRef.current = [];
     setAnswer(''); setSaved(false); setErrorMsg('');
     setStreaming(true); setContradictions(null); setFollowUpBlocks([]);
-    setRelatedSearches([]); setLoadingRelated(false); setIsDeepSearch(false);
+    setRelatedSearches([]); setLoadingRelated(false); setIsDeepSearch(deepEnabled);
     setStockData(null);
     setClaimsData([]); claimsDataRef.current = [];
     setPipelineTrace(null); pipelineTraceRef.current = null;
-    setDeepLabel(isDeep ? '1/2' : '');
+    setDeepLabel(deepEnabled ? '1/2' : '');
     setVisualQuery(deriveImageQuery(q.trim()));
     submittedQueryRef.current = q.trim();
     if (followUpAbortRef.current) followUpAbortRef.current.abort();
@@ -1692,7 +2306,7 @@ export default function ExplorePage() {
     let accumulatedAnswer = '';
 
     const readStream = async (queryStr, skipSources = false) => {
-      const res = await fetch(`${API}/explore/search`, {
+      const res = await fetch(`${API}/explore/search?deep=${deepEnabled ? 'true' : 'false'}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: queryStr }), signal,
       });
@@ -1716,7 +2330,7 @@ export default function ExplorePage() {
           if (raw === '[DONE]') { setStreaming(false); continue; }
           try {
             const evt = JSON.parse(raw);
-            if      (evt.type === 'sources' && !skipSources) { const _s = evt.sources || []; setSources(_s); sourcesRef.current = _s; addSourcesToLibrary(_s, submittedQueryRef.current); if (evt.claims) { const normalised = evt.claims.map(c => ({ ...c, claim_text: c.claim_text ?? c.claim ?? '', status: c.status === 'uncertain' ? 'single_source' : (c.status ?? 'single_source'), source_outlets: c.source_outlets ?? (c.source_outlet ? [c.source_outlet] : []), })); setClaimsData(normalised); claimsDataRef.current = normalised; } if (evt.pipeline_trace) { setPipelineTrace(evt.pipeline_trace); pipelineTraceRef.current = evt.pipeline_trace; } }
+            if      (evt.type === 'sources' && !skipSources) { const _s = evt.sources || []; setSources(_s); sourcesRef.current = _s; if (evt.claims) { const normalised = evt.claims.map(c => ({ ...c, claim_text: c.claim_text ?? c.claim ?? '', status: c.status === 'uncertain' ? 'single_source' : (c.status ?? 'single_source'), source_outlets: c.source_outlets ?? (c.source_outlet ? [c.source_outlet] : []), })); setClaimsData(normalised); claimsDataRef.current = normalised; saveContestedClaims(q.trim(), normalised); } if (evt.pipeline_trace) { setPipelineTrace(evt.pipeline_trace); pipelineTraceRef.current = evt.pipeline_trace; } }
             else if (evt.type === 'chunk')                   { accumulatedAnswer += evt.text; setAnswer(prev => prev + evt.text); }
             else if (evt.type === 'error')                   setErrorMsg(evt.text);
             else if (evt.type === 'contradictions')          setContradictions(evt.data === null ? false : evt.data);
@@ -1730,17 +2344,11 @@ export default function ExplorePage() {
     try {
       setPhase('results');
       await readStream(q.trim());
-      if (isDeep) {
-        setDeepLabel('2/2'); setStreaming(true);
-        setAnswer(prev => prev + '\n\n## Additional context\n\n');
-        await readStream(`${q.trim()} detailed analysis`, true);
-        setIsDeepSearch(true);
-      }
       searchSuccess = true;
     } catch (err) {
       if (err.name !== 'AbortError') { setErrorMsg(err.message); setPhase('error'); }
     } finally {
-      setStreaming(false); setDeepLabel(''); setDeepMode(false);
+      setStreaming(false); setDeepLabel('');
       const nextAction = sessionStorage.getItem('quarry_next_action');
       if (nextAction === 'write') {
         sessionStorage.removeItem('quarry_next_action');
@@ -1762,7 +2370,15 @@ export default function ExplorePage() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleSubmit = () => { if (query.trim()) runSearch(query, deepMode); };
+  // If the user toggles Deep mid-session, re-run the currently loaded query.
+  useEffect(() => {
+    const current = submittedQueryRef.current?.trim();
+    if (!current) return;
+    if (phase === 'idle') return;
+    runSearch(current, isDeep);
+  }, [isDeep]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleSubmit = () => { if (query.trim()) runSearch(query, isDeep); };
 
   const handleSave = useCallback(() => {
     if (!answer) return;
@@ -1937,7 +2553,7 @@ export default function ExplorePage() {
             </Typography>
           </Box>
 
-          <HomeSearchBar query={query} setQuery={setQuery} onSubmit={handleSubmit} deepMode={deepMode} onToggleDeep={() => setDeepMode(d => !d)} />
+          <HomeSearchBar query={query} setQuery={setQuery} onSubmit={handleSubmit} deepMode={isDeep} onToggleDeep={() => setIsDeep(d => !d)} />
 
           {/* ── Two-column body: Watchlist + Trending + CTAs ── */}
           <Box sx={{ width: '100%', maxWidth: 640, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
@@ -2010,41 +2626,7 @@ export default function ExplorePage() {
             </Box>
 
             {/* Row 2: CTAs */}
-          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, width: '100%' }}>
-
-            {/* Quarry Research */}
-            <Box onClick={() => navigate('/research')} sx={{
-              display: 'flex', flexDirection: 'column', gap: 1,
-              px: 2, py: 1.5,
-              borderRadius: '12px',
-              border: dark ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(0,0,0,0.10)',
-              background: dark
-                ? 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.03) 100%)'
-                : 'linear-gradient(135deg, rgba(255,252,245,0.9) 0%, rgba(248,243,232,0.8) 100%)',
-              cursor: 'pointer',
-              boxShadow: dark ? '0 1px 4px rgba(0,0,0,0.25)' : '0 1px 4px rgba(0,0,0,0.05)',
-              transition: 'all 0.18s ease',
-              '&:hover': {
-                borderColor: 'rgba(249,115,22,0.35)',
-                boxShadow: '0 4px 16px rgba(249,115,22,0.10)',
-                transform: 'translateY(-1px)',
-              },
-            }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Box sx={{ width: 36, height: 36, borderRadius: '10px', bgcolor: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <FlaskConical size={18} color="var(--accent)" />
-                </Box>
-                <Box sx={{ color: 'var(--fg-dim)', opacity: 0.4, fontSize: '1rem' }}>›</Box>
-              </Box>
-              <Box>
-                <Typography sx={{ fontFamily: 'var(--font-serif)', fontSize: '1.05rem', fontWeight: 700, color: 'var(--fg-primary)', lineHeight: 1.2, letterSpacing: '-0.01em' }}>
-                  Quarry Research
-                </Typography>
-                <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.66rem', fontWeight: 400, fontStyle: 'italic', color: 'var(--fg-secondary)', mt: 0.35, lineHeight: 1.4 }}>
-                  AI research assistant for papers, topics & citations
-                </Typography>
-              </Box>
-            </Box>
+          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr', gap: 1, width: '100%' }}>
 
             {/* Finance Terminal */}
             <Box onClick={() => navigate('/finance')} sx={{
@@ -2115,7 +2697,7 @@ export default function ExplorePage() {
       <Box sx={{ ...PAGE_BG, height: '100vh', overflowY: 'auto', paddingTop: `${topOffset}px` }}>
         <TopBar
           query={query} setQuery={setQuery} onSubmit={handleSubmit}
-          deepMode={deepMode} onToggleDeep={() => setDeepMode(d => !d)}
+          deepMode={isDeep} onToggleDeep={() => setIsDeep(d => !d)}
           onReset={resetSearch} answer={answer} onSave={handleSave} onShare={handleShare}
           saved={saved} navigate={navigate} streaming={streaming}
           onWrite={sources.length > 0 ? handleWrite : undefined}
@@ -2129,20 +2711,32 @@ export default function ExplorePage() {
                'Searching the web and reasoning…'}
             </Typography>
           </Box>
-          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2 }}>
-            <Box sx={{ flex: 1 }}>
-              <GlassCard style={{ padding: '22px 26px' }}>
+          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3 }}>
+            <Box sx={{ width: { xs: '100%', md: '300px' }, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <GlassCard style={{ padding: '16px' }}>
+                <Skeleton variant="rectangular" width="60%" height={10} sx={{ borderRadius: 4, bgcolor: 'var(--bg-tertiary)', mb: 3 }} />
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                  <Skeleton variant="rectangular" width="30%" height={40} sx={{ borderRadius: 8, bgcolor: 'var(--bg-tertiary)' }} />
+                  <Box sx={{ width: '40%' }}>
+                    <Skeleton variant="rectangular" width="100%" height={14} sx={{ borderRadius: 4, bgcolor: 'var(--bg-tertiary)', mb: 1 }} />
+                    <Skeleton variant="rectangular" width="100%" height={14} sx={{ borderRadius: 4, bgcolor: 'var(--bg-tertiary)' }} />
+                  </Box>
+                </Box>
+              </GlassCard>
+              <GlassCard style={{ padding: '16px' }}>
+                <Skeleton variant="rectangular" width="60%" height={10} sx={{ borderRadius: 4, bgcolor: 'var(--bg-tertiary)', mb: 3 }} />
+                <Skeleton variant="rectangular" width="100%" height={6} sx={{ borderRadius: 4, bgcolor: 'var(--bg-tertiary)', mb: 2 }} />
+                <Skeleton variant="rectangular" width="80%" height={10} sx={{ borderRadius: 4, bgcolor: 'var(--bg-tertiary)', mb: 1 }} />
+                <Skeleton variant="rectangular" width="90%" height={10} sx={{ borderRadius: 4, bgcolor: 'var(--bg-tertiary)' }} />
+              </GlassCard>
+            </Box>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <GlassCard style={{ padding: '24px 28px' }}>
                 <Skeleton variant="rectangular" width="35%" height={10} sx={{ borderRadius: 4, bgcolor: 'var(--bg-tertiary)', mb: 2 }} />
                 <Skeleton variant="rectangular" width="70%" height={26} sx={{ borderRadius: 6, bgcolor: 'var(--bg-tertiary)', mb: 1 }} />
                 <Skeleton variant="rectangular" width="55%" height={26} sx={{ borderRadius: 6, bgcolor: 'var(--bg-tertiary)', mb: 2 }} />
                 <Box sx={{ height: '1px', bgcolor: 'var(--border)', mb: 2 }} />
                 {[...Array(6)].map((_, i) => <Skeleton key={i} variant="text" width={`${65 + (i % 4) * 8}%`} sx={{ bgcolor: 'var(--bg-tertiary)', height: 22, mb: 0.5 }} />)}
-              </GlassCard>
-            </Box>
-            <Box sx={{ width: { xs: '100%', md: '300px' }, flexShrink: 0 }}>
-              <GlassCard style={{ padding: '16px' }}>
-                <Skeleton variant="rectangular" width="40%" height={10} sx={{ borderRadius: 4, bgcolor: 'var(--bg-tertiary)', mb: 1.5 }} />
-                {[...Array(5)].map((_, i) => <Skeleton key={i} variant="rectangular" height={44} sx={{ borderRadius: '10px', bgcolor: 'var(--bg-tertiary)', mb: 0.75 }} />)}
               </GlassCard>
             </Box>
           </Box>
@@ -2160,7 +2754,7 @@ export default function ExplorePage() {
     <Box sx={{ ...PAGE_BG, height: '100vh', display: 'flex', flexDirection: 'column', paddingTop: `${topOffset}px` }}>
       <TopBar
         query={query} setQuery={setQuery} onSubmit={handleSubmit}
-        deepMode={deepMode} onToggleDeep={() => setDeepMode(d => !d)}
+        deepMode={isDeep} onToggleDeep={() => setIsDeep(d => !d)}
         onReset={resetSearch} answer={answer} onSave={handleSave} onShare={handleShare}
         saved={saved} navigate={navigate} streaming={streaming}
         onWrite={sources.length > 0 ? handleWrite : undefined}
@@ -2203,7 +2797,7 @@ export default function ExplorePage() {
       {(canFollowUp || followUpBlocks.length >= MAX_FOLLOW_UPS) && (
         <Box sx={{
           borderTop: '1px solid var(--border)',
-          background: 'rgba(237,232,223,0.82)',
+          background: 'rgba(26,22,20,0.82)',
           backdropFilter: 'blur(20px) saturate(180%)',
           WebkitBackdropFilter: 'blur(20px) saturate(180%)',
           px: 3, py: 1.25,
