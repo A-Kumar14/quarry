@@ -129,20 +129,6 @@ Use the tab bar to switch between:
 
 Toggle **Deep** next to the search bar for multi-pass analysis on complex topics. A sub-query transparency panel shows the decomposition Quarry used.
 
-### Finance Terminal (`/finance`)
-
-| Command | What it does |
-|---|---|
-| `AAPL` | Live quote + sparkline |
-| `AAPL VS MSFT` | Side-by-side price comparison |
-| `COMPARE AAPL MSFT NVDA` | Multi-ticker table |
-| `INDICES` | Market overview (DOW, S&P 500, NASDAQ) |
-| `/analyze NVDA` | Full AI analysis — technicals, fundamentals, catalysts |
-| `/technicals AAPL` | RSI, MACD, SMA with interpretation |
-| `/macro` | Fed, rates, inflation, sector rotation |
-| `EXPLAIN P/E ratio` | Plain-English definition of any finance term |
-| `HELP` | Full command reference |
-
 ### Quarry Write (`/write`)
 
 A document-first writing surface connected to your search results:
