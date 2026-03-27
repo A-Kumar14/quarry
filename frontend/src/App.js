@@ -2,8 +2,6 @@ import React, { useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import ExplorePage from './pages/ExplorePage';
 import HomePage from './pages/HomePage';
-import ResearchPage from './pages/ResearchPage';
-import ResearchSessionsPage from './pages/ResearchSessionsPage';
 import SettingsPage from './pages/SettingsPage';
 import SourcesPage from './pages/SourcesPage';
 import WritePage from './pages/WritePage';
@@ -14,13 +12,9 @@ import { DarkModeProvider } from './DarkModeContext';
 function AppContent() {
   const navigate = useNavigate();
 
-  const handleHomeSearch = useCallback((query, mode) => {
+  const handleHomeSearch = useCallback((query, modeOrDeep) => {
     const q = query ? encodeURIComponent(query.trim()) : '';
-    if (mode === 'research') {
-      navigate('/research');
-      return;
-    }
-    if (mode === 'write') {
+    if (modeOrDeep === 'write') {
       if (q) {
         navigate('/search?q=' + q + '&next=write');
       } else {
@@ -28,12 +22,16 @@ function AppContent() {
       }
       return;
     }
-    if (mode === 'finance') {
+    if (modeOrDeep === 'finance') {
       navigate('/search?q=' + q + '&mode=finance');
       return;
     }
     if (q) {
-      navigate('/search?q=' + q);
+      if (modeOrDeep === true) {
+        navigate('/search?q=' + q + '&d=true');
+      } else {
+        navigate('/search?q=' + q);
+      }
     }
   }, [navigate]);
 
@@ -43,8 +41,6 @@ function AppContent() {
         <Route path="/"                   element={<HomePage onSearch={handleHomeSearch} />} />
         <Route path="/search"             element={<ExplorePage />} />
         <Route path="/write"              element={<WritePage />} />
-        <Route path="/research"           element={<ResearchPage />} />
-        <Route path="/research/sessions"  element={<ResearchSessionsPage />} />
         <Route path="/settings"           element={<SettingsPage />} />
         <Route path="/sources"            element={<SourcesPage />} />
         <Route path="/artifacts"          element={<ArtifactsPage />} />
@@ -54,6 +50,14 @@ function AppContent() {
     </>
   );
 }
+
+// One-time cleanup: purge research session data left in localStorage
+try {
+  Object.keys(localStorage)
+    .filter(k => k.startsWith('quarry_session_'))
+    .forEach(k => localStorage.removeItem(k));
+  localStorage.removeItem('quarry_sessions_index');
+} catch {}
 
 export default function App() {
   return (

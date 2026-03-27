@@ -48,5 +48,12 @@
   {"outlet_name":"Wikipedia","domain":"wikipedia.org","country":"International","language":"en","funding_type":"ngo","editorial_lean":"independent","credibility_tier":2,"state_affiliation":null},
   {"outlet_name":"Al Monitor","domain":"al-monitor.com","country":"US","language":"en","funding_type":"private","editorial_lean":"center","credibility_tier":1,"state_affiliation":null},
   {"outlet_name":"Atlantic Council","domain":"atlanticcouncil.org","country":"US","language":"en","funding_type":"ngo","editorial_lean":"center","credibility_tier":1,"state_affiliation":null},
-  {"outlet_name":"Council on Foreign Relations","domain":"cfr.org","country":"US","language":"en","funding_type":"ngo","editorial_lean":"center","credibility_tier":1,"state_affiliation":null}
+  {"outlet_name":"Council on Foreign Relations","domain":"cfr.org","country":"US","language":"en","funding_type":"ngo","editorial_lean":"center","credibility_tier":1,"state_affiliation":null},
+  {"outlet_name":"ESPN","domain":"espn.com","country":"US","language":"en","funding_type":"corporate","editorial_lean":"center","credibility_tier":2,"state_affiliation":false},
+  {"outlet_name":"BBC Sport","domain":"bbc.co.uk","country":"UK","language":"en","funding_type":"public","editorial_lean":"center","credibility_tier":1,"state_affiliation":false},
+  {"outlet_name":"The Athletic","domain":"theathletic.com","country":"US","language":"en","funding_type":"subscription","editorial_lean":"center","credibility_tier":1,"state_affiliation":false},
+  {"outlet_name":"Yahoo Sports","domain":"sports.yahoo.com","country":"US","language":"en","funding_type":"corporate","editorial_lean":"center","credibility_tier":2,"state_affiliation":false},
+  {"outlet_name":"FotMob","domain":"fotmob.com","country":"Norway","language":"en","funding_type":"corporate","editorial_lean":"center","credibility_tier":2,"state_affiliation":false},
+  {"outlet_name":"Sky Sports","domain":"skysports.com","country":"UK","language":"en","funding_type":"corporate","editorial_lean":"center","credibility_tier":2,"state_affiliation":false},
+  {"outlet_name":"Grokipedia","domain":"grokipedia.com","country":"US","language":"en","funding_type":"corporate","editorial_lean":"unknown","credibility_tier":3,"state_affiliation":false}
 ]

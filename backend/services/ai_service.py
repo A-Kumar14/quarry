@@ -8,6 +8,123 @@ import re
 
 logger = logging.getLogger(__name__)
 
+
+async def decompose_query(query: str, llm_client) -> list[str]:
+    """
+    Break a complex query into 2-4 atomic sub-queries
+    for targeted retrieval. Returns the original query
+    as a single-item list if decomposition fails or
+    the query is already simple.
+    """
+    prompt = f"""You are a research query decomposer for
+an investigative journalism tool.
+
+Given this query: "{query}"
+
+Break it into 2-4 specific, targeted search queries that
+together cover all the distinct information needs.
+
+Rules:
+- Each sub-query should be independently searchable
+- If a named source is mentioned (e.g. "Der Spiegel report",
+  "ICPC statement"), make one sub-query target it directly
+- If the query asks for a comparison, make one sub-query
+  per side of the comparison
+- If the query is simple and atomic, return it unchanged
+  as a single item
+- Return ONLY a JSON array of strings, no other text
+
+Example input:
+"Compare the ICPC official statement on Mediterranean cable
+outages with the Der Spiegel investigative report"
+
+Example output:
+["ICPC International Cable Protection Committee Mediterranean cable statement 2025",
+ "Der Spiegel Mediterranean submarine cable investigation report",
+ "Mediterranean cable outage technical analysis 2025",
+ "Mediterranean cable damage causes official investigation"]
+"""
+    try:
+        import asyncio
+        response = await asyncio.to_thread(
+            llm_client.chat.completions.create,
+            model="openai/gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=300,
+            temperature=0.1,
+        )
+        text = (response.choices[0].message.content or "").strip()
+        text = text.replace("```json", "").replace("```", "").strip()
+        sub_queries = json.loads(text)
+        if isinstance(sub_queries, list) and len(sub_queries) >= 1:
+            # Always include the original query too
+            all_queries = [query] + [q for q in sub_queries if q != query]
+            return all_queries[:5]  # cap at 5 total
+    except Exception:
+        pass
+    return [query]
+
+
+async def retrieve(
+    query: str,
+    source_service,
+    max_results: int = 5,
+) -> list[dict]:
+    """
+    Single retrieval pass: web_search -> scrape_urls -> return sources.
+    Returns [{title, url, snippet, markdown}] (markdown may be empty).
+    """
+    results = source_service.web_search(query, max_results=max_results)
+    urls = [r.get("url", "") for r in results if r.get("url")]
+    scraped = source_service.scrape_urls(urls, max_pages=3)
+    scraped_map = {s.get("url", ""): s.get("markdown", "") for s in scraped if s.get("url")}
+
+    merged: list[dict] = []
+    for r in results:
+        url = r.get("url", "")
+        if not url:
+            continue
+        merged.append(
+            {
+                "title": r.get("title", ""),
+                "url": url,
+                "snippet": r.get("snippet", ""),
+                "markdown": scraped_map.get(url, ""),
+            }
+        )
+    return merged
+
+
+async def retrieve_deep(
+    sub_queries: list[str],
+    source_service,
+    max_per_query: int = 3,
+) -> list[dict]:
+    """
+    Run a retrieval pass for each sub-query.
+    Merge results, deduplicate by URL.
+    Cap total at 12 sources.
+    """
+    seen_urls = set()
+    all_sources = []
+
+    for sub_query in sub_queries:
+        try:
+            results = await retrieve(
+                sub_query,
+                source_service,
+                max_results=max_per_query,
+            )
+            for r in results:
+                url = r.get("url", "")
+                if url and url not in seen_urls:
+                    seen_urls.add(url)
+                    all_sources.append(r)
+        except Exception:
+            continue
+
+    return all_sources[:12]
+
 CONTRADICTION_SYSTEM_PROMPT = """You are a rigorous fact-checking assistant embedded in a search engine. You will be given content from multiple web sources about the same topic. Your sole job is to identify **genuine factual contradictions** — cases where two or more sources make clearly conflicting, mutually exclusive factual claims about the same concrete subject.
 
 ## What counts as a contradiction
@@ -139,6 +256,22 @@ Before writing your answer, verify that the search results are actually relevant
 - For comparative questions ("X vs Y"): use a table or clearly delineated sections.
 - For procedural questions ("how to"): use a numbered list.
 - Do not pad with meta-commentary like "Based on the search results above…" or "In conclusion…"
+
+## Structured diagram (optional — only when genuinely useful)
+
+If the query is about a **person's biography or life**, a **historical event's chronology**, or a **complex multi-step process**, provide a 3–4 sentence summary paragraph first, then immediately follow it with a Mermaid flowchart wrapped in custom delimiters:
+
+[DIAGRAM]
+graph TD
+A[Short label] --> B[Short label]
+B --> C[Short label]
+[/DIAGRAM]
+
+Rules for diagrams:
+- Use `graph TD` (top-down) format only.
+- Include 5–7 nodes. Keep each node label to 4 words or fewer.
+- Only generate a diagram if a sequential flowchart adds genuine value. Skip entirely for: simple definitions, comparisons, finance data, live scores, short factual answers, or any query that doesn't have a natural sequence or timeline.
+- Do NOT wrap the [DIAGRAM] tags in markdown code fences (no triple backticks).
 
 ## Handling uncertainty and gaps
 
@@ -555,7 +688,74 @@ class AIService:
             logger.error("detect_contradictions.failed: %s", exc)
             return {"contradictions": [], "consensus": "", "error": True}
 
-    def explore_the_web(self, query: str):
+    def analyse_gaps(self, query: str, context_block: str) -> list[str]:
+        """
+        Identify research gaps — questions raised by sources that remain unanswered.
+        Returns a list of gap strings (max 5). Never raises.
+        """
+        if not context_block.strip():
+            return []
+        prompt = (
+            f"You are a research analyst reviewing web sources about: \"{query}\"\n\n"
+            "Based only on the sources below, identify up to 5 research gaps — "
+            "specific questions, missing data points, or angles that are raised by the "
+            "sources but left unanswered. Each gap should be a single concise sentence "
+            "framed as an unanswered question (e.g. 'What is the long-term environmental "
+            "impact of this policy?').\n\n"
+            "Return ONLY valid JSON: {\"gaps\": [\"...\", ...]}\n\n"
+            f"--- SOURCES ---\n{context_block[:3000]}\n--- END ---"
+        )
+        try:
+            llm = self._get_llm()
+            raw = llm.chat_sync(
+                [{"role": "user", "content": prompt}], timeout=12
+            ).strip()
+            raw = raw.replace("```json", "").replace("```", "").strip()
+            data = json.loads(raw)
+            gaps = data.get("gaps", [])
+            if isinstance(gaps, list):
+                return [g for g in gaps if isinstance(g, str)][:5]
+        except Exception as exc:
+            logger.error("analyse_gaps.failed: %s", exc)
+        return []
+
+    def extract_quotes(self, context_block: str) -> list[dict]:
+        """
+        Extract notable direct quotes from scraped source text.
+        Returns list of {quote, speaker, domain}. Never raises.
+        """
+        if not context_block.strip():
+            return []
+        prompt = (
+            "You are a quote extractor for a journalism research tool.\n\n"
+            "From the source text below, extract up to 6 notable direct quotes — "
+            "statements enclosed in quotation marks attributed to a named person or "
+            "organisation. For each quote return:\n"
+            "  - quote: the exact quoted text\n"
+            "  - speaker: who said it (person or org name)\n"
+            "  - domain: the source domain (e.g. reuters.com)\n\n"
+            "Return ONLY valid JSON: {\"quotes\": [{\"quote\": \"...\", \"speaker\": \"...\", \"domain\": \"...\"}]}\n"
+            "If no attributable direct quotes exist, return {\"quotes\": []}.\n\n"
+            f"--- SOURCES ---\n{context_block[:3000]}\n--- END ---"
+        )
+        try:
+            llm = self._get_llm()
+            raw = llm.chat_sync(
+                [{"role": "user", "content": prompt}], timeout=12
+            ).strip()
+            raw = raw.replace("```json", "").replace("```", "").strip()
+            data = json.loads(raw)
+            quotes = data.get("quotes", [])
+            if isinstance(quotes, list):
+                return [
+                    q for q in quotes
+                    if isinstance(q, dict) and q.get("quote")
+                ][:6]
+        except Exception as exc:
+            logger.error("extract_quotes.failed: %s", exc)
+        return []
+
+    async def explore_the_web(self, query: str, deep: bool = False):
         """
         Search-Augmented Generation streaming generator.
         Yields SSE-formatted strings: sources event, then chunk events, then [DONE].
@@ -564,20 +764,55 @@ class AIService:
         from services import search_service
         from services import finance_service
 
+        sub_queries = None
         sources: list[dict] = []
         scraped: list[dict] = []
         results: list[dict] = []
         results_count = 0
+
+        context_block = ""
         try:
-            results = search_service.web_search(query, max_results=5)
+            llm = self._get_llm()
+
+            if deep:
+                try:
+                    llm_client = llm._get_client()  # openai client (sync)
+                except Exception:
+                    llm_client = llm  # fallback; decompose_query will fail gracefully
+
+                sub_queries = await decompose_query(query, llm_client)
+                retrieved_sources = await retrieve_deep(
+                    sub_queries, search_service, max_per_query=3
+                )
+            else:
+                retrieved_sources = await retrieve(query, search_service, max_results=5)
+
+            # Convert merged retrieval results into inputs for build_context()
+            results = [
+                {
+                    "title": r.get("title", ""),
+                    "url": r.get("url", ""),
+                    "snippet": r.get("snippet", ""),
+                }
+                for r in (retrieved_sources or [])
+                if r.get("url")
+            ]
             results_count = len(results)
-            urls = [r["url"] for r in results if r.get("url")]
-            scraped = search_service.scrape_urls(urls, max_pages=3)
+
+            scraped = [
+                {"url": r.get("url", ""), "markdown": r.get("markdown", "")}
+                for r in (retrieved_sources or [])
+                if r.get("url") and r.get("markdown")
+            ]
+
             context_block, sources = search_service.build_context(results, scraped)
         except Exception as exc:
             logger.error("explore_the_web.search_failed: %s", exc)
             context_block = ""
             sources = []
+            scraped = []
+            results = []
+            results_count = 0
 
         # ── Enrich sources with outlet profiles ───────────────────────────────
         if sources:
@@ -620,6 +855,7 @@ class AIService:
 
         # ── Epistemic pipeline (extract + reconcile claims) ───────────────────
         reconciled: list[dict] = []
+        raw_claims_count = 0
         if sources and not (is_fin and ticker):
             import concurrent.futures as _cf
             _llm = self._get_llm()
@@ -629,6 +865,7 @@ class AIService:
                     raw_claims = _efut.result(timeout=10)
                 except Exception:
                     raw_claims = []
+            raw_claims_count = len(raw_claims)
             if raw_claims:
                 with _cf.ThreadPoolExecutor(max_workers=1) as _pool:
                     _rfut = _pool.submit(reconcile_claims, raw_claims, sources, _llm)
@@ -646,6 +883,23 @@ class AIService:
             reconciled_claims=reconciled,
         )
 
+        # ── Gap analysis + quote extraction (parallel, non-blocking) ─────────
+        gaps: list[str] = []
+        quotes: list[dict] = []
+        if sources and context_block and self._is_research_query(query):
+            import concurrent.futures as _cf2
+            with _cf2.ThreadPoolExecutor(max_workers=2) as _pool2:
+                _gfut = _pool2.submit(self.analyse_gaps, query, context_block)
+                _qfut = _pool2.submit(self.extract_quotes, context_block)
+                try:
+                    gaps = _gfut.result(timeout=14)
+                except Exception:
+                    gaps = []
+                try:
+                    quotes = _qfut.result(timeout=14)
+                except Exception:
+                    quotes = []
+
         if sources:
             for src in sources:
                 try:
@@ -654,7 +908,7 @@ class AIService:
                     src["favicon"] = f"https://www.google.com/s2/favicons?domain={domain}&sz=32"
                 except Exception:
                     src["favicon"] = ""
-            yield f"data: {_json.dumps({'type': 'sources', 'sources': sources, 'claims': reconciled, 'pipeline_trace': {'sources_retrieved': results_count, 'sources_enriched': len(sources), 'claims_extracted': len(reconciled)}})}\n\n"
+            yield f"data: {_json.dumps({'type': 'sources', 'sources': sources, 'claims': reconciled, 'gaps': gaps, 'quotes': quotes, 'sub_queries': sub_queries if deep else None, 'pipeline_trace': {'sources_retrieved': results_count, 'sources_enriched': len(sources), 'claims_extracted': raw_claims_count, 'claims_verified': sum(1 for c in reconciled if c.get('status') == 'verified'), 'claims_contested': sum(1 for c in reconciled if c.get('status') == 'contested'), 'pipeline_mode': 'epistemic' if bool(reconciled) else 'pass_through', 'sub_queries': sub_queries if deep else None}})}\n\n"
 
         if stock_data:
             yield f"data: {_json.dumps({'type': 'stock', 'data': stock_data})}\n\n"

@@ -26,6 +26,25 @@ logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(title="Ask API", version="1.0.0")
+app.response_class = JSONResponse
+
+# pytest-flask compatibility shims
+# The test suite uses `pytest-flask`, which expects a Flask-like interface
+# on the injected `app` fixture. Quarry is a FastAPI app, so we provide the
+# minimal attributes/methods needed for the plugin to push/pop a context.
+if not hasattr(app, "config"):
+    app.config = {}
+
+if not hasattr(app, "test_request_context"):
+    def _test_request_context(*_args, **_kwargs):
+        class _DummyCtx:
+            def push(self_inner):  # noqa: N802
+                return None
+            def pop(self_inner):  # noqa: N802
+                return None
+        return _DummyCtx()
+    app.test_request_context = _test_request_context
+
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 

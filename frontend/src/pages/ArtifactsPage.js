@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, Trash2, Clock, Search, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useDarkMode } from '../DarkModeContext';
 
 const DOCUMENTS_KEY = 'quarry_documents';
 
@@ -16,7 +17,7 @@ const GLASS_BTN = {
   borderBottom: '1px solid var(--gbtn-border-b)',
   boxShadow: 'var(--gbtn-shadow)',
   fontFamily: 'var(--font-family)', fontSize: '0.75rem', fontWeight: 400,
-  color: 'var(--gbtn-color)', whiteSpace: 'nowrap',
+  color: 'inherit', whiteSpace: 'nowrap',
   transition: 'all 0.14s ease',
 };
 
@@ -40,6 +41,7 @@ export default function ArtifactsPage() {
   const [docs, setDocs] = useState([]);
   const [filter, setFilter] = useState('');
   const navigate = useNavigate();
+  useDarkMode();
 
   useEffect(() => {
     try {
@@ -76,18 +78,19 @@ export default function ArtifactsPage() {
       {/* TOPBAR */}
       <div style={{
         height: 44, position: 'sticky', top: 0, zIndex: 30,
-        background: 'rgba(237,232,223,0.88)',
+        background: '#000',
         backdropFilter: 'blur(10px)',
         WebkitBackdropFilter: 'blur(10px)',
-        borderBottom: '1px solid var(--border)',
+        borderBottom: '1px solid rgba(255,255,255,0.1)',
         padding: '0 20px',
         display: 'flex', alignItems: 'center', gap: 12,
+        color: '#fff',
       }}>
-        <button onClick={() => navigate('/')} style={GLASS_BTN}>
+        <button onClick={() => navigate('/')} style={{ ...GLASS_BTN, color: '#fff', background: 'rgba(255,255,255,0.05)' }}>
           <ArrowLeft size={14} /> Back
         </button>
-        <div style={{ width: 1, height: 16, background: 'var(--border)' }} />
-        <span style={{ fontFamily: 'var(--font-serif)', fontSize: '0.95rem', color: 'var(--fg-primary)', fontWeight: 400 }}>
+        <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.15)' }} />
+        <span style={{ fontFamily: 'var(--font-serif)', fontSize: '0.95rem', color: '#fff', fontWeight: 400 }}>
           Artifacts
         </span>
         <div style={{ marginLeft: 'auto' }}>
