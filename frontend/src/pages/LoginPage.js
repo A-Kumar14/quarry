@@ -35,12 +35,12 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+    <div style={{ fontFamily: 'var(--font-family)' }} className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-[var(--bg-primary)]">
       {/* Background Blobs for depth */}
       <div className="absolute top-[10%] left-[15%] w-64 h-64 bg-[var(--accent)] rounded-full blur-[120px] opacity-20 animate-pulse" />
       <div className="absolute bottom-[10%] right-[15%] w-80 h-80 bg-[var(--blue)] rounded-full blur-[140px] opacity-10 animate-pulse" />
 
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: "easeOut" }}
@@ -50,13 +50,13 @@ const LoginPage = () => {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-[var(--accent-dim)] text-[var(--accent)] mb-4 border border-[var(--accent-dim)]">
             <LogIn size={32} />
           </div>
-          <h1 className="text-3xl font-serif font-bold text-[var(--fg-primary)]">Welcome to Quarry</h1>
-          <p className="text-[var(--fg-secondary)] mt-2">Sign in to continue your research</p>
+          <h1 style={{ fontFamily: 'var(--font-serif)' }} className="text-3xl font-bold text-[var(--fg-primary)]">Welcome to Quarry</h1>
+          <p className="text-[var(--fg-secondary)] mt-2 text-sm">Sign in to continue your research</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
-            <label className="text-sm font-medium text-[var(--fg-secondary)] px-1">Username or Email</label>
+            <label style={{ fontFamily: 'var(--font-family)' }} className="text-sm font-medium text-[var(--fg-secondary)] px-1">Username or Email</label>
             <div className="relative group">
               <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-[var(--fg-dim)] group-focus-within:text-[var(--accent)] transition-colors">
                 <User size={18} />
@@ -64,6 +64,7 @@ const LoginPage = () => {
               <input
                 type="text"
                 placeholder="researcher_01"
+                style={{ fontFamily: 'var(--font-family)' }}
                 className="w-full bg-white/5 border border-[var(--border)] rounded-2xl py-3.5 pl-12 pr-4 text-[var(--fg-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-dim)] focus:border-[var(--accent)] transition-all placeholder:text-[var(--fg-dim)]"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
@@ -72,7 +73,7 @@ const LoginPage = () => {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-[var(--fg-secondary)] px-1">Password</label>
+            <label style={{ fontFamily: 'var(--font-family)' }} className="text-sm font-medium text-[var(--fg-secondary)] px-1">Password</label>
             <div className="relative group">
               <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-[var(--fg-dim)] group-focus-within:text-[var(--accent)] transition-colors">
                 <Lock size={18} />
@@ -80,6 +81,7 @@ const LoginPage = () => {
               <input
                 type="password"
                 placeholder="••••••••"
+                style={{ fontFamily: 'var(--font-family)' }}
                 className="w-full bg-white/5 border border-[var(--border)] rounded-2xl py-3.5 pl-12 pr-4 text-[var(--fg-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-dim)] focus:border-[var(--accent)] transition-all placeholder:text-[var(--fg-dim)]"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -90,9 +92,9 @@ const LoginPage = () => {
           <div className="flex items-center justify-between px-1">
             <label className="flex items-center space-x-2 cursor-pointer group">
               <input type="checkbox" className="w-4 h-4 rounded border-[var(--border)] bg-transparent checked:bg-[var(--accent)] transition-all cursor-pointer" />
-              <span className="text-sm text-[var(--fg-secondary)] group-hover:text-[var(--fg-primary)] transition-colors">Remember me</span>
+              <span style={{ fontFamily: 'var(--font-family)' }} className="text-sm text-[var(--fg-secondary)] group-hover:text-[var(--fg-primary)] transition-colors">Remember me</span>
             </label>
-            <Link to="#" className="text-sm text-[var(--accent)] hover:underline font-medium">Forgot password?</Link>
+            <Link to="#" style={{ fontFamily: 'var(--font-family)' }} className="text-sm text-[var(--accent)] hover:underline font-medium">Forgot password?</Link>
           </div>
 
           <motion.button
@@ -100,6 +102,7 @@ const LoginPage = () => {
             whileTap={{ scale: 0.99 }}
             type="submit"
             disabled={isSubmitting}
+            style={{ fontFamily: 'var(--font-family)' }}
             className="w-full py-4 bg-[var(--accent)] hover:bg-[var(--accent)]/90 text-white rounded-2xl font-semibold flex items-center justify-center space-x-2 shadow-lg shadow-[var(--accent-dim)] transition-all disabled:opacity-70 disabled:cursor-not-allowed group"
           >
             {isSubmitting ? (
@@ -114,7 +117,7 @@ const LoginPage = () => {
         </form>
 
         <div className="mt-8 text-center">
-          <p className="text-[var(--fg-secondary)] text-sm">
+          <p style={{ fontFamily: 'var(--font-family)' }} className="text-[var(--fg-secondary)] text-sm">
             Don't have an account? {' '}
             <Link to="/signup" className="text-[var(--accent)] hover:underline font-semibold">Join Quarry</Link>
           </p>
