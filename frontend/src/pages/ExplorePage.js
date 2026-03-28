@@ -1429,13 +1429,15 @@ function FollowUpBar({ onSubmit, atMax }) {
 
 // ── Mini tab strip ────────────────────────────────────────────────────────────
 
-function MiniTabStrip({ active, onChange, hasContradictions, contradictionsLoading, hasSources }) {
+function MiniTabStrip({ active, onChange, hasContradictions, contradictionsLoading, hasSources, hasGaps, hasQuotes }) {
   const tabs = [
-    { key: 'answer',        label: 'Result' },
-    { key: 'perspectives',  label: 'Perspectives' },
+    { key: 'answer',         label: 'Result' },
+    { key: 'perspectives',   label: 'Perspectives' },
     ...(hasSources ? [{ key: 'citations', label: 'Citations' }] : []),
-    { key: 'images',        label: 'Images' },
+    { key: 'images',         label: 'Images' },
     { key: 'contradictions', label: 'Contradictions', dot: contradictionsLoading ? true : hasContradictions },
+    ...(hasGaps   ? [{ key: 'gaps',   label: 'Gaps' }]   : []),
+    ...(hasQuotes ? [{ key: 'quotes', label: 'Quotes' }] : []),
   ];
 
   return (
@@ -1473,7 +1475,7 @@ function MiniTabStrip({ active, onChange, hasContradictions, contradictionsLoadi
 
 // ── Result block ──────────────────────────────────────────────────────────────
 
-function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowUp, onNewSearch, isDeepSearch, deepLabel, relatedSearches = [], loadingRelated = false, visualQuery = '', contradictions = null, stockData = null, claims = [], pipelineTrace = null, onWrite, onInsertClaim }) {
+function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowUp, onNewSearch, isDeepSearch, deepLabel, relatedSearches = [], loadingRelated = false, visualQuery = '', contradictions = null, stockData = null, claims = [], pipelineTrace = null, onWrite, onInsertClaim, gaps = [], quotes = [] }) {
   const [activeTab,       setActiveTab]       = useState('answer');
   const [copied,          setCopied]          = useState(false);
   const [processedAnswer, setProcessedAnswer] = useState('');
@@ -1794,6 +1796,8 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
                     ? <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.78rem', color: 'var(--fg-dim)', fontStyle: 'italic', py: 2 }}>Checking sources for contradictions…</Typography>
                     : <ContradictionsTab data={contradictions} sources={sources} />
                 )}
+                {activeTab === 'gaps'   && <GapsTab   gaps={gaps}     loading={streaming && gaps.length === 0}   onNewSearch={onNewSearch} />}
+                {activeTab === 'quotes' && <QuoteBankTab quotes={quotes} loading={streaming && quotes.length === 0} onInsertClaim={onInsertClaim} />}
               </Box>
               <style>{`@keyframes tabFadeIn { from { opacity: 0; } to { opacity: 1; } }`}</style>
 
@@ -1825,6 +1829,8 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
                 hasContradictions={hasContradictions}
                 contradictionsLoading={contradictionsLoading}
                 hasSources={sources.length > 0}
+                hasGaps={gaps.length > 0}
+                hasQuotes={quotes.length > 0}
               />
             </GlassCard>
           ) : (
@@ -2245,9 +2251,13 @@ export default function ExplorePage() {
   const [stockData,       setStockData]       = useState(null);
   const [claimsData,      setClaimsData]      = useState([]);
   const [pipelineTrace,   setPipelineTrace]   = useState(null);
+  const [gapsData,        setGapsData]        = useState([]);
+  const [quotesData,      setQuotesData]      = useState([]);
   const sourcesRef       = useRef([]);
   const claimsDataRef    = useRef([]);
   const pipelineTraceRef = useRef(null);
+  const gapsDataRef      = useRef([]);
+  const quotesDataRef    = useRef([]);
   const { articles: trendingArticles, trending: isTrending, spinning: trendingSpinning, refetch: refetchTrending } = useTrendingChips();
   const topOffset = useTopOffset();
   const [dark] = useDarkMode();
@@ -2298,6 +2308,8 @@ export default function ExplorePage() {
     setStockData(null);
     setClaimsData([]); claimsDataRef.current = [];
     setPipelineTrace(null); pipelineTraceRef.current = null;
+    setGapsData([]); gapsDataRef.current = [];
+    setQuotesData([]); quotesDataRef.current = [];
     setDeepLabel(deepEnabled ? '1/2' : '');
     setVisualQuery(deriveImageQuery(q.trim()));
     submittedQueryRef.current = q.trim();
@@ -2330,7 +2342,7 @@ export default function ExplorePage() {
           if (raw === '[DONE]') { setStreaming(false); continue; }
           try {
             const evt = JSON.parse(raw);
-            if      (evt.type === 'sources' && !skipSources) { const _s = evt.sources || []; setSources(_s); sourcesRef.current = _s; if (evt.claims) { const normalised = evt.claims.map(c => ({ ...c, claim_text: c.claim_text ?? c.claim ?? '', status: c.status === 'uncertain' ? 'single_source' : (c.status ?? 'single_source'), source_outlets: c.source_outlets ?? (c.source_outlet ? [c.source_outlet] : []), })); setClaimsData(normalised); claimsDataRef.current = normalised; saveContestedClaims(q.trim(), normalised); } if (evt.pipeline_trace) { setPipelineTrace(evt.pipeline_trace); pipelineTraceRef.current = evt.pipeline_trace; } }
+            if      (evt.type === 'sources' && !skipSources) { const _s = evt.sources || []; setSources(_s); sourcesRef.current = _s; if (evt.claims) { const normalised = evt.claims.map(c => ({ ...c, claim_text: c.claim_text ?? c.claim ?? '', status: c.status === 'uncertain' ? 'single_source' : (c.status ?? 'single_source'), source_outlets: c.source_outlets ?? (c.source_outlet ? [c.source_outlet] : []), })); setClaimsData(normalised); claimsDataRef.current = normalised; saveContestedClaims(q.trim(), normalised); } if (evt.pipeline_trace) { setPipelineTrace(evt.pipeline_trace); pipelineTraceRef.current = evt.pipeline_trace; } if (evt.gaps)   { setGapsData(evt.gaps);     gapsDataRef.current   = evt.gaps; } if (evt.quotes) { setQuotesData(evt.quotes); quotesDataRef.current = evt.quotes; } }
             else if (evt.type === 'chunk')                   { accumulatedAnswer += evt.text; setAnswer(prev => prev + evt.text); }
             else if (evt.type === 'error')                   setErrorMsg(evt.text);
             else if (evt.type === 'contradictions')          setContradictions(evt.data === null ? false : evt.data);
@@ -2499,6 +2511,8 @@ export default function ExplorePage() {
     setIsDeepSearch(false); setDeepLabel(''); setStockData(null);
     setClaimsData([]); claimsDataRef.current = [];
     setPipelineTrace(null); pipelineTraceRef.current = null;
+    setGapsData([]); gapsDataRef.current = [];
+    setQuotesData([]); quotesDataRef.current = [];
   };
 
   const newSearch = q => { setQuery(q); runSearch(q); };
@@ -2775,6 +2789,7 @@ export default function ExplorePage() {
             claims={claimsData} pipelineTrace={pipelineTrace}
             onWrite={handleWrite}
             onInsertClaim={handleInsertClaim}
+            gaps={gapsData} quotes={quotesData}
           />
 
           {followUpBlocks.map((block, i) => (
