@@ -13,13 +13,14 @@ def set_jwt_secret(monkeypatch):
     # monkeypatch restores automatically after each test
 
 @pytest.fixture(autouse=True)
-def clear_users():
-    from services.auth_service import USERS_FILE
-    if USERS_FILE.exists():
-        USERS_FILE.unlink()
+def clear_users(tmp_path, monkeypatch):
+    """Redirect auth tests to a temp users file — never touch the real data/users.json."""
+    import services.auth_service as svc
+    temp_file = tmp_path / "users_test.json"
+    monkeypatch.setattr(svc, "USERS_FILE", temp_file)
     yield
-    if USERS_FILE.exists():
-        USERS_FILE.unlink()
+    if temp_file.exists():
+        temp_file.unlink()
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
