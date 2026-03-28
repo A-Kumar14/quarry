@@ -8,6 +8,11 @@ import WritePage from './pages/WritePage';
 import ArtifactsPage from './pages/ArtifactsPage';
 import { SettingsProvider } from './SettingsContext';
 import { DarkModeProvider } from './DarkModeContext';
+import { AuthProvider } from './contexts/AuthContext';
+import ProtectedRoute from './components/ProtectedRoute';
+import LoginPage from './pages/LoginPage';
+import SignupPage from './pages/SignupPage';
+import { Toaster } from 'sonner';
 
 function AppContent() {
   const navigate = useNavigate();
@@ -37,13 +42,19 @@ function AppContent() {
 
   return (
     <>
+      <Toaster position="top-center" richColors />
       <Routes>
-        <Route path="/"                   element={<HomePage onSearch={handleHomeSearch} />} />
-        <Route path="/search"             element={<ExplorePage />} />
-        <Route path="/write"              element={<WritePage />} />
-        <Route path="/settings"           element={<SettingsPage />} />
-        <Route path="/sources"            element={<SourcesPage />} />
-        <Route path="/artifacts"          element={<ArtifactsPage />} />
+        <Route path="/login"              element={<LoginPage />} />
+        <Route path="/signup"             element={<SignupPage />} />
+        
+        {/* Protected Routes */}
+        <Route path="/"                   element={<ProtectedRoute><HomePage onSearch={handleHomeSearch} /></ProtectedRoute>} />
+        <Route path="/search"             element={<ProtectedRoute><ExplorePage /></ProtectedRoute>} />
+        <Route path="/write"              element={<ProtectedRoute><WritePage /></ProtectedRoute>} />
+        <Route path="/settings"           element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+        <Route path="/sources"            element={<ProtectedRoute><SourcesPage /></ProtectedRoute>} />
+        <Route path="/artifacts"          element={<ProtectedRoute><ArtifactsPage /></ProtectedRoute>} />
+        
         <Route path="/finance"            element={<Navigate to="/" replace />} />
         <Route path="*"                   element={<Navigate to="/" replace />} />
       </Routes>
@@ -61,12 +72,14 @@ try {
 
 export default function App() {
   return (
-    <SettingsProvider>
-      <DarkModeProvider>
-        <BrowserRouter>
-          <AppContent />
-        </BrowserRouter>
-      </DarkModeProvider>
-    </SettingsProvider>
+    <AuthProvider>
+      <SettingsProvider>
+        <DarkModeProvider>
+          <BrowserRouter>
+            <AppContent />
+          </BrowserRouter>
+        </DarkModeProvider>
+      </SettingsProvider>
+    </AuthProvider>
   );
 }

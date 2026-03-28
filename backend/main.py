@@ -19,6 +19,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from routers import explore
 from routers.sources import router as sources_router
+from routers.auth import router as auth_router
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -71,8 +72,49 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# ── JWT auth middleware ────────────────────────────────────────────────────────
+# Protects all routes except /auth/*, /health, and /docs* (OpenAPI).
+# Auth is SKIPPED entirely if JWT_SECRET is not set (preserves test compatibility).
+# If DEV_BYPASS_TOKEN is set, a request bearing that exact token is always allowed.
+
+_UNPROTECTED = {"/health", "/docs", "/openapi.json", "/redoc"}
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        from services.auth_service import (
+            is_auth_enabled, _dev_bypass_token, get_user_from_token
+        )
+        path = request.url.path
+
+        # Always allow auth endpoints and public routes; skip if auth not configured
+        if not is_auth_enabled() or path.startswith("/auth") or path in _UNPROTECTED:
+            return await call_next(request)
+
+        token = None
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+
+        if not token:
+            return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+
+        # Dev bypass: exact match against DEV_BYPASS_TOKEN env var
+        dev_bypass = _dev_bypass_token()
+        if dev_bypass and token == dev_bypass:
+            return await call_next(request)
+
+        user = get_user_from_token(token)
+        if not user:
+            return JSONResponse(status_code=401, content={"detail": "Invalid or expired token"})
+
+        return await call_next(request)
+
+app.add_middleware(AuthMiddleware)
+
 app.include_router(explore.router)
 app.include_router(sources_router)
+app.include_router(auth_router)
 
 
 # ── Generic exception handler (prevents API key / traceback leakage) ──────────
