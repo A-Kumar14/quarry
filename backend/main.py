@@ -87,8 +87,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         )
         path = request.url.path
 
-        # Always allow auth endpoints and public routes; skip if auth not configured
-        if not is_auth_enabled() or path.startswith("/auth") or path in _UNPROTECTED:
+        # Always allow auth endpoints, public routes, CORS preflight, and when auth is off
+        if not is_auth_enabled() or request.method == "OPTIONS" or path.startswith("/auth") or path in _UNPROTECTED:
             return await call_next(request)
 
         token = None
