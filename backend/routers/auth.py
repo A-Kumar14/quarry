@@ -129,6 +129,16 @@ def me(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(beare
     _require_auth_enabled()
     if not credentials:
         raise HTTPException(status_code=401, detail="Not authenticated")
+
+    # Dev bypass: return the first real user so the app loads without a login prompt
+    from services.auth_service import _dev_bypass_token, _load_users, _public
+    dev_token = _dev_bypass_token()
+    if dev_token and credentials.credentials == dev_token:
+        users = _load_users()
+        if users:
+            return _public(users[0])
+        raise HTTPException(status_code=503, detail="No users registered yet")
+
     user = get_user_from_token(credentials.credentials)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
