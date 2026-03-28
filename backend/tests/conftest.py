@@ -16,6 +16,7 @@ os.environ.setdefault("OPENROUTER_API_KEY", "test-key-xxxxxxxxxxxxxxxx")
 os.environ.setdefault("AI_PROVIDER", "openrouter")
 os.environ.setdefault("SCRAPINGBEE_API_KEY", "test-scrapingbee-key")
 os.environ.setdefault("GNEWS_API_KEY", "test-gnews-key")
+os.environ["JWT_SECRET"] = "" # Disable auth for existing tests
 
 # Ensure backend/ directory is on sys.path so bare imports (main, services…) resolve.
 _BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
