@@ -5,7 +5,7 @@ import { useNavigate, useSearchParams, Navigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion'; // eslint-disable-line no-unused-vars
 import { RadialBarChart, RadialBar, PolarAngleAxis } from 'recharts';
 import GlassCard from '../components/GlassCard';
 import { saveContestedClaims } from './HomePage';
@@ -110,6 +110,7 @@ const PAGE_BG = {
 
 // ── Research completeness score ───────────────────────────────────────────────
 
+// eslint-disable-next-line no-unused-vars
 function calcCompletenessScore(sources, claims, contradictions) {
   // Source diversity (0–30 pts)
   const srcScore = Math.min(sources.length / 5, 1) * 30;
@@ -131,6 +132,7 @@ function calcCompletenessScore(sources, claims, contradictions) {
 
 // ── Completeness radial gauge ─────────────────────────────────────────────────
 
+// eslint-disable-next-line no-unused-vars
 function CompletenessGauge({ score }) {
   const color = score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#ef4444';
   const data = [{ value: score, fill: color }];
@@ -173,6 +175,7 @@ function CompletenessGauge({ score }) {
 
 // ── Confidence-gated chip gain estimator ──────────────────────────────────────
 
+// eslint-disable-next-line no-unused-vars
 function estimateClaimGain(suggestion, claims) {
   if (!claims || claims.length === 0) return 0;
   const weakClaims = claims.filter(c =>
