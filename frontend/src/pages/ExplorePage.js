@@ -76,6 +76,7 @@ function useSources() {
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
 const ANSWER_BODY_STYLES = {
+  maxWidth: '72ch',
   '& p':              { fontFamily: 'var(--font-family)', fontWeight: 300, fontSize: '0.93rem', lineHeight: 1.85, color: 'var(--fg-primary)', my: 0.75 },
   '& h1, & h2, & h3': { fontFamily: 'var(--font-serif)', fontWeight: 600, color: 'var(--fg-primary)', mt: 2, mb: 0.5 },
   '& h1':             { fontSize: '1.05rem' },
@@ -1127,7 +1128,7 @@ function SourceCard({ src, index, onClick, isSelected }) {
       </Box>
       <ExternalLink
         size={13}
-        style={{ color: 'var(--fg-dim)', flexShrink: 0, marginTop: 4 }}
+        style={{ color: 'var(--fg-dim)', flexShrink: 0, marginTop: 4, cursor: 'pointer' }}
         onClick={e => { e.stopPropagation(); window.open(src.url, '_blank', 'noopener,noreferrer'); }}
       />
     </Box>
@@ -1621,96 +1622,8 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
       {/* Finance card — shown when a stock/ticker was detected */}
       {stockData && <FinanceCard data={stockData} />}
 
-      {/* Sidebar + Main Content Layout */}
+      {/* Main Content + Right Sidebar Layout */}
       <Box sx={{ display: 'flex', flexDirection: stockData ? 'column' : { xs: 'column', md: 'row' }, gap: 3, width: '100%', alignItems: 'flex-start' }}>
-
-        {/* ── LEFT SIDEBAR ── */}
-        {!stockData && (
-          <Box sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            width: { xs: '100%', md: '300px' },
-            flexShrink: 0,
-            gap: 2,
-            mt: '16px'
-          }}>
-            {/* Source Intelligence Card */}
-            <Box
-              component="button"
-              onClick={() => setShowSourceIntelPopup(true)}
-              sx={{
-                width: '100%',
-                textAlign: 'left',
-                borderRadius: '16px',
-                padding: '16px',
-                background: 'var(--bg-secondary)',
-                border: '1px solid var(--border)',
-                cursor: 'pointer',
-                transition: 'all 0.16s ease',
-                '&:hover': {
-                  borderColor: 'rgba(249,115,22,0.6)',
-                  transform: 'translateY(-1px)',
-                },
-              }}
-            >
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                <Typography sx={{
-                  fontFamily: 'var(--font-family)',
-                  fontSize: '0.625rem',
-                  fontWeight: 600,
-                  color: 'var(--fg-dim)',
-                  letterSpacing: '0.14em',
-                  textTransform: 'uppercase',
-                  opacity: 0.8,
-                }}>
-                  Source Intelligence
-                </Typography>
-                {sources.length > 0 && (
-                  <Box sx={{
-                    display: 'flex', alignItems: 'center', gap: '4px',
-                    background: `${blockScoreColor}18`,
-                    border: `1px solid ${blockScoreColor}40`,
-                    borderRadius: '6px', padding: '2px 6px',
-                  }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', fontWeight: 700, color: blockScoreColor }}>{blockScore}</span>
-                    <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.55rem', color: 'var(--fg-dim)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>completeness</span>
-                  </Box>
-                )}
-              </Box>
-
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                <Box>
-                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '2.25rem', fontWeight: 500, color: 'var(--fg-primary)', lineHeight: 1 }}>
-                    {sourcesCount}
-                  </Typography>
-                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.75rem', color: 'var(--fg-dim)', mt: 0.25, textTransform: 'uppercase', opacity: 0.8 }}>
-                    sources
-                  </Typography>
-                </Box>
-                <Box sx={{ textAlign: 'right' }}>
-                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.85rem', fontWeight: 500, color: '#22c55e', lineHeight: 1.4 }}>
-                    {verifiedCount} verified
-                  </Typography>
-                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.85rem', fontWeight: 500, color: '#ef4444', lineHeight: 1.4 }}>
-                    {contestedCount} contested
-                  </Typography>
-                </Box>
-              </Box>
-            </Box>
-
-            {/* Source Credibility Matrix */}
-            {sources.length > 0 && (
-              <Box sx={{
-                borderRadius: '16px',
-                padding: '16px',
-                background: 'var(--bg-secondary)',
-                border: '1px solid var(--border)',
-              }}>
-                <SourceCredibilityMatrix sources={sources} />
-              </Box>
-            )}
-          </Box>
-        )}
 
         {showSourceIntelPopup && (
           <SourceIntelligencePopup
@@ -1918,6 +1831,94 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
             </Box>
           )}
         </Box>
+
+        {/* ── RIGHT SIDEBAR ── Source Intelligence */}
+        {!stockData && (
+          <Box sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            width: { xs: '100%', md: '260px' },
+            flexShrink: 0,
+            gap: 2,
+            mt: '16px'
+          }}>
+            {/* Source Intelligence Card */}
+            <Box
+              component="button"
+              onClick={() => setShowSourceIntelPopup(true)}
+              sx={{
+                width: '100%',
+                textAlign: 'left',
+                borderRadius: '16px',
+                padding: '16px',
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--border)',
+                cursor: 'pointer',
+                transition: 'all 0.16s ease',
+                '&:hover': {
+                  borderColor: 'rgba(249,115,22,0.6)',
+                  transform: 'translateY(-1px)',
+                },
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                <Typography sx={{
+                  fontFamily: 'var(--font-family)',
+                  fontSize: '0.625rem',
+                  fontWeight: 600,
+                  color: 'var(--fg-dim)',
+                  letterSpacing: '0.14em',
+                  textTransform: 'uppercase',
+                  opacity: 0.8,
+                }}>
+                  Source Intelligence
+                </Typography>
+                {sources.length > 0 && (
+                  <Box sx={{
+                    display: 'flex', alignItems: 'center', gap: '4px',
+                    background: `${blockScoreColor}18`,
+                    border: `1px solid ${blockScoreColor}40`,
+                    borderRadius: '6px', padding: '2px 6px',
+                  }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', fontWeight: 700, color: blockScoreColor }}>{blockScore}</span>
+                    <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.55rem', color: 'var(--fg-dim)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>completeness</span>
+                  </Box>
+                )}
+              </Box>
+
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                <Box>
+                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '2.25rem', fontWeight: 500, color: 'var(--fg-primary)', lineHeight: 1 }}>
+                    {sourcesCount}
+                  </Typography>
+                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.75rem', color: 'var(--fg-dim)', mt: 0.25, textTransform: 'uppercase', opacity: 0.8 }}>
+                    sources
+                  </Typography>
+                </Box>
+                <Box sx={{ textAlign: 'right' }}>
+                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.85rem', fontWeight: 500, color: '#22c55e', lineHeight: 1.4 }}>
+                    {verifiedCount} verified
+                  </Typography>
+                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.85rem', fontWeight: 500, color: '#ef4444', lineHeight: 1.4 }}>
+                    {contestedCount} contested
+                  </Typography>
+                </Box>
+              </Box>
+            </Box>
+
+            {/* Source Credibility Matrix */}
+            {sources.length > 0 && (
+              <Box sx={{
+                borderRadius: '16px',
+                padding: '16px',
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--border)',
+              }}>
+                <SourceCredibilityMatrix sources={sources} />
+              </Box>
+            )}
+          </Box>
+        )}
       </Box>
 
       {/* Outline builder removed per user request */}
@@ -1928,12 +1929,12 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
 
 // ── Top bar (results + searching) ─────────────────────────────────────────────
 
-function TopBar({ query, setQuery, onSubmit, deepMode, onToggleDeep, onReset, answer, onSave, onShare, saved, navigate, onWrite }) {
-  const handleKey = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSubmit(); } };
+function TopBar({ query, setQuery, onSubmit, deepMode, onToggleDeep, onReset, answer, onSave, onShare, saved, navigate, onWrite, streaming }) {
+  const handleKey = e => { if (e.key === 'Enter' && !e.shiftKey && !streaming) { e.preventDefault(); onSubmit(); } };
 
   return (
     <Box sx={{
-      position: 'sticky', top: 0, zIndex: 30,
+      position: 'sticky', top: 0, zIndex: 'var(--z-topbar)',
       background: 'rgba(26,22,20,0.82)',
       backdropFilter: 'blur(20px) saturate(180%)',
       WebkitBackdropFilter: 'blur(20px) saturate(180%)',
@@ -1985,8 +1986,19 @@ function TopBar({ query, setQuery, onSubmit, deepMode, onToggleDeep, onReset, an
 
         {/* Action buttons */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, ml: 0.25 }}>
-          <button style={GLASS_BTN_ACCENT} onClick={onSubmit}>
-            Search
+          <button
+            style={{
+              ...GLASS_BTN_ACCENT,
+              opacity: streaming ? 0.55 : 1,
+              cursor: streaming ? 'not-allowed' : 'pointer',
+              pointerEvents: streaming ? 'none' : 'auto',
+            }}
+            onClick={onSubmit}
+            disabled={streaming}
+            aria-label={streaming ? 'Searching…' : 'Search'}
+          >
+            {streaming ? <RefreshCw size={11} style={{ animation: 'spin 0.9s linear infinite' }} /> : null}
+            {streaming ? 'Searching…' : 'Search'}
           </button>
 
           <button
@@ -2248,7 +2260,7 @@ function HomeSearchBar({ query, setQuery, onSubmit, deepMode, onToggleDeep }) {
           borderRight: '1px solid rgba(185,165,128,0.18)',
           borderBottom: '1px solid rgba(178,158,120,0.18)',
           boxShadow: '0 8px 32px rgba(140,110,60,0.12)',
-          overflow: 'hidden', zIndex: 50,
+          overflow: 'hidden', zIndex: 'var(--z-popup)',
         }}>
           {suggestions.map((s, i) => (
             <Box
@@ -2588,7 +2600,7 @@ export default function ExplorePage() {
     return (
       <>
         {/* Top-right nav cluster — sits below calendar bar when visible */}
-        <div style={{ position: 'fixed', top: topOffset + 12 + (settings.showCalendar ? 36 : 0), right: 16, zIndex: 50, transition: 'top 0.18s ease' }}>
+        <div style={{ position: 'fixed', top: topOffset + 12 + (settings.showCalendar ? 36 : 0), right: 16, zIndex: 'var(--z-popup)', transition: 'top 0.18s ease' }}>
           <NavControls />
         </div>
 
@@ -2942,7 +2954,7 @@ export default function ExplorePage() {
           style={{
             position: 'absolute', left: sidebarOpen ? 196 : 0, top: '50%',
             transform: 'translateY(-50%)',
-            zIndex: 20, width: 18, height: 36,
+            zIndex: 'var(--z-sidebar)', width: 18, height: 36,
             background: 'var(--bg-secondary)', border: '1px solid var(--border)',
             borderRadius: sidebarOpen ? '0 6px 6px 0' : '0 6px 6px 0',
             cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
