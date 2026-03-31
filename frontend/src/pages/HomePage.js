@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Search, ChevronDown, Zap, FileText, PenLine, AlertTriangle, ExternalLink, Plus, X } from 'lucide-react';
 import { getBeats, saveBeat, deleteBeat, incrementBeatActivity } from '../utils/beats';
 import { useDarkMode } from '../DarkModeContext';
+import DailyTopicsModal from '../components/DailyTopicsModal';
 import { useAuth } from '../contexts/AuthContext';
 import OnboardingModal from '../components/OnboardingModal';
 import GlassCard from '../components/GlassCard';
@@ -403,7 +404,7 @@ function LazyNavDropdown({ label, icon: Icon, items, onOpen, emptyMsg, onSelect,
 }
 
 /* ── SearchSurface (shared between logged-in and logged-out) ─────────────── */
-function SearchSurface({ query, setQuery, isDeep, setIsDeep, onSubmit, flat = false }) {
+function SearchSurface({ query, setQuery, isDeep, setIsDeep, onSubmit, onDailyTopics, flat = false }) {
   const handleKey = useCallback((e) => {
     if (e.key === 'Enter' && query.trim()) onSubmit();
   }, [query, onSubmit]);
@@ -458,6 +459,24 @@ function SearchSurface({ query, setQuery, isDeep, setIsDeep, onSubmit, flat = fa
       >
         <Zap size={16} fill={isDeep ? T.accent : 'none'} /> Deep
       </button>
+      {onDailyTopics && (
+        <button
+          onClick={onDailyTopics}
+          style={{
+            background: 'rgba(249,115,22,0.08)',
+            border: '1px solid rgba(249,115,22,0.30)',
+            color: T.accent,
+            borderRadius: 12, cursor: 'pointer', padding: '14px 18px',
+            fontFamily: T.sans, fontSize: '0.96rem', fontWeight: 500,
+            transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 8,
+            whiteSpace: 'nowrap',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(249,115,22,0.15)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(249,115,22,0.08)'; e.currentTarget.style.transform = 'translateY(0)'; }}
+        >
+          <Zap size={15} fill={T.accent} /> Find Daily Topics
+        </button>
+      )}
     </div>
   );
 
@@ -644,10 +663,12 @@ function NewsCardsStrip({ onChip, defaultArticles }) {
           );
         })}
       </div>
-      <div className="news-scroll" style={{
-        display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 8,
-        scrollbarWidth: 'none', msOverflowStyle: 'none',
-      }}>
+      {/* Carousel wrapper with right-edge fade */}
+      <div style={{ position: 'relative' }}>
+        <div className="news-scroll" style={{
+          display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 8,
+          scrollbarWidth: 'none', msOverflowStyle: 'none',
+        }}>
         {loading ? (
           Array.from({ length: 5 }).map((_, i) => (
             <div key={i} style={{ width: 248, height: 320, flexShrink: 0,
@@ -669,6 +690,14 @@ function NewsCardsStrip({ onChip, defaultArticles }) {
             </div>
           ))
         )}
+        </div>
+        {/* Right-edge fade gradient scroll affordance */}
+        <div style={{
+          position: 'absolute', top: 0, right: 0, bottom: 8,
+          width: 64, pointerEvents: 'none',
+          background: 'linear-gradient(to right, transparent, var(--bg-primary))',
+          borderRadius: '0 16px 16px 0',
+        }} />
       </div>
     </div>
   );
@@ -1397,10 +1426,32 @@ function IntelligenceGrid({ onChip }) {
     </div>
   );
 
+  // Pre-compute whether right column has data
+  const hasCollisions = loadContestedClaims().length > 0;
+
+  // Pre-compute narrative velocity rows
+  const velocityRows = (() => {
+    const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+    try {
+      const history = JSON.parse(localStorage.getItem('quarry_investigation_history') || '[]');
+      const recent  = history.filter(h => (Date.now() - h.timestamp) <= SEVEN_DAYS);
+      const bs = getBeats().filter(b => b.keywords?.length > 0);
+      return bs
+        .map(beat => ({
+          name: beat.name,
+          count: recent.filter(h =>
+            beat.keywords.some(kw => h.query?.toLowerCase().includes(kw.toLowerCase()))
+          ).length,
+        }))
+        .filter(r => r.count > 0)
+        .sort((a, b) => b.count - a.count);
+    } catch { return []; }
+  })();
+
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: '180px 1fr 1fr',
+      gridTemplateColumns: hasCollisions ? '180px 1fr 1fr' : '180px 1fr',
       gap: 16,
       padding: '20px 24px',
       maxWidth: 1100,
@@ -1675,30 +1726,12 @@ function IntelligenceGrid({ onChip }) {
           )}
         </div>
 
-        {/* Narrative velocity — computed from real investigation history */}
-        {(() => {
-          const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
-          let rows = [];
-          try {
-            const history = JSON.parse(localStorage.getItem('quarry_investigation_history') || '[]');
-            const recent  = history.filter(h => (Date.now() - h.timestamp) <= SEVEN_DAYS);
-            const beats   = getBeats().filter(b => b.keywords?.length > 0);
-            rows = beats
-              .map(beat => {
-                const count = recent.filter(h =>
-                  beat.keywords.some(kw => h.query?.toLowerCase().includes(kw.toLowerCase()))
-                ).length;
-                return { name: beat.name, count };
-              })
-              .filter(r => r.count > 0)
-              .sort((a, b) => b.count - a.count);
-          } catch {}
-
-          const maxCount = rows[0]?.count || 1;
-
+        {/* Narrative velocity — only shown when there is actual data */}
+        {velocityRows.length > 0 && (() => {
+          const maxCount = velocityRows[0].count || 1;
           return (
             <>
-              <div style={{ marginBottom: 4 }}>
+              <div style={{ marginBottom: 4, marginTop: 20 }}>
                 <div style={{ fontFamily: T.mono, fontSize: '0.62rem', fontWeight: 600,
                   color: T.fgDim, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 3 }}>
                   Narrative velocity
@@ -1707,50 +1740,38 @@ function IntelligenceGrid({ onChip }) {
                   Based on your investigations this week
                 </div>
               </div>
-
-              {rows.length === 0 ? (
-                <div style={{
-                  border: '1.5px dashed var(--border)', borderRadius: 10,
-                  padding: '14px 12px', textAlign: 'center',
-                }}>
-                  <div style={{ fontFamily: T.sans, fontSize: '0.74rem', color: T.fgDim, lineHeight: 1.5 }}>
-                    Your investigation frequency by topic will appear here.
-                  </div>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {rows.map((row, i) => {
-                    const color = row.count >= 7 ? '#e24b4a' : row.count >= 3 ? '#f59e0b' : '#22c55e';
-                    return (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
-                        <span style={{ fontFamily: T.mono, fontSize: '0.68rem', color: T.fgSec,
-                          width: 110, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {row.name}
-                        </span>
-                        <div style={{ flex: 1, height: 4, background: 'var(--bg-tertiary)', borderRadius: 999, overflow: 'hidden' }}>
-                          <div style={{
-                            height: '100%', borderRadius: 999, background: color,
-                            width: `${Math.round((row.count / maxCount) * 100)}%`,
-                            transition: 'width 0.6s ease',
-                          }} />
-                        </div>
-                        <span style={{ fontFamily: T.mono, fontSize: '0.64rem', color: T.fgDim,
-                          flexShrink: 0, width: 52, textAlign: 'right' }}>
-                          {row.count} search{row.count !== 1 ? 'es' : ''}
-                        </span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {velocityRows.map((row, i) => {
+                  const color = row.count >= 7 ? '#e24b4a' : row.count >= 3 ? '#f59e0b' : '#22c55e';
+                  return (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                      <span style={{ fontFamily: T.mono, fontSize: '0.68rem', color: T.fgSec,
+                        width: 110, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {row.name}
+                      </span>
+                      <div style={{ flex: 1, height: 4, background: 'var(--bg-tertiary)', borderRadius: 999, overflow: 'hidden' }}>
+                        <div style={{
+                          height: '100%', borderRadius: 999, background: color,
+                          width: `${Math.round((row.count / maxCount) * 100)}%`,
+                          transition: 'width 0.6s ease',
+                        }} />
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+                      <span style={{ fontFamily: T.mono, fontSize: '0.64rem', color: T.fgDim,
+                        flexShrink: 0, width: 52, textAlign: 'right' }}>
+                        {row.count} search{row.count !== 1 ? 'es' : ''}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </>
           );
         })()}
       </div>
 
-      {/* ── Right: Narrative collisions ── */}
-      <div>
+      {/* ── Right: Narrative collisions — only rendered when data exists ── */}
+      {hasCollisions && <div>
         {SECTION_LABEL('Narrative collisions detected')}
 
         {(() => {
@@ -1843,7 +1864,7 @@ function IntelligenceGrid({ onChip }) {
             </div>
           );
         })()}
-      </div>
+      </div>}
 
     </div>
   );
@@ -1852,28 +1873,39 @@ function IntelligenceGrid({ onChip }) {
 /* ── Logged-in homepage ──────────────────────────────────────────────────── */
 function LoggedInHome({ user, query, setQuery, isDeep, setIsDeep, onSubmit, onChip, trendingArticles }) {
   const firstName = user?.username?.split(' ')[0] || user?.username || 'there';
+  const [showDailyTopics, setShowDailyTopics] = useState(false);
 
   return (
     <>
-      {/* Slim greeting bar — flat, flush with topbar */}
+      {showDailyTopics && (
+        <DailyTopicsModal onClose={() => setShowDailyTopics(false)} />
+      )}
+
+      {/* Greeting + centered search bar */}
       <div style={{
         background: 'var(--bg-primary)',
         borderBottom: '1px solid var(--border)',
-        padding: '10px 24px',
-        display: 'flex', alignItems: 'center', gap: 16,
+        padding: '18px 24px 16px',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
       }}>
         <span style={{
           fontFamily: T.sans, fontSize: '0.96rem', fontWeight: 400,
-          color: T.fgSec, whiteSpace: 'nowrap', flexShrink: 0,
+          color: T.fgSec, alignSelf: 'center',
         }}>
           {getGreeting()}, <strong style={{ fontWeight: 600, color: T.fg }}>{firstName}</strong>
+          {user?.profile?.beat ? (
+            <span style={{ marginLeft: 8, fontFamily: T.mono, fontSize: '0.72rem', color: T.accent, opacity: 0.85 }}>
+              · {user.profile.beat}
+            </span>
+          ) : null}
         </span>
-        <div style={{ flex: 1, minWidth: 280 }}>
+        <div style={{ width: '100%', maxWidth: 820 }}>
           <SearchSurface
             flat
             query={query} setQuery={setQuery}
             isDeep={isDeep} setIsDeep={setIsDeep}
             onSubmit={onSubmit}
+            onDailyTopics={() => setShowDailyTopics(true)}
           />
         </div>
       </div>

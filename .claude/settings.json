@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/Users/arsshkumar/quarry/backend/.venv/bin/pip install:*)",
+      "Bash(/Users/arsshkumar/quarry/backend/.venv/bin/python3 -c \":*)"
+    ]
+  }
+}

@@ -159,6 +159,7 @@ class LLMService:
         messages: List[dict],
         model: Optional[str] = None,
         timeout: int = 15,
+        max_tokens: int = 1000,
     ) -> str:
         """Non-streaming multi-turn completion."""
         client = self._get_sync_client()
@@ -166,7 +167,7 @@ class LLMService:
             model=self.resolve_model(model),
             messages=messages,
             stream=False,
-            max_tokens=1000,
+            max_tokens=max_tokens,
             timeout=timeout,
         )
         return response.choices[0].message.content or ""

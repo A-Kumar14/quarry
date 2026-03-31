@@ -4,6 +4,7 @@ routers/explore.py — Streaming search-augmented generation endpoint.
 
 import asyncio
 import collections
+import datetime
 import hashlib
 import json
 import logging
@@ -1004,3 +1005,215 @@ async def globe_pins(request: Request):
     }
     _news_cache[cache_key] = {"data": result, "ts": now}
     return JSONResponse(result)
+
+
+# ── Daily Brief ───────────────────────────────────────────────────────────────
+
+class DailyBriefRequest(BaseModel):
+    beats: list[str] = []
+    profile: dict = {}
+
+
+class StoryPlanRequest(BaseModel):
+    headline: str
+    summary: str
+    hook: str = ""
+    beat: str = ""
+    profile: dict = {}
+
+
+def _fetch_news_ddg(query: str, max_results: int = 5) -> list[dict]:
+    """Search DuckDuckGo for recent news snippets."""
+    from services.search_service import web_search
+    results = web_search(f"{query} news today 2025", max_results=max_results)
+    return results
+
+
+@router.post("/explore/daily-brief")
+@limiter.limit("10/minute")
+async def daily_brief(request: Request, body: DailyBriefRequest):
+    """
+    Fetch live news + generate a personalised AI daily briefing with topic cards.
+    Returns JSON: { summary, topics[], articles_count }
+    """
+    # Build search terms from profile + local beats
+    search_terms: list[str] = []
+    p = body.profile or {}
+    if p.get("beat"):
+        search_terms.append(p["beat"])
+    for t in (p.get("topics_of_focus") or [])[:3]:
+        if t:
+            search_terms.append(t)
+    for b in body.beats[:3]:
+        if b:
+            search_terms.append(b)
+    if not search_terms:
+        search_terms = ["world news", "international crisis", "breaking news"]
+
+    # Parallel news fetch
+    loop = asyncio.get_event_loop()
+    tasks = [
+        loop.run_in_executor(None, _fetch_news_ddg, term, 4)
+        for term in search_terms[:5]
+    ]
+    results_nested = await asyncio.gather(*tasks, return_exceptions=True)
+
+    articles: list[dict] = []
+    seen_urls: set[str] = set()
+    for batch in results_nested:
+        if isinstance(batch, Exception):
+            continue
+        for a in batch:
+            url = a.get("url", "")
+            if url and url not in seen_urls:
+                seen_urls.add(url)
+                articles.append(a)
+
+    articles = articles[:15]
+
+    # Build prompt
+    today = datetime.date.today().strftime("%B %d, %Y")
+    profile_line = ""
+    if p:
+        parts = []
+        if p.get("role"):            parts.append(f"Role: {p['role']}")
+        if p.get("organization"):    parts.append(f"Org: {p['organization']}")
+        if p.get("beat"):            parts.append(f"Beat: {p['beat']}")
+        if p.get("topics_of_focus"): parts.append(f"Focus: {', '.join(p['topics_of_focus'])}")
+        profile_line = " | ".join(parts)
+
+    articles_block = "\n".join(
+        f"[{i+1}] {a['title']}\n    {a['snippet'][:200]}\n    URL: {a['url']}"
+        for i, a in enumerate(articles)
+    ) or "No live articles fetched — use your general knowledge of today's events."
+
+    prompt = f"""You are an editorial AI briefing assistant for journalists. Today is {today}.
+
+JOURNALIST PROFILE: {profile_line or "General journalist"}
+
+LIVE NEWS ARTICLES:
+{articles_block}
+
+Generate a daily briefing. Return ONLY a raw JSON object (no markdown fences) in this exact schema:
+{{
+  "summary": "2-3 sentence personalised briefing written directly to the journalist. Mention their beat. Warm, direct, newsroom tone. Aim to spark curiosity.",
+  "topics": [
+    {{
+      "headline": "Punchy 7-10 word news headline",
+      "summary": "2 sentences: what happened and why it matters right now.",
+      "hook": "One sharp sentence: the angle THIS journalist should take given their beat.",
+      "urgency": "Breaking|Developing|Analysis|Feature",
+      "beat": "Which beat this belongs to",
+      "source": "Source name or domain",
+      "url": "URL from the articles list above, or empty string",
+      "relevance": "High|Medium|Low",
+      "contradiction_potential": "High|Medium|Low",
+      "questions": ["Key question 1", "Key question 2", "Key question 3"]
+    }}
+  ]
+}}
+
+Rules:
+- Include 5-7 topics total
+- Mix urgency levels (at least 1 Breaking or Developing if the news supports it)
+- Mark relevance High only if it directly overlaps with the journalist's beat
+- contradiction_potential High = sources are likely to disagree on this story
+- Return ONLY the JSON object, nothing else"""
+
+    try:
+        raw = llm_service.chat_sync(
+            [{"role": "user", "content": prompt}],
+            timeout=45,
+            max_tokens=2500,
+        )
+        raw = raw.strip()
+        # Strip markdown fences if model added them anyway
+        raw = re.sub(r"^```[a-z]*\n?", "", raw)
+        raw = re.sub(r"\n?```$", "", raw).strip()
+        data = json.loads(raw)
+        data["articles_count"] = len(articles)
+        data["generated_at"] = today
+        return JSONResponse(data)
+    except Exception as exc:
+        logger.error("daily_brief.failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to generate daily brief")
+
+
+@router.post("/explore/story-plan")
+@limiter.limit("15/minute")
+async def story_plan(request: Request, body: StoryPlanRequest):
+    """
+    Stream a full journalist story plan for a chosen topic.
+    SSE: data: <text chunk>\n\n  …  data: [DONE]\n\n
+    """
+    p = body.profile or {}
+    profile_line = ""
+    if p:
+        parts = []
+        if p.get("role"):            parts.append(p["role"])
+        if p.get("organization"):    parts.append(p["organization"])
+        if p.get("beat"):            parts.append(f"beat: {p['beat']}")
+        profile_line = ", ".join(parts)
+
+    prompt = f"""You are a senior editor at a global news outlet helping a journalist ({profile_line or "general journalist"}) plan a story.
+
+STORY: {body.headline}
+SUMMARY: {body.summary}
+{f"JOURNALIST ANGLE: {body.hook}" if body.hook else ""}
+
+Write a detailed, actionable story plan in this exact structure using markdown:
+
+## The Angle
+One sharp paragraph: what THIS journalist's specific take should be, framed for their beat ({body.beat or "general news"}).
+
+## Why Now — The News Hook
+Explain why this story is urgent today. What makes this the right moment to publish?
+
+## Core Questions to Answer
+- Question 1 (the essential "what happened")
+- Question 2 (the "why / what caused it")
+- Question 3 (the "who is affected and how")
+- Question 4 (the "what comes next / implications")
+
+## Sources to Reach Out To
+- **[Source type]** — why they matter for this story
+- (list 4-5 specific source types: officials, experts, NGOs, affected people, documents)
+
+## Potential Contradictions & Tensions
+Where are sources likely to disagree? What claims should be verified against each other? Flag 2-3 specific tensions.
+
+## Suggested Story Structure
+1. **Lede** — the single most newsworthy sentence
+2. **Nut graf** — why this matters, context
+3. **Key facts** — the 3-4 essential data points
+4. **Voices** — quotes that give human texture
+5. **Analysis** — what it means for the bigger picture
+6. **Conclusion** — what readers should watch next
+
+## Research Starting Points
+Suggest 3 specific search queries to start the Quarry investigation."""
+
+    user_ctx = _build_user_context(request)
+    if user_ctx:
+        prompt = user_ctx + "\n\n" + prompt
+
+    def _generate():
+        try:
+            for chunk in llm_service.stream_sync(
+                [{"role": "user", "content": prompt}]
+            ):
+                yield f"data: {json.dumps({'text': chunk})}\n\n"
+        except Exception as exc:
+            logger.error("story_plan.stream_failed: %s", exc)
+            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        _generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

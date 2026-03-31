@@ -1,0 +1,22 @@
+[
+  {
+    "id": "ceef8c57-1faa-4f51-9c84-c0fd0c7e489e",
+    "username": "Arssh",
+    "email": "kaykaymenon@gmail.com",
+    "hashed_password": "$2b$12$JhJ0D5UIalacYUhjfcRN5.p2JVwP0XxhrWFVzlkAtELqgTX2/IM3C",
+    "created_at": "2026-03-27T17:34:33.690824+00:00",
+    "profile": {
+      "role": "Investigative Journalist",
+      "organization": "Reuters",
+      "beat": "Defense",
+      "expertise_level": "Expert",
+      "topics_of_focus": [
+        "Current World Crisis, Wars, Defense"
+      ],
+      "preferred_source_types": [
+        "Wire services (Reuters, AP, AFP)"
+      ],
+      "onboarded": true
+    }
+  }
+]

@@ -222,6 +222,57 @@ html.dark #root {
   border: 1px solid rgba(239,68,68,0.25);
   color: #dc2626;
 }
+/* Dark mode — swap to lighter tints that pass 4.5:1 on dark surfaces */
+.dark .conf-v {
+  background: rgba(74,222,128,0.12);
+  border: 1px solid rgba(74,222,128,0.28);
+  color: #4ade80;
+}
+.dark .conf-c {
+  background: rgba(251,191,36,0.12);
+  border: 1px solid rgba(251,191,36,0.28);
+  color: #fbbf24;
+}
+.dark .conf-s {
+  background: rgba(251,146,60,0.12);
+  border: 1px solid rgba(251,146,60,0.28);
+  color: #fb923c;
+}
+.dark .conf-x {
+  background: rgba(248,113,113,0.12);
+  border: 1px solid rgba(248,113,113,0.28);
+  color: #f87171;
+}
+
+/* ── Z-index scale ───────────────────────────────────────────────────────── */
+:root {
+  --z-base:    10;    /* cards, inline elements */
+  --z-sidebar: 20;    /* sidebars, drawers */
+  --z-topbar:  30;    /* sticky top bar */
+  --z-popup:   50;    /* tooltips, popovers, dropdowns */
+  --z-modal:   1000;  /* modals, full-screen overlays */
+}
+
+/* ── Focus rings — visible for keyboard navigation ───────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+/* Suppress focus ring on mouse clicks (only show on keyboard) */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ── prefers-reduced-motion ──────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 
 /* ── contentEditable placeholder ─────────────────────────────────────────── */
 [contenteditable][data-placeholder]:empty:before {
