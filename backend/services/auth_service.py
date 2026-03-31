@@ -106,10 +106,44 @@ def create_user(username: str, email: str, password: str) -> dict:
         "email": email.lower(),
         "hashed_password": pwd_ctx.hash(password),
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "profile": {
+            "role": "",
+            "organization": "",
+            "beat": "",
+            "expertise_level": "",
+            "topics_of_focus": [],
+            "preferred_source_types": [],
+            "onboarded": False,
+        },
     }
     users.append(user)
     _save_users(users)
     return _public(user)
+
+
+def update_user_profile(user_id: str, profile_data: dict) -> Optional[dict]:
+    """Merge profile_data into the user's profile field. Returns updated public user."""
+    users = _load_users()
+    for u in users:
+        if u["id"] == user_id:
+            if "profile" not in u or not isinstance(u.get("profile"), dict):
+                u["profile"] = {}
+            # Allowed profile fields
+            allowed = {"role", "organization", "beat", "expertise_level",
+                       "topics_of_focus", "preferred_source_types", "onboarded"}
+            for k, v in profile_data.items():
+                if k in allowed:
+                    u["profile"][k] = v
+            _save_users(users)
+            return _public(u)
+    return None
+
+
+def get_user_by_id(user_id: str) -> Optional[dict]:
+    for u in _load_users():
+        if u["id"] == user_id:
+            return u
+    return None
 
 
 def verify_password(plain: str, hashed: str) -> bool:

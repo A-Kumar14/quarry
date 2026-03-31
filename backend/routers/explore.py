@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import time
+import trafilatura
 
 import httpx
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
@@ -49,6 +50,49 @@ def _check_query_rate(query: str) -> bool:
     return True
 
 
+def _build_user_context(request: Request) -> str:
+    """Extract user profile from JWT and build a context string for the AI."""
+    try:
+        from services.auth_service import (
+            is_auth_enabled, _dev_bypass_token, decode_token, _load_users, get_user_from_token
+        )
+        if not is_auth_enabled():
+            return ""
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return ""
+        token = auth_header[7:]
+
+        # Dev bypass — use first user
+        dev = _dev_bypass_token()
+        if dev and token == dev:
+            users = _load_users()
+            user = users[0] if users else None
+        else:
+            user = get_user_from_token(token)
+
+        if not user:
+            return ""
+        p = user.get("profile") or {}
+
+        # Only build context if the user has filled in at least one field
+        parts = []
+        if p.get("role"):        parts.append(f"Role: {p['role']}")
+        if p.get("organization"): parts.append(f"Organization: {p['organization']}")
+        if p.get("beat"):        parts.append(f"Journalism beat / area of focus: {p['beat']}")
+        if p.get("expertise_level"): parts.append(f"Expertise level: {p['expertise_level']}")
+        if p.get("topics_of_focus"):
+            parts.append(f"Topics of focus: {', '.join(p['topics_of_focus'])}")
+        if p.get("preferred_source_types"):
+            parts.append(f"Preferred source types: {', '.join(p['preferred_source_types'])}")
+
+        if not parts:
+            return ""
+        return "[USER PROFILE]\n" + "\n".join(parts) + "\n[END USER PROFILE]"
+    except Exception:
+        return ""
+
+
 @router.post("/explore/search")
 @limiter.limit("15/minute")
 async def explore_search(
@@ -69,10 +113,12 @@ async def explore_search(
             headers={"Retry-After": "60"},
         )
 
+    user_context = _build_user_context(request)
+
     async def _stream():
         try:
             try:
-                stream = ai_service.explore_the_web(query=query, deep=deep)
+                stream = ai_service.explore_the_web(query=query, deep=deep, user_context=user_context)
             except TypeError:
                 # Backward-compatible with older mocks/signatures (tests monkeypatch
                 # explore_the_web with a sync generator that only accepts `query`).
@@ -288,7 +334,6 @@ class SummarizeRequest(BaseModel):
 @limiter.limit("30/minute")
 async def explore_summarize_source(request: Request, body: SummarizeRequest):
     from services.registry import llm_service
-    import trafilatura
     import asyncio
 
     try:
@@ -297,7 +342,7 @@ async def explore_summarize_source(request: Request, body: SummarizeRequest):
 
         def _scrape():
             try:
-                dl = trafilatura.fetch_url(body.url, no_ssl=False)
+                dl = trafilatura.fetch_url(body.url, no_ssl=True)
                 text = trafilatura.extract(dl) if dl else ""
                 return (text or "")[:6000]
             except Exception:
@@ -828,3 +873,134 @@ async def explore_topic_map(request: Request, body: TopicMapRequest):
         logger.error("topic_map.step2.failed: %s", exc)
 
     return {"nodes": [], "links": []}
+
+
+# ── Globe pins — live crisis events from GDELT (15-min cache) ─────────────────
+
+_GLOBE_PINS_TTL = 900  # 15 minutes
+
+_TYPE_COLORS = {
+    "Conflict": "#e24b4a",
+    "Famine":   "#facc15",
+    "Politics": "#7f77dd",
+}
+
+_CONFLICT_KW = {
+    "war", "conflict", "attack", "airstrike", "strike", "killed", "bomb",
+    "shelling", "troops", "military", "ceasefire", "offensive", "siege",
+    "casualties", "hostilities", "fighting", "forces", "rebels",
+}
+_FAMINE_KW = {
+    "famine", "hunger", "drought", "food", "starvation", "malnutrition",
+    "humanitarian", "displacement", "flooding", "flood", "refugee",
+}
+_POLITICS_KW = {
+    "protest", "coup", "election", "government", "president", "opposition",
+    "sanctions", "demonstration", "uprising", "parliament", "referendum",
+    "crackdown", "detained", "arrested",
+}
+
+
+def _classify_type(title: str) -> str:
+    words = set(title.lower().split())
+    if words & _CONFLICT_KW:  return "Conflict"
+    if words & _FAMINE_KW:    return "Famine"
+    if words & _POLITICS_KW:  return "Politics"
+    return "Conflict"
+
+
+def _cluster_pins(raw: list[dict], threshold_deg: float = 3.5, max_pins: int = 20) -> list[dict]:
+    """
+    Greedily merge pins within threshold_deg of an existing cluster centre.
+    The cluster representative keeps the first pin's data; count drives ranking.
+    """
+    clusters: list[dict] = []
+    for pin in raw:
+        lat, lng = pin["lat"], pin["lng"]
+        merged = False
+        for c in clusters:
+            if abs(c["lat"] - lat) < threshold_deg and abs(c["lng"] - lng) < threshold_deg:
+                c["count"] += 1
+                merged = True
+                break
+        if not merged:
+            clusters.append({**pin, "count": 1})
+    clusters.sort(key=lambda c: c["count"], reverse=True)
+    return clusters[:max_pins]
+
+
+@router.get("/explore/globe-pins")
+@limiter.limit("30/minute")
+async def globe_pins(request: Request):
+    """
+    Return geolocated crisis pins for the globe visualisation.
+    Queries GDELT GEO API (last 24 h), clusters by proximity,
+    caps at 20 pins, and caches the result for 15 minutes.
+    Falls back to an empty list on any fetch error — frontend uses WORLD_PINS.
+    """
+    cache_key = "globe_pins"
+    now = time.time()
+    cached = _news_cache.get(cache_key)
+    if cached and (now - cached["ts"]) < _GLOBE_PINS_TTL:
+        return JSONResponse(cached["data"])
+
+    gdelt_url = "https://api.gdeltproject.org/api/v2/geo/geo"
+    params = {
+        "query":      "conflict OR war OR airstrike OR famine OR protest OR coup OR crisis",
+        "mode":       "artgeo",
+        "format":     "json",
+        "timespan":   "24h",
+        "maxrecords": "250",
+    }
+
+    raw_pins: list[dict] = []
+    try:
+        async with httpx.AsyncClient(timeout=12.0) as client:
+            r = await client.get(gdelt_url, params=params)
+            if r.status_code == 200:
+                data = r.json()
+                articles = data.get("articles") or []
+                for article in articles:
+                    title = article.get("title") or ""
+
+                    # GDELT GEO API may expose lat/long at top level or inside
+                    # a nested 'location' object — handle both.
+                    lat = article.get("lat") or article.get("latitude")
+                    lng = (article.get("long") or article.get("longitude")
+                           or article.get("lng"))
+                    if lat is None or lng is None:
+                        loc = article.get("location") or {}
+                        lat = loc.get("lat") or loc.get("latitude")
+                        lng = (loc.get("long") or loc.get("longitude")
+                               or loc.get("lng"))
+                    if lat is None or lng is None:
+                        continue
+                    try:
+                        lat, lng = float(lat), float(lng)
+                    except (TypeError, ValueError):
+                        continue
+
+                    ev_type = _classify_type(title)
+                    label   = (article.get("domain")
+                               or article.get("sourcecountry")
+                               or "Event")
+                    raw_pins.append({
+                        "label": label[:40],
+                        "desc":  title[:140],
+                        "lat":   lat,
+                        "lng":   lng,
+                        "type":  ev_type,
+                        "color": _TYPE_COLORS[ev_type],
+                    })
+    except Exception as exc:
+        logger.warning("globe_pins.gdelt_failed: %s", exc)
+
+    pins = _cluster_pins(raw_pins)
+    result = {
+        "pins":       pins,
+        "source":     "gdelt",
+        "fetched_at": int(now),
+        "live":       len(raw_pins) > 0,
+    }
+    _news_cache[cache_key] = {"data": result, "ts": now}
+    return JSONResponse(result)

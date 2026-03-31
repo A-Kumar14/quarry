@@ -11,6 +11,7 @@ import ipaddress
 import logging
 import re
 import concurrent.futures
+import trafilatura
 from typing import Any
 from urllib.parse import urlparse
 
@@ -120,8 +121,7 @@ def web_search(query: str, max_results: int = 5) -> list[dict[str, str]]:
 def _scrape_one(url: str) -> dict[str, str] | None:
     """Fetch a URL and return clean Markdown, or None on failure."""
     try:
-        import trafilatura
-        downloaded = trafilatura.fetch_url(url, no_ssl=False)
+        downloaded = trafilatura.fetch_url(url, no_ssl=True)
         if not downloaded:
             return None
         text = trafilatura.extract(

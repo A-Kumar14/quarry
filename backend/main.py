@@ -79,6 +79,8 @@ app.add_middleware(
 # If DEV_BYPASS_TOKEN is set, a request bearing that exact token is always allowed.
 
 _UNPROTECTED = {"/health", "/docs", "/openapi.json", "/redoc"}
+# Paths where the prefix alone is enough to exempt the request
+_UNPROTECTED_PREFIXES = ("/explore/img-proxy",)
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -88,7 +90,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
         path = request.url.path
 
         # Always allow auth endpoints, public routes, CORS preflight, and when auth is off
-        if not is_auth_enabled() or request.method == "OPTIONS" or path.startswith("/auth") or path in _UNPROTECTED:
+        if (
+            not is_auth_enabled()
+            or request.method == "OPTIONS"
+            or path.startswith("/auth")
+            or path in _UNPROTECTED
+            or any(path.startswith(p) for p in _UNPROTECTED_PREFIXES)
+        ):
             return await call_next(request)
 
         token = None

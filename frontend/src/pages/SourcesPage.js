@@ -5,6 +5,8 @@ import ForceGraph2D from 'react-force-graph-2d';
 import { useDarkMode } from '../DarkModeContext';
 import { getSourceLibrary, removeSourceFromLibrary } from '../utils/sourceLibrary';
 import { getSourceQuality, QUALITY_COLOR } from '../utils/sourceQuality';
+import GlassCard, { glassCardStyle } from '../components/GlassCard';
+import NavControls from '../components/NavControls';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 const DOCUMENTS_KEY = 'quarry_documents';
@@ -911,51 +913,113 @@ function TopicMapModal({ onClose }) {
   );
 }
 
+/* ── Inline SVG illustrations ────────────────────────────────────────────── */
+const LibrarySVG = () => (
+  <svg width="72" height="56" viewBox="0 0 72 56" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity: 0.18 }}>
+    <rect x="4"  y="10" width="10" height="38" rx="2" fill="currentColor"/>
+    <rect x="18" y="6"  width="10" height="42" rx="2" fill="currentColor"/>
+    <rect x="32" y="14" width="10" height="34" rx="2" fill="currentColor"/>
+    <rect x="46" y="8"  width="10" height="40" rx="2" fill="currentColor"/>
+    <rect x="60" y="18" width="10" height="30" rx="2" fill="currentColor"/>
+    <line x1="2" y1="50" x2="70" y2="50" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+  </svg>
+);
+
+const NetworkSVG = () => (
+  <svg width="72" height="56" viewBox="0 0 72 56" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity: 0.18 }}>
+    <circle cx="36" cy="28" r="7" fill="currentColor"/>
+    <circle cx="12" cy="14" r="5" fill="currentColor"/>
+    <circle cx="60" cy="14" r="5" fill="currentColor"/>
+    <circle cx="10" cy="44" r="5" fill="currentColor"/>
+    <circle cx="62" cy="44" r="5" fill="currentColor"/>
+    <circle cx="36" cy="50" r="4" fill="currentColor"/>
+    <line x1="29" y1="24" x2="17" y2="18" stroke="currentColor" strokeWidth="1.5"/>
+    <line x1="43" y1="24" x2="55" y2="18" stroke="currentColor" strokeWidth="1.5"/>
+    <line x1="29" y1="33" x2="15" y2="40" stroke="currentColor" strokeWidth="1.5"/>
+    <line x1="43" y1="33" x2="57" y2="40" stroke="currentColor" strokeWidth="1.5"/>
+    <line x1="36" y1="35" x2="36" y2="46" stroke="currentColor" strokeWidth="1.5"/>
+  </svg>
+);
+
 /* ── Big entry card ──────────────────────────────────────────────────────── */
-function EntryCard({ icon, title, subtitle, stat, onClick, dark }) {
+function EntryCard({ icon, title, subtitle, stat, onClick, illustration: Illustration }) {
   const [hover, setHover] = useState(false);
   return (
-    <div
+    <GlassCard
       onClick={onClick}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
         flex: 1, minWidth: 0,
-        background: dark ? 'rgba(255,255,255,0.04)' : 'rgba(255,252,242,0.60)',
-        backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-        border: `1px solid ${hover ? 'rgba(249,115,22,0.35)' : 'var(--border)'}`,
         borderRadius: 20,
-        padding: '40px 36px',
+        padding: '36px 32px',
         cursor: 'pointer',
-        transition: 'transform 0.16s, border-color 0.16s, box-shadow 0.16s',
-        transform: hover ? 'translateY(-3px)' : 'translateY(0)',
-        boxShadow: hover ? '0 12px 40px rgba(249,115,22,0.12)' : '0 4px 24px rgba(0,0,0,0.06)',
-        display: 'flex', flexDirection: 'column', gap: 16,
+        transition: 'transform 0.16s ease, box-shadow 0.16s ease',
+        transform: hover ? 'translateY(-4px)' : 'translateY(0)',
+        boxShadow: hover
+          ? '0 16px 48px rgba(249,115,22,0.14), var(--glass-card-shadow)'
+          : 'var(--glass-card-shadow)',
+        display: 'flex', flexDirection: 'column', gap: 18,
+        position: 'relative', overflow: 'hidden',
+        ...(hover ? {
+          borderTopColor: 'rgba(249,115,22,0.45)',
+          borderLeftColor: 'rgba(249,115,22,0.30)',
+        } : {}),
       }}
     >
+      {/* Background illustration */}
       <div style={{
-        width: 52, height: 52, borderRadius: 14,
-        background: hover ? 'rgba(249,115,22,0.15)' : 'rgba(249,115,22,0.08)',
-        border: '1px solid rgba(249,115,22,0.20)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        transition: 'background 0.16s',
+        position: 'absolute', bottom: 12, right: 16,
+        color: 'var(--accent)', pointerEvents: 'none',
+        transition: 'opacity 0.16s, transform 0.16s',
+        opacity: hover ? 1 : 0.7,
+        transform: hover ? 'scale(1.05) translateY(-2px)' : 'scale(1)',
       }}>
-        {React.cloneElement(icon, { size: 24, color: 'var(--accent)' })}
+        {Illustration && <Illustration />}
       </div>
-      <div>
-        <div style={{ fontFamily: 'var(--font-family)', fontSize: '1.18rem', fontWeight: 700, color: 'var(--fg-primary)', marginBottom: 6 }}>
+
+      {/* Icon badge */}
+      <div style={{
+        width: 48, height: 48, borderRadius: 14,
+        background: hover ? 'rgba(249,115,22,0.18)' : 'rgba(249,115,22,0.10)',
+        border: `1px solid ${hover ? 'rgba(249,115,22,0.35)' : 'rgba(249,115,22,0.18)'}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        transition: 'background 0.16s, border-color 0.16s', flexShrink: 0,
+      }}>
+        {React.cloneElement(icon, { size: 22, color: 'var(--accent)' })}
+      </div>
+
+      <div style={{ flex: 1 }}>
+        <div style={{
+          fontFamily: 'var(--font-serif)', fontSize: '1.22rem', fontWeight: 600,
+          color: 'var(--fg-primary)', marginBottom: 8, lineHeight: 1.3,
+        }}>
           {title}
         </div>
-        <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.82rem', color: 'var(--fg-dim)', lineHeight: 1.55 }}>
+        <div style={{
+          fontFamily: 'var(--font-family)', fontSize: '0.80rem',
+          color: 'var(--fg-dim)', lineHeight: 1.6, maxWidth: 260,
+        }}>
           {subtitle}
         </div>
       </div>
+
       {stat && (
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'var(--accent)', letterSpacing: '0.06em', marginTop: 'auto' }}>
-          {stat}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          paddingTop: 12, borderTop: '1px solid var(--border)',
+          marginTop: 'auto',
+        }}>
+          <div style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
+          <span style={{
+            fontFamily: 'var(--font-mono)', fontSize: '0.65rem',
+            color: 'var(--fg-secondary)', letterSpacing: '0.04em',
+          }}>
+            {stat}
+          </span>
         </div>
       )}
-    </div>
+    </GlassCard>
   );
 }
 
@@ -964,61 +1028,100 @@ function StatsBar({ sources, storyCount }) {
   const topDomains = useMemo(() => {
     const freq = {};
     for (const s of sources) { freq[s.domain] = (freq[s.domain] || 0) + 1; }
-    return Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([d]) => d);
+    return Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([d]) => d);
   }, [sources]);
 
-  const highCount = useMemo(() => sources.filter(s => getSourceQuality(s.url) === 'high').length, [sources]);
+  const highCount    = useMemo(() => sources.filter(s => getSourceQuality(s.url) === 'high').length,    [sources]);
+  const mediumCount  = useMemo(() => sources.filter(s => getSourceQuality(s.url) === 'medium').length,  [sources]);
+  const unknownCount = useMemo(() => sources.filter(s => getSourceQuality(s.url) === 'unknown').length, [sources]);
+  const domainCount  = useMemo(() => new Set(sources.map(s => s.domain)).size, [sources]);
 
-  const stats = [
-    { label: 'Total Sources', value: sources.length },
-    { label: 'High Credibility', value: highCount },
-    { label: 'Stories',          value: storyCount },
+  // eslint-disable-next-line no-unused-vars
+  const total = sources.length || 1;
+  const credDist = [
+    { label: 'High',    count: highCount,    color: '#22c55e' },
+    { label: 'Medium',  count: mediumCount,  color: '#f59e0b' },
+    { label: 'Unknown', count: unknownCount, color: 'var(--border)' },
   ];
 
   return (
-    <div style={{
-      display: 'flex', gap: 12, marginBottom: 28, flexWrap: 'wrap',
-    }}>
-      {stats.map(({ label, value }) => (
-        <div key={label} style={{
-          flex: '1 1 120px',
-          background: 'var(--glass-bg)',
-          backdropFilter: 'var(--glass-blur)', WebkitBackdropFilter: 'var(--glass-blur)',
-          border: '1px solid var(--glass-border-t)',
-          borderRadius: 14, padding: '16px 20px',
-          boxShadow: 'var(--glass-shadow)',
-        }}>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.6rem', fontWeight: 700, color: 'var(--accent)', lineHeight: 1 }}>
-            {value}
-          </div>
-          <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.72rem', color: 'var(--fg-dim)', marginTop: 4 }}>
-            {label}
-          </div>
+    <div style={{ display: 'flex', gap: 12, marginBottom: 28, flexWrap: 'wrap' }}>
+      {/* Sources */}
+      <GlassCard style={{ flex: '1 1 100px', padding: '16px 20px', borderRadius: 14 }}>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '2rem', fontWeight: 700, color: 'var(--accent)', lineHeight: 1 }}>
+          {sources.length}
         </div>
-      ))}
+        <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', color: 'var(--fg-dim)', marginTop: 5, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          Total Sources
+        </div>
+      </GlassCard>
+
+      {/* Domains */}
+      <GlassCard style={{ flex: '1 1 100px', padding: '16px 20px', borderRadius: 14 }}>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '2rem', fontWeight: 700, color: 'var(--fg-primary)', lineHeight: 1 }}>
+          {domainCount}
+        </div>
+        <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', color: 'var(--fg-dim)', marginTop: 5, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          Unique Domains
+        </div>
+      </GlassCard>
+
+      {/* Stories */}
+      <GlassCard style={{ flex: '1 1 100px', padding: '16px 20px', borderRadius: 14 }}>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '2rem', fontWeight: 700, color: 'var(--fg-primary)', lineHeight: 1 }}>
+          {storyCount}
+        </div>
+        <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', color: 'var(--fg-dim)', marginTop: 5, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          Stories
+        </div>
+      </GlassCard>
+
+      {/* Credibility distribution */}
+      <GlassCard style={{ flex: '2 1 220px', padding: '16px 20px', borderRadius: 14 }}>
+        <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.65rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.10em', textTransform: 'uppercase', marginBottom: 10 }}>
+          Credibility Mix
+        </div>
+        {/* Segmented bar */}
+        <div style={{ display: 'flex', height: 6, borderRadius: 999, overflow: 'hidden', gap: 1, marginBottom: 10 }}>
+          {credDist.map(({ label, count, color }) => (
+            count > 0 && <div key={label} style={{ flex: count, background: color, transition: 'flex 0.4s ease' }} />
+          ))}
+          {sources.length === 0 && <div style={{ flex: 1, background: 'var(--border)' }} />}
+        </div>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          {credDist.map(({ label, count, color }) => (
+            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <div style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'var(--fg-secondary)' }}>
+                {count} <span style={{ color: 'var(--fg-dim)', fontWeight: 400 }}>{label}</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      </GlassCard>
+
+      {/* Top domains */}
       {topDomains.length > 0 && (
-        <div style={{
-          flex: '2 1 200px',
-          background: 'var(--glass-bg)',
-          backdropFilter: 'var(--glass-blur)', WebkitBackdropFilter: 'var(--glass-blur)',
-          border: '1px solid var(--glass-border-t)',
-          borderRadius: 14, padding: '16px 20px',
-          boxShadow: 'var(--glass-shadow)',
-        }}>
-          <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.72rem', color: 'var(--fg-dim)', marginBottom: 8 }}>
+        <GlassCard style={{ flex: '2 1 180px', padding: '16px 20px', borderRadius: 14 }}>
+          <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.65rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.10em', textTransform: 'uppercase', marginBottom: 10 }}>
             Top Domains
           </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {topDomains.map(d => (
-              <span key={d} style={{
-                fontFamily: 'var(--font-mono)', fontSize: '0.68rem', fontWeight: 500,
-                color: 'var(--accent)', background: 'rgba(249,115,22,0.10)',
-                border: '1px solid rgba(249,115,22,0.22)',
-                borderRadius: 99, padding: '2px 9px',
-              }}>{d}</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {topDomains.map((d, i) => (
+              <div key={d} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{
+                  fontFamily: 'var(--font-mono)', fontSize: '0.58rem', fontWeight: 700,
+                  color: 'var(--fg-dim)', width: 14, textAlign: 'right', flexShrink: 0,
+                }}>#{i + 1}</span>
+                <span style={{
+                  fontFamily: 'var(--font-mono)', fontSize: '0.70rem', fontWeight: 500,
+                  color: i === 0 ? 'var(--accent)' : 'var(--fg-secondary)',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>{d}</span>
+              </div>
             ))}
           </div>
-        </div>
+        </GlassCard>
       )}
     </div>
   );
@@ -1050,46 +1153,60 @@ function RecentSourcesPreview({ sources, onOpenLibrary }) {
         </button>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {recent.map(src => (
-          <a
-            key={src.url}
-            href={src.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              textDecoration: 'none',
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '9px 14px',
-              background: 'var(--glass-bg)',
-              backdropFilter: 'var(--glass-blur)', WebkitBackdropFilter: 'var(--glass-blur)',
-              border: '1px solid var(--border)',
-              borderRadius: 10,
-              transition: 'border-color 0.13s, transform 0.13s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(249,115,22,0.35)'; e.currentTarget.style.transform = 'translateX(2px)'; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.transform = 'translateX(0)'; }}
-          >
-            <img
-              src={`https://www.google.com/s2/favicons?domain=${src.domain}&sz=32`}
-              alt="" width={14} height={14}
-              style={{ borderRadius: 3, flexShrink: 0 }}
-              onError={e => { e.target.style.display = 'none'; }}
-            />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{
-                fontFamily: 'var(--font-family)', fontSize: '0.82rem', fontWeight: 500,
-                color: 'var(--fg-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-              }}>
-                {src.title || src.domain}
+        {recent.map(src => {
+          const q = getSourceQuality(src.url);
+          const qColor = QUALITY_COLOR[q] || 'var(--fg-dim)';
+          return (
+            <a
+              key={src.url}
+              href={src.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                textDecoration: 'none',
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '9px 14px',
+                ...glassCardStyle,
+                borderRadius: 10,
+                transition: 'border-color 0.13s, transform 0.13s, box-shadow 0.13s',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.borderTopColor = 'rgba(249,115,22,0.45)';
+                e.currentTarget.style.borderLeftColor = 'rgba(249,115,22,0.35)';
+                e.currentTarget.style.transform = 'translateX(3px)';
+                e.currentTarget.style.boxShadow = '0 4px 16px rgba(249,115,22,0.10)';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.borderTopColor = 'var(--glass-card-border-t)';
+                e.currentTarget.style.borderLeftColor = 'var(--glass-card-border-l)';
+                e.currentTarget.style.transform = 'translateX(0)';
+                e.currentTarget.style.boxShadow = 'var(--glass-card-shadow)';
+              }}
+            >
+              {/* Credibility dot */}
+              <div style={{ width: 7, height: 7, borderRadius: '50%', background: qColor, flexShrink: 0 }} />
+              <img
+                src={`https://www.google.com/s2/favicons?domain=${src.domain}&sz=32`}
+                alt="" width={14} height={14}
+                style={{ borderRadius: 3, flexShrink: 0 }}
+                onError={e => { e.target.style.display = 'none'; }}
+              />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  fontFamily: 'var(--font-family)', fontSize: '0.82rem', fontWeight: 500,
+                  color: 'var(--fg-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>
+                  {src.title || src.domain}
+                </div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.60rem', color: 'var(--fg-dim)' }}>
+                  {src.domain}
+                </div>
               </div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.60rem', color: 'var(--fg-dim)' }}>
-                {src.domain}
-              </div>
-            </div>
-            <QualityBadge url={src.url} />
-            <ExternalLink size={11} color="var(--fg-dim)" style={{ flexShrink: 0 }} />
-          </a>
-        ))}
+              <QualityBadge url={src.url} />
+              <ExternalLink size={11} color="var(--fg-dim)" style={{ flexShrink: 0 }} />
+            </a>
+          );
+        })}
       </div>
     </div>
   );
@@ -1136,9 +1253,10 @@ export default function SourcesPage() {
           <ArrowLeft size={14} /> Back
         </button>
         <div style={{ width: 1, height: 16, background: 'var(--border)' }} />
-        <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.88rem', fontWeight: 600, color: 'var(--fg-primary)' }}>
+        <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.88rem', fontWeight: 600, color: 'var(--fg-primary)', flex: 1 }}>
           Sources
         </span>
+        <NavControls />
       </div>
 
       {/* Main content */}
@@ -1159,21 +1277,21 @@ export default function SourcesPage() {
         <RecentSourcesPreview sources={sources} onOpenLibrary={() => setModal('library')} />
 
         {/* Feature cards */}
-        <div style={{ display: 'flex', gap: 20 }}>
+        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
           <EntryCard
-            dark={dark}
             icon={<BookMarked />}
             title="Source Library"
             subtitle="Browse, filter, and manage every source from your searches. Linked to the stories that cite them."
             stat={`${sourceCount} source${sourceCount !== 1 ? 's' : ''} · ${storyCount} stor${storyCount !== 1 ? 'ies' : 'y'}`}
+            illustration={LibrarySVG}
             onClick={() => setModal('library')}
           />
           <EntryCard
-            dark={dark}
             icon={<Network />}
             title="Topic Connection Map"
             subtitle="AI-generated graph of how your research topics interconnect. Click any node to see its sources."
             stat={sourceCount > 0 ? `${sourceCount} sources to map` : 'Add sources to generate map'}
+            illustration={NetworkSVG}
             onClick={() => setModal('map')}
           />
         </div>

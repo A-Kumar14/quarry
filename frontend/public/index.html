@@ -12,6 +12,24 @@
     <title>Quarry</title>
   </head>
   <body>
+    <!-- Suppress opaque "Script error." events from cross-origin scripts
+         (e.g. miniature.earth CDN) before React's error overlay registers
+         its own window error listener. Must run before the bundle. -->
+    <script>
+      (function () {
+        var _add = EventTarget.prototype.addEventListener;
+        EventTarget.prototype.addEventListener = function (type, fn, opts) {
+          if (type === 'error' && this === window && typeof fn === 'function') {
+            var wrapped = function (e) {
+              if (e.message === 'Script error.' && !e.filename) return;
+              fn.call(this, e);
+            };
+            return _add.call(this, type, wrapped, opts);
+          }
+          return _add.call(this, type, fn, opts);
+        };
+      })();
+    </script>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
   </body>

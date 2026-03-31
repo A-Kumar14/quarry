@@ -8,7 +8,7 @@ import rehypeRaw from 'rehype-raw';
 import { motion, AnimatePresence } from 'framer-motion'; // eslint-disable-line no-unused-vars
 import { RadialBarChart, RadialBar, PolarAngleAxis } from 'recharts';
 import GlassCard from '../components/GlassCard';
-import { saveContestedClaims } from './HomePage';
+import { saveContestedClaims, saveInvestigationHistory } from './HomePage';
 import PerspectivesTab from '../components/PerspectivesTab';
 import ContradictionsTab from '../components/ContradictionsTab';
 import CitationsPanel from '../components/CitationsPanel';
@@ -21,13 +21,25 @@ import FinanceCard from '../components/FinanceCard';
 import { useSettings, useTopOffset } from '../SettingsContext';
 import { useDarkMode } from '../DarkModeContext';
 import NavControls from '../components/NavControls';
-import KnowledgeGraph from '../components/KnowledgeGraph';
+import KnowledgeGraph from '../components/KnowledgeGraph'; // eslint-disable-line no-unused-vars
 import DiagramCard from '../components/DiagramCard';
+import SourceCredibilityMatrix from '../components/SourceCredibilityMatrix';
+import EntityDossier from '../components/EntityDossier';
+import OnboardingModal from '../components/OnboardingModal';
+import { useAuth } from '../contexts/AuthContext';
 
 // ── Saved searches ────────────────────────────────────────────────────────────
 function getSaved() {
   try { return JSON.parse(localStorage.getItem('quarry_saved') || '[]'); }
   catch { return []; }
+}
+
+function agoE(ts) {
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 60)    return 'just now';
+  if (s < 3600)  return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
 }
 function addSaved(query, excerpt, fullAnswer) {
   const items = getSaved();
@@ -249,6 +261,7 @@ function linkifyCitations(text, sources) {
     return src?.url ? `[[${num}]](${src.url})` : match;
   });
 }
+
 
 const QUESTION_STRIP = /^(what (?:is|are|was|were)|who (?:is|are|was|were)|how (?:does|do|is|are|to|can)|why (?:is|are|does|do|did)|when (?:is|are|did|was)|where (?:is|are|was)|which (?:is|are)|tell me (?:about|of)?|explain|describe|find|give me|show me|list (?:(?:the|of) )?)\s+(?:(?:the|a|an) )?/i;
 
@@ -934,6 +947,7 @@ function ClaimCard({ c, group, onInsertClaim, onClose }) {
   );
 }
 
+// eslint-disable-next-line no-unused-vars
 function ClaimLandscapeModal({ graphData, claims, onInsertClaim, onClose }) {
   const allClaims = claims || [];
   const hasAnyClaims = allClaims.length > 0;
@@ -1265,7 +1279,7 @@ function parseAnswerParts(answer, sources, streaming) {
   return parts;
 }
 
-function CollapsibleAnswer({ answer, streaming, sources }) {
+function CollapsibleAnswer({ answer, streaming, sources, onNewSearch }) {
   const isEmpty = !streaming && (
     !answer ||
     /i couldn.{0,10}t find relevant results/i.test(answer) ||
@@ -1277,6 +1291,29 @@ function CollapsibleAnswer({ answer, streaming, sources }) {
     [answer, sources, streaming],
   );
 
+  const [digSelection, setDigSelection] = useState('');
+  const [digPos, setDigPos] = useState({ x: 0, y: 0 });
+  const popoverRef = useRef(null);
+
+  useEffect(() => {
+    if (!digSelection) return;
+    const handler = (e) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target)) {
+        setDigSelection('');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [digSelection]);
+
+  const handleMouseUp = (e) => {
+    const sel = window.getSelection()?.toString().trim();
+    if (sel && sel.length > 0 && sel.length < 300) {
+      setDigSelection(sel);
+      setDigPos({ x: e.clientX, y: e.clientY });
+    }
+  };
+
   if (isEmpty) {
     return (
       <div style={{ padding: '24px 0', color: 'var(--fg-dim)', fontSize: '0.85rem', fontStyle: 'italic' }}>
@@ -1287,30 +1324,61 @@ function CollapsibleAnswer({ answer, streaming, sources }) {
   }
 
   return (
-    <Box sx={ANSWER_BODY_STYLES}>
-      {parts.map((part, index) => {
-        if (part.type === 'diagram') {
+    <>
+      <Box sx={ANSWER_BODY_STYLES} onMouseUp={handleMouseUp}>
+        {parts.map((part, index) => {
+          if (part.type === 'diagram') {
+            return (
+              <Box key={`diagram-${index}`} sx={{ my: 2 }}>
+                <DiagramCard chartCode={part.content} />
+              </Box>
+            );
+          }
           return (
-            <Box key={`diagram-${index}`} sx={{ my: 2 }}>
-              <DiagramCard chartCode={part.content} />
-            </Box>
+            <ReactMarkdown
+              key={`text-${index}`}
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeRaw]}
+              components={{ a: ({ href, children }) => <CitationLink href={href} sources={sources}>{children}</CitationLink> }}
+            >
+              {part.content}
+            </ReactMarkdown>
           );
-        }
-        return (
-          <ReactMarkdown
-            key={`text-${index}`}
-            remarkPlugins={[remarkGfm]}
-            rehypePlugins={[rehypeRaw]}
-            components={{ a: ({ href, children }) => <CitationLink href={href} sources={sources}>{children}</CitationLink> }}
+        })}
+        {streaming && (
+          <Box component="span" sx={{ display: 'inline-block', width: 7, height: 15, bgcolor: 'var(--accent)', borderRadius: '2px', animation: 'blinkPulse 1s step-end infinite', verticalAlign: 'text-bottom', ml: 0.5 }} />
+        )}
+      </Box>
+
+      {digSelection && (
+        <div
+          ref={popoverRef}
+          style={{
+            position: 'fixed', left: digPos.x, top: digPos.y - 42,
+            zIndex: 9999,
+            background: 'var(--bg-secondary)', border: '1px solid var(--accent)',
+            borderRadius: 8, padding: '6px 10px',
+            fontSize: 11, display: 'flex', alignItems: 'center', gap: 8,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+            fontFamily: 'var(--font-family)',
+          }}
+        >
+          <span style={{ color: 'var(--fg-dim)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            "{digSelection.slice(0, 40)}{digSelection.length > 40 ? '…' : ''}"
+          </span>
+          <button
+            onClick={() => { if (onNewSearch) onNewSearch(digSelection); setDigSelection(''); }}
+            style={{
+              background: 'var(--accent)', color: 'white', border: 'none',
+              borderRadius: 5, padding: '3px 9px', fontSize: 10, cursor: 'pointer',
+              fontFamily: 'var(--font-family)', fontWeight: 500, whiteSpace: 'nowrap',
+            }}
           >
-            {part.content}
-          </ReactMarkdown>
-        );
-      })}
-      {streaming && (
-        <Box component="span" sx={{ display: 'inline-block', width: 7, height: 15, bgcolor: 'var(--accent)', borderRadius: '2px', animation: 'blinkPulse 1s step-end infinite', verticalAlign: 'text-bottom', ml: 0.5 }} />
+            Dig deeper →
+          </button>
+        </div>
       )}
-    </Box>
+    </>
   );
 }
 
@@ -1418,7 +1486,7 @@ function FollowUpBar({ onSubmit, atMax }) {
       <input
         value={text} onChange={e => setText(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }}
-        placeholder="Ask a follow-up…" autoComplete="off"
+        placeholder="Ask a detailed follow-up about your research..." autoComplete="off"
         style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: '0.9rem', fontFamily: 'var(--font-family)', fontWeight: 300, color: 'var(--fg-primary)', padding: '4px 0' }}
       />
       {text.trim() && (
@@ -1441,6 +1509,7 @@ function MiniTabStrip({ active, onChange, hasContradictions, contradictionsLoadi
     { key: 'contradictions', label: 'Contradictions', dot: contradictionsLoading ? true : hasContradictions },
     ...(hasGaps   ? [{ key: 'gaps',   label: 'Gaps' }]   : []),
     ...(hasQuotes ? [{ key: 'quotes', label: 'Quotes' }] : []),
+    ...(hasSources ? [{ key: 'dossier', label: 'Sources' }] : []),
   ];
 
   return (
@@ -1484,7 +1553,6 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
   const [processedAnswer, setProcessedAnswer] = useState('');
   const [selectedSource,  setSelectedSource]  = useState(null);
   const [showSourceIntelPopup, setShowSourceIntelPopup] = useState(false);
-  const [showClaimLandscapePopup, setShowClaimLandscapePopup] = useState(false);
   const sourceMap = useSources();
 
   useEffect(() => {
@@ -1509,6 +1577,8 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
   const hasContradictions     = contradictions?.contradictions?.length > 0;
   const chips    = answer ? extractKeywordChips(answer) : [];
   const sourcesCount = sources.length;
+  const blockScore = calcCompletenessScore(sources, claims, contradictions?.contradictions ?? []);
+  const blockScoreColor = blockScore >= 70 ? '#5dcaa5' : blockScore >= 40 ? 'var(--accent)' : '#e24b4a';
   const verifiedCount =
     pipelineTrace?.claims_verified ??
     claims.filter(c => ['verified', 'corroborated'].includes(c.status)).length;
@@ -1516,6 +1586,7 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
     pipelineTrace?.claims_contested ??
     claims.filter(c => c.status === 'contested').length;
 
+  // eslint-disable-next-line no-unused-vars
   const graphData = useMemo(() => {
     if (!claims.length && !sources.length) return { nodes: [], links: [] };
     const sNodes = sources.slice(0, 5).map((s, i) => ({
@@ -1582,18 +1653,30 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
                 },
               }}
             >
-              <Typography sx={{
-                fontFamily: 'var(--font-family)',
-                fontSize: '0.625rem',
-                fontWeight: 600,
-                color: 'var(--fg-dim)',
-                letterSpacing: '0.14em',
-                textTransform: 'uppercase',
-                mb: 2,
-                opacity: 0.8,
-              }}>
-                Source Intelligence
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                <Typography sx={{
+                  fontFamily: 'var(--font-family)',
+                  fontSize: '0.625rem',
+                  fontWeight: 600,
+                  color: 'var(--fg-dim)',
+                  letterSpacing: '0.14em',
+                  textTransform: 'uppercase',
+                  opacity: 0.8,
+                }}>
+                  Source Intelligence
+                </Typography>
+                {sources.length > 0 && (
+                  <Box sx={{
+                    display: 'flex', alignItems: 'center', gap: '4px',
+                    background: `${blockScoreColor}18`,
+                    border: `1px solid ${blockScoreColor}40`,
+                    borderRadius: '6px', padding: '2px 6px',
+                  }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', fontWeight: 700, color: blockScoreColor }}>{blockScore}</span>
+                    <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.55rem', color: 'var(--fg-dim)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>completeness</span>
+                  </Box>
+                )}
+              </Box>
 
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
                 <Box>
@@ -1615,65 +1698,15 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
               </Box>
             </Box>
 
-            {/* Claim Landscape Card */}
-            {(claims.length > 0 || sources.length > 0) && (
-              <Box
-                component="button"
-                onClick={() => setShowClaimLandscapePopup(true)}
-                sx={{
-                  width: '100%',
-                  textAlign: 'left',
-                  borderRadius: '16px',
-                  padding: '16px',
-                  background: 'var(--bg-secondary)',
-                  border: '1px solid var(--border)',
-                  cursor: 'pointer',
-                  transition: 'all 0.16s ease',
-                  '&:hover': {
-                    borderColor: 'rgba(249,115,22,0.6)',
-                    transform: 'translateY(-1px)',
-                  },
-                }}
-              >
-                <Typography sx={{
-                  fontFamily: 'var(--font-family)',
-                  fontSize: '0.625rem',
-                  fontWeight: 600,
-                  color: 'var(--fg-dim)',
-                  letterSpacing: '0.14em',
-                  textTransform: 'uppercase',
-                  mb: 2,
-                  opacity: 0.8,
-                }}>
-                  Claim Landscape
-                </Typography>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  {/* Mini visual indicator of the landscape */}
-                  <Box sx={{ display: 'flex', gap: '4px', mb: 1 }}>
-                    {(() => {
-                        const verified = claims.filter(c => c.status === 'verified' || c.status === 'corroborated').length;
-                        const contested = claims.filter(c => c.status === 'contested').length;
-                        const other = claims.length - verified - contested;
-                        const total = claims.length || 1;
-                        if (total === 1 && claims.length === 0) {
-                          return <Box sx={{ height: 4, width: '100%', bgcolor: '#9ca3af', borderRadius: 999 }} />;
-                        }
-                        const vPct = (verified / total) * 100;
-                        const cPct = (contested / total) * 100;
-                        const oPct = (other / total) * 100;
-                        return (
-                          <>
-                            {vPct > 0 && <Box sx={{ height: 4, width: `${vPct}%`, bgcolor: '#22c55e', borderRadius: 999 }} />}
-                            {oPct > 0 && <Box sx={{ height: 4, width: `${oPct}%`, bgcolor: '#3b82f6', borderRadius: 999 }} />}
-                            {cPct > 0 && <Box sx={{ height: 4, width: `${cPct}%`, bgcolor: '#ef4444', borderRadius: 999 }} />}
-                          </>
-                        );
-                    })()}
-                  </Box>
-                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.75rem', color: 'var(--fg-dim)', lineHeight: 1.4, opacity: 0.8, textAlign: 'left' }}>
-                    Click to view {claims.length || 0} analyzed claims across the knowledge graph.
-                  </Typography>
-                </Box>
+            {/* Source Credibility Matrix */}
+            {sources.length > 0 && (
+              <Box sx={{
+                borderRadius: '16px',
+                padding: '16px',
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--border)',
+              }}>
+                <SourceCredibilityMatrix sources={sources} />
               </Box>
             )}
           </Box>
@@ -1688,15 +1721,6 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
             selectedSource={selectedSource}
             onSelectSource={src => { setSelectedSource(src); setShowSourceIntelPopup(false); }}
             onClose={() => setShowSourceIntelPopup(false)}
-          />
-        )}
-
-        {showClaimLandscapePopup && (
-          <ClaimLandscapeModal
-            graphData={graphData}
-            claims={claims}
-            onInsertClaim={onInsertClaim}
-            onClose={() => setShowClaimLandscapePopup(false)}
           />
         )}
 
@@ -1761,7 +1785,7 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
               <Box key={activeTab} sx={{ animation: 'tabFadeIn 0.15s ease' }}>
                 {activeTab === 'answer' && (
                   <>
-                    <CollapsibleAnswer answer={processedAnswer || answer} streaming={streaming} sources={sources} />
+                    <CollapsibleAnswer answer={processedAnswer || answer} streaming={streaming} sources={sources} onNewSearch={onNewSearch} />
 
                     {/* Contested callout */}
                     {(() => {
@@ -1801,6 +1825,7 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
                 )}
                 {activeTab === 'gaps'   && <GapsTab   gaps={gaps}     loading={streaming && gaps.length === 0}   onNewSearch={onNewSearch} />}
                 {activeTab === 'quotes' && <QuoteBankTab quotes={quotes} loading={streaming && quotes.length === 0} onInsertClaim={onInsertClaim} />}
+                {activeTab === 'dossier' && <EntityDossier sources={sources} claims={claims} loading={streaming && sources.length === 0} onInsert={onInsertClaim} />}
               </Box>
               <style>{`@keyframes tabFadeIn { from { opacity: 0; } to { opacity: 1; } }`}</style>
 
@@ -1860,22 +1885,34 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
                 {loadingRelated
                   ? [0, 1, 2].map(i => <Skeleton key={i} variant="rectangular" height={28} sx={{ borderRadius: '8px', bgcolor: 'var(--bg-tertiary)', width: 160 }} />)
-                  : relatedSearches.map(s => (
-                      <Box
-                        key={s} onClick={() => onNewSearch(s)}
-                        sx={{
-                          display: 'flex', alignItems: 'center', gap: 0.75,
-                          fontFamily: 'var(--font-family)', fontSize: '0.76rem', fontWeight: 400,
-                          color: 'var(--fg-secondary)', padding: '5px 8px', borderRadius: 8,
-                          cursor: 'pointer', background: 'var(--gbtn-bg)',
-                          border: '1px solid var(--border)', transition: 'all 0.12s',
-                          '&:hover': { color: 'var(--accent)', borderColor: 'rgba(249,115,22,0.3)', background: 'rgba(249,115,22,0.05)' },
-                        }}
-                      >
-                        <span style={{ color: 'var(--accent)', fontSize: '0.65rem' }}>→</span>
-                        {s}
-                      </Box>
-                    ))
+                  : relatedSearches.map(s => {
+                      const gain = estimateClaimGain(s, claims);
+                      return (
+                        <Box
+                          key={s} onClick={() => onNewSearch(s)}
+                          sx={{
+                            display: 'flex', alignItems: 'center', gap: 0.75,
+                            fontFamily: 'var(--font-family)', fontSize: '0.76rem', fontWeight: 400,
+                            color: 'var(--fg-secondary)', padding: '5px 8px', borderRadius: 8,
+                            cursor: 'pointer', background: 'var(--gbtn-bg)',
+                            border: '1px solid var(--border)', transition: 'all 0.12s',
+                            '&:hover': { color: 'var(--accent)', borderColor: 'rgba(249,115,22,0.3)', background: 'rgba(249,115,22,0.05)' },
+                          }}
+                        >
+                          <span style={{ color: 'var(--accent)', fontSize: '0.65rem' }}>→</span>
+                          {s}
+                          {gain > 0 && (
+                            <span style={{
+                              background: 'var(--accent-dim)', color: 'var(--accent)',
+                              borderRadius: 8, padding: '1px 5px',
+                              fontSize: 9, fontWeight: 600, marginLeft: 4,
+                            }}>
+                              +{gain} gaps
+                            </span>
+                          )}
+                        </Box>
+                      );
+                    })
                 }
               </Box>
             </Box>
@@ -1964,6 +2001,16 @@ function TopBar({ query, setQuery, onSubmit, deepMode, onToggleDeep, onReset, an
             <Zap size={11} fill={deepMode ? 'var(--accent)' : 'none'} color={deepMode ? 'var(--accent)' : 'var(--fg-secondary)'} />
             Deep
           </button>
+
+          <span style={{
+            background: 'var(--accent-dim)', color: 'var(--accent)',
+            border: '1px solid var(--accent)', borderRadius: 20,
+            padding: '4px 12px', fontSize: 11, fontWeight: 500,
+            fontFamily: 'var(--font-family)', whiteSpace: 'nowrap',
+            flexShrink: 0,
+          }}>
+            Research mode
+          </span>
 
           {answer && (
             <>
@@ -2232,6 +2279,7 @@ function HomeSearchBar({ query, setQuery, onSubmit, deepMode, onToggleDeep }) {
 export default function ExplorePage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { user } = useAuth();
 
   const [query,        setQuery]        = useState('');
   const [phase,        setPhase]        = useState('idle');
@@ -2268,6 +2316,18 @@ export default function ExplorePage() {
   const followUpAbortRef  = useRef(null);
   const lastBlockRef      = useRef(null);
   const submittedQueryRef = useRef('');
+
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  const completenessScore = calcCompletenessScore(sources, claimsData, contradictions?.contradictions ?? []);
+
+  // Onboarding: show modal for new users who haven't completed the tour
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  useEffect(() => {
+    if (user && user.profile && user.profile.onboarded === false) {
+      setShowOnboarding(true);
+    }
+  }, [user]);
 
   useEffect(() => {
     if (followUpBlocks.length > 0) {
@@ -2348,7 +2408,7 @@ export default function ExplorePage() {
             if      (evt.type === 'sources' && !skipSources) { const _s = evt.sources || []; setSources(_s); sourcesRef.current = _s; if (evt.claims) { const normalised = evt.claims.map(c => ({ ...c, claim_text: c.claim_text ?? c.claim ?? '', status: c.status === 'uncertain' ? 'single_source' : (c.status ?? 'single_source'), source_outlets: c.source_outlets ?? (c.source_outlet ? [c.source_outlet] : []), })); setClaimsData(normalised); claimsDataRef.current = normalised; saveContestedClaims(q.trim(), normalised); } if (evt.pipeline_trace) { setPipelineTrace(evt.pipeline_trace); pipelineTraceRef.current = evt.pipeline_trace; } if (evt.gaps)   { setGapsData(evt.gaps);     gapsDataRef.current   = evt.gaps; } if (evt.quotes) { setQuotesData(evt.quotes); quotesDataRef.current = evt.quotes; } }
             else if (evt.type === 'chunk')                   { accumulatedAnswer += evt.text; setAnswer(prev => prev + evt.text); }
             else if (evt.type === 'error')                   setErrorMsg(evt.text);
-            else if (evt.type === 'contradictions')          setContradictions(evt.data === null ? false : evt.data);
+            else if (evt.type === 'contradictions')          { const cd = evt.data === null ? false : evt.data; setContradictions(cd); if (cd && cd.contradictions?.length > 0) saveInvestigationHistory(q.trim(), cd.contradictions); }
             else if (evt.type === 'stock' && !skipSources)   setStockData(evt.data);
           } catch { /* ignore malformed sse */ }
         }
@@ -2765,10 +2825,12 @@ export default function ExplorePage() {
 
   // ── Results ──
   const lastFollowUp = followUpBlocks.length > 0 ? followUpBlocks[followUpBlocks.length - 1] : null;
+  // eslint-disable-next-line no-unused-vars
   const canFollowUp  = phase === 'results' && (lastFollowUp ? !lastFollowUp.streaming : (!streaming && answer.length > 0));
 
   return (
     <Box sx={{ ...PAGE_BG, height: '100vh', display: 'flex', flexDirection: 'column', paddingTop: `${topOffset}px` }}>
+      {showOnboarding && <OnboardingModal onDone={() => setShowOnboarding(false)} />}
       <TopBar
         query={query} setQuery={setQuery} onSubmit={handleSubmit}
         deepMode={isDeep} onToggleDeep={() => setIsDeep(d => !d)}
@@ -2778,7 +2840,121 @@ export default function ExplorePage() {
       />
 
       {/* Scrollable content */}
-      <Box sx={{ flex: 1, overflowY: 'auto' }}>
+      <Box sx={{ flex: 1, overflowY: 'auto', display: 'flex' }}>
+
+        {/* ── Session sidebar ── */}
+        <div style={{
+          width: sidebarOpen ? 200 : 0,
+          minWidth: sidebarOpen ? 200 : 0,
+          overflow: 'hidden',
+          transition: 'width 0.25s ease, min-width 0.25s ease',
+          borderRight: '1px solid var(--border)',
+          flexShrink: 0,
+          position: 'relative',
+          display: 'flex',
+          flexDirection: 'column',
+        }}>
+          <div style={{ width: 200, padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
+            {/* This session */}
+            <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.58rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 2 }}>
+              This session
+            </div>
+            <div style={{
+              background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+              borderRadius: 8, padding: '8px 10px',
+            }}>
+              <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.75rem', fontWeight: 500, color: 'var(--fg-primary)', marginBottom: 5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {(submittedQueryRef.current || query).slice(0, 40)}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.60rem', color: 'var(--fg-dim)' }}>
+                  {followUpBlocks.length + 1} exchange{followUpBlocks.length + 1 !== 1 ? 's' : ''}
+                </div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.60rem', color: 'var(--fg-dim)' }}>
+                  {sources.length} sources
+                </div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.60rem', color: 'var(--accent)', marginTop: 2 }}>
+                  ● Active now
+                </div>
+              </div>
+            </div>
+
+            {/* Past sessions */}
+            <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.58rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase', marginTop: 6 }}>
+              Past sessions
+            </div>
+            {getSaved().slice(0, 3).map((item, i) => (
+              <div
+                key={i}
+                onClick={() => navigate(`/search?q=${encodeURIComponent(item.query)}`)}
+                style={{
+                  background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                  borderRadius: 8, padding: '7px 9px', cursor: 'pointer',
+                  transition: 'border-color 0.13s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(249,115,22,0.4)'}
+                onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+              >
+                <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.72rem', fontWeight: 400, color: 'var(--fg-primary)', marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {item.query}
+                </div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.58rem', color: 'var(--fg-dim)' }}>
+                  {agoE(item.savedAt)}
+                </div>
+              </div>
+            ))}
+            {getSaved().length === 0 && (
+              <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.70rem', color: 'var(--fg-dim)', fontStyle: 'italic' }}>
+                No saved sessions yet
+              </div>
+            )}
+
+            {/* Completeness score */}
+            <div style={{ marginTop: 'auto', paddingTop: 12 }}>
+              <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.58rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 6 }}>
+                Completeness
+              </div>
+              {(() => {
+                const score = completenessScore;
+                const color = score >= 70 ? '#5dcaa5' : score >= 40 ? 'var(--accent)' : '#e24b4a';
+                return (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.80rem', fontWeight: 700, color }}>{score}</span>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.58rem', color: 'var(--fg-dim)' }}>/100</span>
+                    </div>
+                    <div style={{ height: 4, background: 'var(--bg-tertiary)', borderRadius: 999, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${score}%`, background: color, borderRadius: 999, transition: 'width 0.5s ease' }} />
+                    </div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.58rem', color: 'var(--fg-dim)', marginTop: 4 }}>
+                      {score >= 70 ? 'Well covered' : score >= 40 ? 'In progress' : sources.length === 0 ? 'No results yet' : 'Needs more sources'}
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+
+        {/* Sidebar toggle */}
+        <button
+          onClick={() => setSidebarOpen(o => !o)}
+          style={{
+            position: 'absolute', left: sidebarOpen ? 196 : 0, top: '50%',
+            transform: 'translateY(-50%)',
+            zIndex: 20, width: 18, height: 36,
+            background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+            borderRadius: sidebarOpen ? '0 6px 6px 0' : '0 6px 6px 0',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--fg-dim)',
+            transition: 'left 0.25s ease',
+            padding: 0,
+          }}
+        >
+          {sidebarOpen ? '‹' : '›'}
+        </button>
+
+        <Box sx={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
         <Box sx={{ maxWidth: 1100, mx: 'auto', px: 3, pt: 3, pb: 4, display: 'flex', flexDirection: 'column' }}>
           <ResultBlock
             key={submittedQueryRef.current}
@@ -2809,23 +2985,22 @@ export default function ExplorePage() {
             </Box>
           ))}
         </Box>
-      </Box>
+        </Box>{/* end inner scrollable */}
+      </Box>{/* end sidebar+content flex row */}
 
-      {/* Sticky follow-up bar */}
-      {(canFollowUp || followUpBlocks.length >= MAX_FOLLOW_UPS) && (
-        <Box sx={{
-          borderTop: '1px solid var(--border)',
-          background: 'rgba(26,22,20,0.82)',
-          backdropFilter: 'blur(20px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-          px: 3, py: 1.25,
-          flexShrink: 0,
-        }}>
-          <Box sx={{ maxWidth: 1100, mx: 'auto' }}>
-            <FollowUpBar onSubmit={runFollowUp} atMax={followUpBlocks.length >= MAX_FOLLOW_UPS} />
-          </Box>
+      {/* Sticky follow-up bar — always visible */}
+      <Box sx={{
+        borderTop: '1px solid var(--border)',
+        background: 'rgba(26,22,20,0.82)',
+        backdropFilter: 'blur(20px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+        px: 3, py: 1.25,
+        flexShrink: 0,
+      }}>
+        <Box sx={{ maxWidth: 1100, mx: 'auto' }}>
+          <FollowUpBar onSubmit={runFollowUp} atMax={followUpBlocks.length >= MAX_FOLLOW_UPS} />
         </Box>
-      )}
+      </Box>
 
       <style>{`@keyframes blinkPulse { 50% { opacity: 0; } }`}</style>
       <Toast show={toast.show} message={toast.message} />

@@ -192,6 +192,58 @@ function getDomain(url) {
   catch { return url; }
 }
 
+/* ── Inverted pyramid steps ─────────────────────────────────────────────────── */
+const PYRAMID_STEPS = [
+  { id: 'lead',    label: 'Lead',     color: '#e24b4a', tip: 'Hook the reader in the first sentence. Answer: who, what, when, where.', minWords: 0   },
+  { id: 'nutgraf', label: 'Nut Graf', color: '#f59e0b', tip: 'The "why this matters" paragraph. State the central argument or significance.', minWords: 80  },
+  { id: 'body',    label: 'Body',     color: '#3b82f6', tip: 'Evidence, data, quotes. Most important facts first, lesser details later.', minWords: 250 },
+  { id: 'tail',    label: 'Tail',     color: '#22c55e', tip: 'Background context, related issues, future outlook. Safe to cut if space is tight.', minWords: 500 },
+];
+
+/* ── Weasel-word scanner ─────────────────────────────────────────────────────── */
+const WEASEL_WORDS = [
+  'allegedly', 'apparently', 'arguably', 'basically', 'certainly', 'clearly',
+  'considerable', 'considerably', 'could', 'effective', 'effectively', 'essentially',
+  'evidently', 'extremely', 'fairly', 'generally', 'highly', 'importantly',
+  'in fact', 'indeed', 'it is believed', 'it is felt', 'it is thought',
+  'many', 'may', 'might', 'mostly', 'nearly', 'obviously', 'often', 'overall',
+  'perhaps', 'possibly', 'pretty', 'probably', 'purportedly', 'quite',
+  'rather', 'relatively', 'reportedly', 'roughly', 'seemingly', 'several',
+  'significant', 'significantly', 'some', 'somewhat', 'supposedly',
+  'typically', 'usually', 'various', 'very',
+];
+
+function scanLanguageFlags(text) {
+  if (!text) return [];
+  const plain = text.replace(/<[^>]*>/g, ' ').toLowerCase();
+  const found = [];
+  for (const w of WEASEL_WORDS) {
+    const re = new RegExp(`\\b${w.replace(/\s+/g, '\\s+')}\\b`, 'gi');
+    const matches = [...plain.matchAll(re)];
+    if (matches.length > 0) found.push({ word: w, count: matches.length });
+  }
+  return found.sort((a, b) => b.count - a.count).slice(0, 12);
+}
+
+/* ── Flesch-Kincaid grade estimate ──────────────────────────────────────────── */
+function fleschGrade(text) {
+  if (!text) return null;
+  const plain = text.replace(/<[^>]*>/g, ' ').replace(/[^a-zA-Z0-9\s.!?]/g, '');
+  const words = plain.trim().split(/\s+/).filter(Boolean);
+  if (words.length < 10) return null;
+  const sentences = plain.split(/[.!?]+/).filter(s => s.trim().length > 0).length || 1;
+  const syllables = words.reduce((sum, w) => {
+    const lower = w.toLowerCase().replace(/[^a-z]/g, '');
+    if (!lower) return sum;
+    const count = lower
+      .replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, '')
+      .replace(/^y/, '')
+      .match(/[aeiouy]{1,2}/g)?.length ?? 1;
+    return sum + Math.max(1, count);
+  }, 0);
+  const grade = 0.39 * (words.length / sentences) + 11.8 * (syllables / words.length) - 15.59;
+  return Math.max(1, Math.min(20, Math.round(grade)));
+}
 
 /* ── Confidence tier label ────────────────────────────────────────────────── */
 const TIER_LABEL = { 1: 'High', 2: 'Medium', 3: 'Low' };
@@ -746,6 +798,7 @@ export default function WritePage() {
   const [citationStyle,       setCitationStyle]       = useState('apa'); // 'apa' | 'mla' | 'chicago'
   const [copiedCitation,      setCopiedCitation]      = useState(null); // url of copied citation
   const [aiFormatterOpen,     setAiFormatterOpen]     = useState(false);
+  const [pyramidTip,          setPyramidTip]          = useState(null); // step id
 
   const editorRef      = useRef(null);
   const titleRef       = useRef(null);
@@ -840,8 +893,12 @@ export default function WritePage() {
     const words = content.trim() ? content.trim().split(/\s+/).length : 0;
     const chars = content.length;
     const readTime = Math.max(1, Math.round(words / 200));
-    return { words, chars, readTime };
+    const grade = fleschGrade(content);
+    return { words, chars, readTime, grade };
   }, [content]);
+
+  /* ── Language flags ── */
+  const languageFlags = useMemo(() => scanLanguageFlags(content), [content]);
 
   /* ── Handlers ── */
   const detectUnsourced = useCallback((text) => {
@@ -1467,20 +1524,101 @@ export default function WritePage() {
               />
 
               {/* Word count right-aligned */}
-              <div style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--fg-dim)', display: 'flex', gap: 12 }}>
+              <div style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--fg-dim)', display: 'flex', gap: 12, alignItems: 'center' }}>
                 {selectedWords > 0
                   ? <span>{selectedWords} words selected</span>
                   : (
                     <>
                       <span>{stats.words} words</span>
                       <span>{stats.readTime} min read</span>
+                      {stats.grade !== null && (
+                        <span title="Flesch-Kincaid reading grade">Grade {stats.grade}</span>
+                      )}
                     </>
                   )
                 }
+                {languageFlags.length > 0 && (
+                  <span style={{ color: '#a16207' }} title={`${languageFlags.length} weasel word types found`}>⚑ {languageFlags.length} flags</span>
+                )}
                 {unsourcedCount > 0 && (
                   <span style={{ color: '#a16207' }}>⚠ {unsourcedCount} unsourced</span>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* ── Inverted Pyramid Helper ── */}
+          {!focusMode && (
+            <div style={{
+              flexShrink: 0,
+              background: 'var(--bg-primary)',
+              borderBottom: '0.5px solid var(--border)',
+              padding: '0 16px',
+              display: 'flex', alignItems: 'stretch', gap: 0,
+              position: 'relative', zIndex: 5,
+            }}>
+              {PYRAMID_STEPS.map((step, i) => {
+                const active = stats.words >= step.minWords;
+                const isLast = i === PYRAMID_STEPS.length - 1;
+                const isFirst = i === 0;
+                const showTip = pyramidTip === step.id;
+                return (
+                  <div
+                    key={step.id}
+                    style={{ position: 'relative', flex: 1 }}
+                    onMouseEnter={() => setPyramidTip(step.id)}
+                    onMouseLeave={() => setPyramidTip(null)}
+                  >
+                    <div style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                      padding: '4px 8px', cursor: 'default',
+                      borderRight: isLast ? 'none' : '0.5px solid var(--border)',
+                      borderLeft: isFirst ? 'none' : 'none',
+                      background: active ? `${step.color}10` : 'transparent',
+                      transition: 'background 0.15s',
+                    }}>
+                      <div style={{
+                        width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+                        background: active ? step.color : 'var(--border)',
+                        transition: 'background 0.15s',
+                      }} />
+                      <span style={{
+                        fontFamily: 'var(--font-family)', fontSize: '0.60rem', fontWeight: 600,
+                        color: active ? step.color : 'var(--fg-dim)',
+                        letterSpacing: '0.06em', textTransform: 'uppercase',
+                        transition: 'color 0.15s',
+                      }}>
+                        {step.label}
+                      </span>
+                      {!active && (
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.52rem', color: 'var(--fg-dim)' }}>
+                          {step.minWords}w
+                        </span>
+                      )}
+                    </div>
+                    {showTip && (
+                      <div style={{
+                        position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+                        zIndex: 100, width: 200,
+                        background: dark ? 'rgba(20,18,14,0.96)' : 'rgba(253,250,243,0.98)',
+                        border: `1px solid ${step.color}40`,
+                        borderRadius: 8, padding: '8px 10px',
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                        pointerEvents: 'none',
+                      }}>
+                        <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', color: 'var(--fg-primary)', lineHeight: 1.5 }}>
+                          {step.tip}
+                        </div>
+                        {!active && (
+                          <div style={{ marginTop: 4, fontFamily: 'var(--font-mono)', fontSize: '0.58rem', color: step.color }}>
+                            Unlocks at {step.minWords} words ({Math.max(0, step.minWords - stats.words)} to go)
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -1978,7 +2116,69 @@ export default function WritePage() {
                 )}
               </div>
 
-              {/* Section 5: AI Formatter */}
+              {/* Section 5: Language Flags */}
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <span style={SECTION_LABEL}>Language Flags</span>
+                  {languageFlags.length > 0 && (
+                    <span style={{
+                      fontFamily: 'var(--font-mono)', fontSize: '0.58rem', fontWeight: 700,
+                      color: '#a16207', background: 'rgba(161,98,7,0.10)',
+                      border: '1px solid rgba(161,98,7,0.20)', borderRadius: 4,
+                      padding: '1px 5px',
+                    }}>{languageFlags.length}</span>
+                  )}
+                </div>
+                {content.trim().length === 0 ? (
+                  <div style={{
+                    padding: '12px', textAlign: 'center',
+                    background: 'var(--bg-primary)', border: '1px dashed var(--border)',
+                    borderRadius: 8, fontFamily: 'var(--font-family)', fontSize: '0.65rem', color: 'var(--fg-dim)',
+                  }}>
+                    Start writing to scan for weasel words
+                  </div>
+                ) : languageFlags.length === 0 ? (
+                  <div style={{
+                    padding: '10px 12px', background: 'rgba(34,197,94,0.06)',
+                    border: '1px solid rgba(34,197,94,0.20)', borderRadius: 8,
+                    fontFamily: 'var(--font-family)', fontSize: '0.68rem', color: '#15803d',
+                    display: 'flex', alignItems: 'center', gap: 6,
+                  }}>
+                    <span>✓</span> No weasel words found
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{
+                      fontFamily: 'var(--font-family)', fontSize: '0.60rem', color: 'var(--fg-dim)',
+                      lineHeight: 1.4, marginBottom: 8,
+                    }}>
+                      Hedging words that weaken precision. Consider replacing with specific data or removing.
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {languageFlags.map(({ word, count }) => (
+                        <div key={word} style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '5px 8px', borderRadius: 6,
+                          background: 'var(--bg-primary)', border: '1px solid rgba(161,98,7,0.15)',
+                        }}>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'var(--fg-primary)' }}>
+                            {word}
+                          </span>
+                          <span style={{
+                            fontFamily: 'var(--font-mono)', fontSize: '0.60rem', fontWeight: 700,
+                            color: count > 2 ? '#ef4444' : '#a16207',
+                            minWidth: 20, textAlign: 'right',
+                          }}>
+                            ×{count}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Section 6: AI Formatter */}
               <div style={{ marginBottom: 20 }}>
                 <span style={SECTION_LABEL}>AI Formatter</span>
                 <button
@@ -2000,7 +2200,7 @@ export default function WritePage() {
                 </button>
               </div>
 
-              {/* Section 6: Export */}
+              {/* Section 7: Export */}
               <div>
                 <span style={SECTION_LABEL}>Export</span>
                 <div style={{ display: 'flex', gap: 5, marginBottom: 10 }}>

@@ -83,6 +83,23 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
+  const updateProfile = async (profileData) => {
+    try {
+      const resp = await apiRequest('/auth/profile', {
+        method: 'PATCH',
+        body: JSON.stringify(profileData),
+      });
+      if (resp.ok) {
+        const updated = await resp.json();
+        setUser(updated);
+        return { success: true };
+      }
+      return { success: false };
+    } catch {
+      return { success: false };
+    }
+  };
+
   const value = {
     user,
     loading,
@@ -90,6 +107,7 @@ export const AuthProvider = ({ children }) => {
     login,
     register,
     logout,
+    updateProfile,
     isAuthenticated: !!user,
   };
 
