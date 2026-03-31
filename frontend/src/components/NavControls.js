@@ -152,8 +152,9 @@ export default function NavControls() {
   }, [open]);
 
   const navigate = useNavigate();
-  const onSaved  = location.pathname === '/saved';
-  const onSettings = location.pathname === '/settings';
+  const onSaved     = location.pathname === '/saved';
+  const onSettings  = location.pathname === '/settings';
+  const onProfile   = location.pathname === '/profile';
 
   /* Pill container surface */
   const pill = dark
@@ -192,9 +193,9 @@ export default function NavControls() {
       {/* Account */}
       <IconBtn
         dark={dark}
-        active={false}
-        onClick={() => {}}
-        title="Account (coming soon)"
+        active={onProfile}
+        onClick={() => navigate('/profile')}
+        title="My Profile"
       >
         <User size={14} strokeWidth={1.8} />
       </IconBtn>

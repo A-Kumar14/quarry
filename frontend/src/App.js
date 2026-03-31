@@ -12,6 +12,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
+import ProfilePage from './pages/ProfilePage';
 import { Toaster } from 'sonner';
 
 function AppContent() {
@@ -54,6 +55,7 @@ function AppContent() {
         <Route path="/settings"           element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
         <Route path="/sources"            element={<ProtectedRoute><SourcesPage /></ProtectedRoute>} />
         <Route path="/artifacts"          element={<ProtectedRoute><ArtifactsPage /></ProtectedRoute>} />
+        <Route path="/profile"            element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
         
         <Route path="/finance"            element={<Navigate to="/" replace />} />
         <Route path="*"                   element={<Navigate to="/" replace />} />

@@ -24,6 +24,7 @@ from services.auth_service import (
     get_user_from_token,
     is_locked_out,
     record_failure,
+    update_user_profile,
     verify_password,
 )
 
@@ -68,6 +69,16 @@ class RegisterBody(BaseModel):
 class LoginBody(BaseModel):
     username: str   # accepts username OR email
     password: str
+
+
+class ProfileBody(BaseModel):
+    role: str = ""
+    organization: str = ""
+    beat: str = ""
+    expertise_level: str = ""
+    topics_of_focus: list[str] = []
+    preferred_source_types: list[str] = []
+    onboarded: bool = False
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -136,10 +147,48 @@ def me(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(beare
     if dev_token and credentials.credentials == dev_token:
         users = _load_users()
         if users:
-            return _public(users[0])
+            u = users[0]
+            # Ensure legacy user records have a profile field
+            if "profile" not in u:
+                u["profile"] = {"role": "", "organization": "", "beat": "",
+                                "expertise_level": "", "topics_of_focus": [],
+                                "preferred_source_types": [], "onboarded": False}
+            return _public(u)
         raise HTTPException(status_code=503, detail="No users registered yet")
 
     user = get_user_from_token(credentials.credentials)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+    if "profile" not in user:
+        user["profile"] = {"role": "", "organization": "", "beat": "",
+                           "expertise_level": "", "topics_of_focus": [],
+                           "preferred_source_types": [], "onboarded": False}
     return user
+
+
+@router.patch("/profile")
+def update_profile(
+    body: ProfileBody,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
+):
+    _require_auth_enabled()
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    from services.auth_service import _dev_bypass_token, _load_users, _public, decode_token
+    dev_token = _dev_bypass_token()
+
+    if dev_token and credentials.credentials == dev_token:
+        users = _load_users()
+        if not users:
+            raise HTTPException(status_code=503, detail="No users registered yet")
+        user_id = users[0]["id"]
+    else:
+        user_id = decode_token(credentials.credentials)
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    updated = update_user_profile(user_id, body.model_dump())
+    if not updated:
+        raise HTTPException(status_code=404, detail="User not found")
+    return updated

@@ -407,6 +407,7 @@ def build_explore_system_prompt(
     live_scores: bool = False,
     use_epistemic: bool = False,
     reconciled_claims: list | None = None,
+    user_context: str = "",
 ) -> str:
     """
     Construct the explore_the_web system prompt with the correct conditional
@@ -422,12 +423,18 @@ def build_explore_system_prompt(
     else:
         epistemic_instruction = ""
 
+    user_context_block = (
+        f"\n\n{user_context}\n\nUse this profile to tailor the depth, framing, and focus of your answer "
+        f"to what is most relevant for this user's work."
+        if user_context else ""
+    )
+
     return _EXPLORE_BASE.format(
         finance_instruction=_FINANCE_INSTRUCTION if stock_data else "",
         scores_instruction=_SCORES_INSTRUCTION if live_scores else "",
         context_block=context_block,
         epistemic_instruction=epistemic_instruction,
-    )
+    ) + user_context_block
 
 
 def sanitize_sse_chunk(text: str) -> str:
@@ -755,7 +762,7 @@ class AIService:
             logger.error("extract_quotes.failed: %s", exc)
         return []
 
-    async def explore_the_web(self, query: str, deep: bool = False):
+    async def explore_the_web(self, query: str, deep: bool = False, user_context: str = ""):
         """
         Search-Augmented Generation streaming generator.
         Yields SSE-formatted strings: sources event, then chunk events, then [DONE].
@@ -881,6 +888,7 @@ class AIService:
             live_scores=bool(live_scores_text),
             use_epistemic=bool(reconciled),
             reconciled_claims=reconciled,
+            user_context=user_context,
         )
 
         # ── Gap analysis + quote extraction (parallel, non-blocking) ─────────
