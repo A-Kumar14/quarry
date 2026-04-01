@@ -11,6 +11,8 @@ All env vars are read lazily (at call time, not at import time) so that
 test fixtures can override them via os.environ / monkeypatch.
 """
 
+import base64
+import hashlib
 import json
 import logging
 import os
@@ -27,6 +29,16 @@ logger = logging.getLogger(__name__)
 JWT_ALGORITHM = "HS256"
 USERS_FILE = Path(__file__).parent.parent / "data" / "users.json"
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def _prepare_password(password: str) -> str:
+    """
+    Pre-hash the password with SHA-256 (base64-encoded) before bcrypt.
+    bcrypt silently truncates or errors on inputs > 72 bytes; this keeps
+    the full password entropy while staying within bcrypt's limit.
+    """
+    digest = hashlib.sha256(password.encode("utf-8")).digest()
+    return base64.b64encode(digest).decode("ascii")
 
 
 # ── Lazy env-var helpers ──────────────────────────────────────────────────────
@@ -104,7 +116,7 @@ def create_user(username: str, email: str, password: str) -> dict:
         "id": str(uuid.uuid4()),
         "username": username,
         "email": email.lower(),
-        "hashed_password": pwd_ctx.hash(password),
+        "hashed_password": pwd_ctx.hash(_prepare_password(password)),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "profile": {
             "role": "",
@@ -147,7 +159,7 @@ def get_user_by_id(user_id: str) -> Optional[dict]:
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_ctx.verify(plain, hashed)
+    return pwd_ctx.verify(_prepare_password(plain), hashed)
 
 
 def _public(user: dict) -> dict:
