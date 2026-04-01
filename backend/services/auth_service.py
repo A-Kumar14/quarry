@@ -11,7 +11,6 @@ All env vars are read lazily (at call time, not at import time) so that
 test fixtures can override them via os.environ / monkeypatch.
 """
 
-import base64
 import hashlib
 import json
 import logging
@@ -21,24 +20,21 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 logger = logging.getLogger(__name__)
 
 JWT_ALGORITHM = "HS256"
 USERS_FILE = Path(__file__).parent.parent / "data" / "users.json"
-pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-def _prepare_password(password: str) -> str:
+def _prepare_password(password: str) -> bytes:
     """
-    Pre-hash the password with SHA-256 (base64-encoded) before bcrypt.
-    bcrypt silently truncates or errors on inputs > 72 bytes; this keeps
-    the full password entropy while staying within bcrypt's limit.
+    SHA-256 hash the password before bcrypt so passwords longer than 72 bytes
+    are handled correctly. Returns bytes ready for bcrypt.hash / bcrypt.checkpw.
     """
-    digest = hashlib.sha256(password.encode("utf-8")).digest()
-    return base64.b64encode(digest).decode("ascii")
+    return hashlib.sha256(password.encode("utf-8")).digest()
 
 
 # ── Lazy env-var helpers ──────────────────────────────────────────────────────
@@ -116,7 +112,7 @@ def create_user(username: str, email: str, password: str) -> dict:
         "id": str(uuid.uuid4()),
         "username": username,
         "email": email.lower(),
-        "hashed_password": pwd_ctx.hash(_prepare_password(password)),
+        "hashed_password": bcrypt.hashpw(_prepare_password(password), bcrypt.gensalt()).decode("utf-8"),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "profile": {
             "role": "",
@@ -159,14 +155,16 @@ def get_user_by_id(user_id: str) -> Optional[dict]:
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    # Try pre-hashed first (new accounts), then raw (accounts created before the fix)
+    hashed_bytes = hashed.encode("utf-8") if isinstance(hashed, str) else hashed
+    # Try pre-hashed path (all new accounts)
     try:
-        if pwd_ctx.verify(_prepare_password(plain), hashed):
+        if bcrypt.checkpw(_prepare_password(plain), hashed_bytes):
             return True
     except Exception:
         pass
+    # Fallback: accounts created before the SHA-256 pre-hash was introduced
     try:
-        return pwd_ctx.verify(plain[:72], hashed)
+        return bcrypt.checkpw(plain.encode("utf-8")[:72], hashed_bytes)
     except Exception:
         return False
 
