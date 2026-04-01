@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { X, Zap, RefreshCw, ChevronRight, ArrowRight, Bookmark, Search, Edit3, AlertTriangle } from 'lucide-react';
@@ -369,6 +369,7 @@ function StoryPlanPanel({ topic, profile, onBack, onNavigate }) {
 export default function DailyTopicsModal({ onClose }) {
   const { user }   = useAuth();
   const [dark]     = useDarkMode();
+  // eslint-disable-next-line no-unused-vars
   const navigate   = useNavigate();
 
   const [phase, setPhase]           = useState('loading');   // loading | ready | error
@@ -381,7 +382,7 @@ export default function DailyTopicsModal({ onClose }) {
   });
   const inputRef = useRef(null);
 
-  const profile = user?.profile || {};
+  const profile = useMemo(() => user?.profile || {}, [user]);
 
   // ── Fetch brief ─────────────────────────────────────────────────────────────
   const fetchBrief = useCallback(async (extra = '') => {
