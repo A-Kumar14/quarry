@@ -159,7 +159,16 @@ def get_user_by_id(user_id: str) -> Optional[dict]:
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_ctx.verify(_prepare_password(plain), hashed)
+    # Try pre-hashed first (new accounts), then raw (accounts created before the fix)
+    try:
+        if pwd_ctx.verify(_prepare_password(plain), hashed):
+            return True
+    except Exception:
+        pass
+    try:
+        return pwd_ctx.verify(plain[:72], hashed)
+    except Exception:
+        return False
 
 
 def _public(user: dict) -> dict:
