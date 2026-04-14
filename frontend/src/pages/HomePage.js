@@ -1170,46 +1170,269 @@ function InlineGlobeMap({ pins = WORLD_PINS, onOpenMap, showSignalsList = false 
   );
 }
 
+function DetailSection({ title, children }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{
+        fontFamily: T.mono, fontSize: '0.58rem', color: 'rgba(240,230,216,0.35)',
+        textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 5,
+      }}>
+        {title}
+      </div>
+      <div style={{ fontFamily: T.sans, fontSize: '0.74rem', color: 'rgba(200,195,185,0.72)', lineHeight: 1.55 }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function GlobeMapModal({ open, onClose, pins }) {
+  const [activePin, setActivePin] = React.useState(null);
+  const [hoveredRow, setHoveredRow] = React.useState(-1);
+
+  React.useEffect(() => {
+    if (!open) { setActivePin(null); setHoveredRow(-1); }
+  }, [open]);
+
   if (!open) return null;
+
+  const modalW = activePin ? 'min(1040px,96vw)' : 'min(680px,96vw)';
+
+  const typePillColor = (type = '') => {
+    const t = type.toLowerCase();
+    if (t.includes('conflict') || t.includes('crisis') || t.includes('war')) return { bg: 'rgba(220,38,38,0.18)', color: '#ef4444', border: 'rgba(220,38,38,0.30)' };
+    if (t.includes('famine') || t.includes('food') || t.includes('health')) return { bg: 'rgba(217,119,6,0.18)', color: '#f59e0b', border: 'rgba(217,119,6,0.30)' };
+    if (t.includes('politics') || t.includes('election') || t.includes('diplomatic')) return { bg: 'rgba(124,58,237,0.18)', color: '#a78bfa', border: 'rgba(124,58,237,0.30)' };
+    return { bg: 'rgba(249,115,22,0.12)', color: '#f97316', border: 'rgba(249,115,22,0.25)' };
+  };
+
   return (
     <div
       onClick={onClose}
       style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 1200,
-        background: 'rgba(0,0,0,0.62)',
-        backdropFilter: 'blur(3px)',
-        WebkitBackdropFilter: 'blur(3px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 16,
+        position: 'fixed', inset: 0, zIndex: 1200,
+        background: 'rgba(0,0,0,0.68)',
+        backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
       }}
     >
       <div
-        onClick={(e) => e.stopPropagation()}
-        style={{ width: 'min(1080px, 96vw)' }}
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: modalW,
+          background: 'rgba(14,10,6,0.97)',
+          border: '1px solid rgba(249,115,22,0.22)',
+          borderRadius: 18,
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          maxHeight: '88vh',
+          transition: 'width 0.28s cubic-bezier(0.4,0,0.2,1)',
+          boxShadow: '0 24px 80px rgba(0,0,0,0.60)',
+        }}
       >
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        {/* Header */}
+        <div style={{
+          padding: '14px 18px 12px',
+          borderBottom: '1px solid rgba(249,115,22,0.12)',
+          display: 'flex', alignItems: 'center', gap: 8,
+          flexShrink: 0,
+        }}>
+          <span style={{ fontSize: '1.1rem' }}>🌐</span>
+          <span style={{ fontFamily: T.sans, fontSize: '0.94rem', fontWeight: 600, color: 'rgba(240,230,216,0.92)', flex: 1 }}>
+            World Signals
+          </span>
+          <span style={{
+            fontFamily: T.mono, fontSize: '0.60rem', color: 'rgba(240,230,216,0.38)',
+            background: 'rgba(249,115,22,0.10)', border: '1px solid rgba(249,115,22,0.18)',
+            borderRadius: 5, padding: '2px 6px',
+          }}>
+            {pins.length} signals
+          </span>
           <button
             onClick={onClose}
             style={{
-              border: '1px solid var(--border)',
-              borderRadius: 999,
-              background: 'var(--bg-secondary)',
-              color: 'var(--fg-secondary)',
-              fontFamily: T.sans,
-              fontSize: '0.72rem',
-              padding: '5px 11px',
-              cursor: 'pointer',
+              border: '1px solid rgba(255,255,255,0.10)', borderRadius: 999,
+              background: 'rgba(255,255,255,0.05)', color: 'rgba(240,230,216,0.55)',
+              fontFamily: T.sans, fontSize: '0.70rem', padding: '4px 10px', cursor: 'pointer',
+              transition: 'all 0.14s',
             }}
           >
             Close
           </button>
         </div>
-        <InlineGlobeMap pins={pins} showSignalsList />
+
+        {/* Body */}
+        <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+
+          {/* Globe pane */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <InlineGlobeMap pins={pins} showSignalsList={false} />
+          </div>
+
+          {/* Signal list */}
+          <div style={{
+            width: 260, flexShrink: 0,
+            borderLeft: '1px solid rgba(255,255,255,0.06)',
+            overflowY: 'auto',
+          }}>
+            {pins.map((pin, i) => {
+              const pill = typePillColor(pin.type);
+              return (
+                <div
+                  key={i}
+                  onMouseEnter={() => setHoveredRow(i)}
+                  onMouseLeave={() => setHoveredRow(-1)}
+                  style={{
+                    padding: '10px 14px',
+                    borderBottom: '1px solid rgba(255,255,255,0.04)',
+                    background: hoveredRow === i ? 'rgba(249,115,22,0.07)' : 'transparent',
+                    transition: 'background 0.12s',
+                    cursor: 'default',
+                    position: 'relative',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                    <span style={{
+                      width: 18, height: 18, borderRadius: 999, flexShrink: 0,
+                      background: 'rgba(249,115,22,0.14)', border: '1px solid rgba(249,115,22,0.30)',
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      fontFamily: T.mono, fontSize: '0.52rem', color: '#f3ded2', marginTop: 1,
+                    }}>
+                      {i + 1}
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3, flexWrap: 'wrap' }}>
+                        <span style={{ fontFamily: T.sans, fontSize: '0.78rem', fontWeight: 600, color: 'rgba(240,230,216,0.88)' }}>
+                          {pin.label}
+                        </span>
+                        <span style={{
+                          fontFamily: T.mono, fontSize: '0.54rem', textTransform: 'uppercase',
+                          background: pill.bg, border: `1px solid ${pill.border}`, color: pill.color,
+                          borderRadius: 4, padding: '1px 5px',
+                        }}>
+                          {pin.type}
+                        </span>
+                      </div>
+                      <div style={{
+                        fontFamily: T.sans, fontSize: '0.67rem', color: 'rgba(200,195,185,0.50)',
+                        lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box',
+                        WebkitLineClamp: 1, WebkitBoxOrient: 'vertical',
+                      }}>
+                        {pin.desc}
+                      </div>
+                      {hoveredRow === i && (
+                        <button
+                          onClick={() => setActivePin(pin)}
+                          style={{
+                            marginTop: 6, background: 'none', border: 'none', padding: 0,
+                            fontFamily: T.sans, fontSize: '0.70rem', fontWeight: 600,
+                            color: '#F97316', cursor: 'pointer',
+                          }}
+                        >
+                          Explore ›
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Detail panel */}
+          <div style={{
+            width: activePin ? 360 : 0,
+            overflow: 'hidden',
+            flexShrink: 0,
+            borderLeft: activePin ? '1px solid rgba(249,115,22,0.15)' : 'none',
+            transition: 'width 0.28s cubic-bezier(0.4,0,0.2,1)',
+            display: 'flex', flexDirection: 'column',
+          }}>
+            {activePin && (
+              <div style={{ width: 360, display: 'flex', flexDirection: 'column', height: '100%' }}>
+                {/* Panel header */}
+                <div style={{
+                  padding: '12px 14px 10px',
+                  borderBottom: '1px solid rgba(249,115,22,0.10)',
+                  flexShrink: 0,
+                }}>
+                  <button
+                    onClick={() => setActivePin(null)}
+                    style={{
+                      background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                      fontFamily: T.sans, fontSize: '0.70rem', color: 'rgba(240,230,216,0.45)',
+                      display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8,
+                    }}
+                  >
+                    ← Back
+                  </button>
+                  <div style={{ fontFamily: T.sans, fontSize: '0.88rem', fontWeight: 600, color: 'rgba(240,230,216,0.92)', lineHeight: 1.3 }}>
+                    {activePin.label}
+                  </div>
+                </div>
+
+                {/* Panel body */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '14px' }}>
+                  <DetailSection title="What happened">
+                    {activePin.desc}
+                  </DetailSection>
+                  <DetailSection title="Background">
+                    {`${activePin.type} activity in the ${activePin.label} region. This signal is being tracked across multiple international news sources.`}
+                  </DetailSection>
+                  <DetailSection title="Key facts">
+                    <div style={{ fontFamily: T.sans, fontSize: '0.72rem', color: 'rgba(200,195,185,0.70)', lineHeight: 1.5 }}>
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+                        <span style={{ color: 'rgba(200,195,185,0.40)', minWidth: 70 }}>Region</span>
+                        <span>{activePin.label}</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <span style={{ color: 'rgba(200,195,185,0.40)', minWidth: 70 }}>Category</span>
+                        <span>{activePin.type}</span>
+                      </div>
+                    </div>
+                  </DetailSection>
+                  <DetailSection title="Sources reporting">
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                      {['Reuters', 'AP News', 'BBC', 'Al Jazeera'].map(s => (
+                        <span key={s} style={{
+                          fontFamily: T.mono, fontSize: '0.62rem', color: 'rgba(200,195,185,0.55)',
+                          background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
+                          borderRadius: 5, padding: '2px 7px',
+                        }}>
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+                  </DetailSection>
+                </div>
+
+                {/* Panel footer */}
+                <div style={{
+                  padding: '12px 14px',
+                  borderTop: '1px solid rgba(255,255,255,0.06)',
+                  display: 'flex', gap: 8, flexShrink: 0,
+                }}>
+                  <button style={{
+                    flex: 1, background: '#F97316', border: 'none', borderRadius: 10,
+                    color: '#fff', fontFamily: T.sans, fontSize: '0.74rem', fontWeight: 600,
+                    padding: '9px 0', cursor: 'pointer',
+                  }}>
+                    Start Researching
+                  </button>
+                  <button style={{
+                    flex: 1, background: 'none', border: '1px solid rgba(249,115,22,0.35)',
+                    borderRadius: 10, color: '#F97316', fontFamily: T.sans, fontSize: '0.74rem',
+                    fontWeight: 500, padding: '9px 0', cursor: 'pointer',
+                  }}>
+                    Open in Notes
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+        </div>
       </div>
     </div>
   );
