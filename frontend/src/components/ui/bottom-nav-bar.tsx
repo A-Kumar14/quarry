@@ -1,9 +1,6 @@
-"use client";
-
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
-import { Home, LineChart, CreditCard, MessageCircle, Trophy, User } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 
@@ -14,15 +11,6 @@ export type BottomNavItem = {
   icon: LucideIcon;
   onClick?: () => void;
 };
-
-const defaultNavItems: BottomNavItem[] = [
-  { label: "Home", icon: Home },
-  { label: "Portfolio", icon: LineChart },
-  { label: "Transactions", icon: CreditCard },
-  { label: "Messages", icon: MessageCircle },
-  { label: "Rewards", icon: Trophy },
-  { label: "Profile", icon: User },
-];
 
 type BottomNavBarProps = {
   className?: string;
@@ -39,7 +27,7 @@ export function BottomNavBar({
   items,
   onSelectIndex,
 }: BottomNavBarProps) {
-  const navItems = useMemo(() => items ?? defaultNavItems, [items]);
+  const navItems = useMemo(() => items ?? [], [items]);
   const [activeIndex, setActiveIndex] = useState(defaultIndex);
 
   // Keep highlight in sync with router-driven defaultIndex (e.g. back/forward navigation)
