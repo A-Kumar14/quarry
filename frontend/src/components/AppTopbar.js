@@ -24,11 +24,11 @@ export default function AppTopbar() {
   const { user } = useAuth();
 
   const navItems = [
-    { id: 'home', icon: <Home size={20} />, label: 'Home', onClick: () => navigate('/') },
-    { id: 'notes', icon: <BookOpen size={20} />, label: 'Notes', onClick: () => navigate('/notes') },
-    { id: 'sources', icon: <FileText size={20} />, label: 'Sources', onClick: () => navigate('/sources') },
-    { id: 'artifacts', icon: <Archive size={20} />, label: 'Artifacts', onClick: () => navigate('/artifacts') },
-    { id: 'settings', icon: <Settings size={20} />, label: 'Settings', onClick: () => navigate('/settings') },
+    { id: 'home', icon: <Home size={22} />, label: 'Home', onClick: () => navigate('/') },
+    { id: 'notes', icon: <BookOpen size={22} />, label: 'Notes', onClick: () => navigate('/notes') },
+    { id: 'sources', icon: <FileText size={22} />, label: 'Sources', onClick: () => navigate('/sources') },
+    { id: 'artifacts', icon: <Archive size={22} />, label: 'Artifacts', onClick: () => navigate('/artifacts') },
+    { id: 'settings', icon: <Settings size={22} />, label: 'Settings', onClick: () => navigate('/settings') },
   ];
 
   const activeNavIndex = (() => {
@@ -91,8 +91,8 @@ export default function AppTopbar() {
         key={activeNavIndex}
         items={navItems}
         defaultActiveIndex={activeNavIndex}
-        className={`h-9 rounded-xl px-1 border-[var(--border)] ${dark ? 'bg-[rgba(255,255,255,0.06)]' : 'bg-[rgba(0,0,0,0.04)]'}`}
-        iconContainerClassName="p-3"
+        className={`min-w-0 max-w-none h-[52px] border border-[var(--border)] backdrop-blur-[14px] shadow-[0_10px_30px_rgba(0,0,0,0.18)] ${dark ? 'bg-[rgba(20,16,14,0.42)]' : 'bg-[rgba(255,255,255,0.18)]'}`}
+        iconContainerClassName="!h-10 !p-0 px-3"
         iconClassName="text-[var(--fg-primary)]"
         limelightClassName="w-8"
       />
