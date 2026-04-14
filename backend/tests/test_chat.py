@@ -100,3 +100,59 @@ def test_store_and_search(tmp_chroma):
 def test_search_empty_collection(tmp_chroma):
     results = tmp_chroma.semantic_search("anything")
     assert results == []
+
+
+# ── /chat session endpoint tests ─────────────────────────────────────────────
+
+def test_create_session(client, monkeypatch, tmp_path):
+    import services.conversation_store as cs
+    monkeypatch.setattr(cs, "DATA_FILE", tmp_path / "conversations.json")
+    cs._data_cache = None
+
+    resp = client.post("/chat/sessions")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "session_id" in body
+    assert "branch_id" in body
+    assert body["title"] == "New conversation"
+
+
+def test_get_sessions_empty(client, monkeypatch, tmp_path):
+    import services.conversation_store as cs
+    monkeypatch.setattr(cs, "DATA_FILE", tmp_path / "conversations.json")
+    cs._data_cache = None
+
+    resp = client.get("/chat/sessions")
+    assert resp.status_code == 200
+    assert resp.json()["sessions"] == []
+
+
+def test_fork_session(client, monkeypatch, tmp_path):
+    import services.conversation_store as cs
+    monkeypatch.setattr(cs, "DATA_FILE", tmp_path / "conversations.json")
+    cs._data_cache = None
+
+    # Create session and add a message directly via store
+    sid, bid = cs.create_session()
+    cs.add_message(sid, bid, {
+        "id": "msg-abc",
+        "role": "user",
+        "content": "test",
+        "timestamp": "2026-01-01T00:00:00",
+    })
+
+    resp = client.post(f"/chat/sessions/{sid}/fork", json={"from_message_id": "msg-abc"})
+    assert resp.status_code == 200
+    assert "branch_id" in resp.json()
+    assert "label" in resp.json()
+
+
+def test_chat_search(client, monkeypatch, tmp_path):
+    import services.chroma_service as cs_chroma
+    monkeypatch.setattr(cs_chroma, "CHROMA_DIR", str(tmp_path / "chroma"))
+    cs_chroma._client = None
+    cs_chroma._collection = None
+
+    resp = client.get("/chat/search?q=test")
+    assert resp.status_code == 200
+    assert "results" in resp.json()
