@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getBeats, saveBeat } from '../utils/beats';
 import { useDarkMode } from '../DarkModeContext';
+import { buildDailyDigestSignature, getCachedDailyDigest, setCachedDailyDigest } from '../utils/dailyDigestCache';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -85,7 +86,7 @@ function TopicCard({ topic, onSelect, onTrack, isTracked }) {
             {urgency.label}
           </span>
           {topic.relevance && (
-            <span title={`${topic.relevance} relevance to your beat`} style={{
+            <span title={`${topic.relevance} relevance to your focus area`} style={{
               display: 'inline-flex', alignItems: 'center', gap: 4,
               fontSize: '0.58rem', color: 'var(--fg-dim)', fontFamily: 'var(--font-family)',
             }}>
@@ -98,7 +99,7 @@ function TopicCard({ topic, onSelect, onTrack, isTracked }) {
             </span>
           )}
           {topic.contradiction_potential === 'High' && (
-            <span title="Sources likely to contradict each other on this story" style={{
+            <span title="Sources likely to contradict each other on this topic" style={{
               display: 'inline-flex', alignItems: 'center', gap: 3,
               fontSize: '0.58rem', color: '#f97316', fontFamily: 'var(--font-family)',
             }}>
@@ -109,7 +110,7 @@ function TopicCard({ topic, onSelect, onTrack, isTracked }) {
         </div>
         <button
           onClick={e => { e.stopPropagation(); onTrack(topic); }}
-          title={isTracked ? 'Already tracking' : 'Track this beat'}
+          title={isTracked ? 'Already tracking' : 'Track this topic'}
           style={{
             background: isTracked ? 'rgba(34,197,94,0.10)' : 'transparent',
             border: isTracked ? '1px solid rgba(34,197,94,0.30)' : '1px solid var(--border)',
@@ -178,14 +179,14 @@ function TopicCard({ topic, onSelect, onTrack, isTracked }) {
           onMouseEnter={e => { e.currentTarget.style.opacity = '0.88'; }}
           onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
         >
-          Cover This <ChevronRight size={11} />
+          Explore Topic <ChevronRight size={11} />
         </button>
       </div>
     </div>
   );
 }
 
-// ── Story plan panel ──────────────────────────────────────────────────────────
+// ── Topic plan panel ──────────────────────────────────────────────────────────
 function StoryPlanPanel({ topic, profile, onBack, onNavigate }) {
   const [plan, setPlan]         = useState('');
   const [streaming, setStreaming] = useState(true);
@@ -212,7 +213,7 @@ function StoryPlanPanel({ topic, profile, onBack, onNavigate }) {
         headline: topic.headline,
         summary: topic.summary,
         hook: topic.hook || '',
-        beat: topic.beat || profile?.beat || '',
+        beat: topic.beat || profile?.focus_area || profile?.beat || '',
         profile: profile || {},
       }),
       signal: controller.signal,
@@ -254,13 +255,13 @@ function StoryPlanPanel({ topic, profile, onBack, onNavigate }) {
   }, [navigate, topic, onNavigate]);
 
   const handleDraft = useCallback(() => {
-    // Pre-load story plan into WritePage
+    // Pre-load plan into Notes workspace
     sessionStorage.setItem('quarry_write_session', JSON.stringify({
       query: topic.headline,
       content: `# ${topic.headline}\n\n${plan}`,
       sources: [],
     }));
-    navigate('/write');
+    navigate('/notes');
     if (onNavigate) onNavigate();
   }, [navigate, topic, plan, onNavigate]);
 
@@ -296,7 +297,7 @@ function StoryPlanPanel({ topic, profile, onBack, onNavigate }) {
             color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 4,
           }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', display: 'inline-block', animation: 'dailyPulse 1s ease-in-out infinite' }} />
-            Drafting plan…
+            Building plan…
           </span>
         )}
       </div>
@@ -357,7 +358,7 @@ function StoryPlanPanel({ topic, profile, onBack, onNavigate }) {
             onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(249,115,22,0.4)'; }}
             onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; }}
           >
-            <Edit3 size={14} /> Draft This Story
+            <Edit3 size={14} /> Open in Notes
           </button>
         </div>
       )}
@@ -383,9 +384,23 @@ export default function DailyTopicsModal({ onClose }) {
   const inputRef = useRef(null);
 
   const profile = useMemo(() => user?.profile || {}, [user]);
+  const userId = user?.id || user?.email || 'anon';
+
+  const currentSignature = useMemo(() => {
+    const beatNames = getBeats().map(b => b.name);
+    return buildDailyDigestSignature(profile, beatNames);
+  }, [profile]);
 
   // ── Fetch brief ─────────────────────────────────────────────────────────────
-  const fetchBrief = useCallback(async (extra = '') => {
+  const fetchBrief = useCallback(async (extra = '', { force = false } = {}) => {
+    if (!force && !extra) {
+      const cached = getCachedDailyDigest(userId, currentSignature);
+      if (cached) {
+        setBrief(cached);
+        setPhase('ready');
+        return;
+      }
+    }
     setPhase('loading');
     setSelectedTopic(null);
     const authToken = localStorage.getItem('quarry_auth_token') || sessionStorage.getItem('quarry_auth_token') || '';
@@ -399,7 +414,7 @@ export default function DailyTopicsModal({ onClose }) {
           extra,
         ];
       }
-      const res = await fetch(`${API}/explore/daily-brief`, {
+      const res = await fetch(`${API}/explore/daily-digest`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -410,13 +425,19 @@ export default function DailyTopicsModal({ onClose }) {
       if (!res.ok) throw new Error('brief fetch failed');
       const data = await res.json();
       setBrief(data);
+      if (!extra) {
+        setCachedDailyDigest(userId, currentSignature, data);
+      } else {
+        // Refinements should become the new persisted digest for this preference set.
+        setCachedDailyDigest(userId, currentSignature, data);
+      }
       setPhase('ready');
     } catch (err) {
       setPhase('error');
     }
-  }, [profile]);
+  }, [profile, userId, currentSignature]);
 
-  useEffect(() => { fetchBrief(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchBrief('', { force: false }); }, [fetchBrief]);
 
   // Close on Escape
   useEffect(() => {
@@ -425,11 +446,11 @@ export default function DailyTopicsModal({ onClose }) {
     return () => document.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  // ── Track beat ──────────────────────────────────────────────────────────────
+  // ── Track topic ─────────────────────────────────────────────────────────────
   const handleTrack = useCallback((topic) => {
     if (trackedIds.has(topic.headline)) return;
     saveBeat({
-      id: `beat_${Date.now()}`,
+      id: `topic_${Date.now()}`,
       name: topic.headline,
       keywords: [topic.beat, topic.headline].filter(Boolean),
       createdAt: Date.now(),
@@ -443,7 +464,7 @@ export default function DailyTopicsModal({ onClose }) {
     const term = chatInput.trim();
     setChatInput('');
     setChatLoading(true);
-    await fetchBrief(term);
+    await fetchBrief(term, { force: true });
     setChatLoading(false);
   }, [chatInput, fetchBrief]);
 
@@ -559,7 +580,7 @@ export default function DailyTopicsModal({ onClose }) {
                   color: 'var(--fg-dim)', marginTop: 2,
                 }}>
                   {brief?.generated_at || new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                  {profile?.beat ? ` · ${profile.beat}` : ''}
+                  {(profile?.focus_area || profile?.beat) ? ` · ${profile?.focus_area || profile?.beat}` : ''}
                 </div>
               </div>
             </div>
@@ -634,7 +655,7 @@ export default function DailyTopicsModal({ onClose }) {
                     Couldn't fetch today's brief. Check your connection.
                   </span>
                   <button
-                    onClick={() => fetchBrief()}
+                    onClick={() => fetchBrief('', { force: true })}
                     style={{
                       background: 'var(--accent)', color: '#fff', border: 'none',
                       borderRadius: 9, padding: '8px 20px', cursor: 'pointer',
@@ -752,7 +773,7 @@ export default function DailyTopicsModal({ onClose }) {
               </div>
             </div>
 
-            {/* Right: story plan panel */}
+            {/* Right: topic plan panel */}
             {selectedTopic && (
               <div style={{
                 width: 420, flexShrink: 0,

@@ -1,6 +1,6 @@
 # Quarry
 
-An epistemic research tool for journalists and analysts — search the web, synthesise conflicting sources, and write with inline citations.
+An epistemic news and research tool — search the web, synthesise conflicting sources, and document findings with inline citations.
 
 [Report Bug](https://github.com/A-Kumar14/quarry/issues/new?labels=bug) · [Request Feature](https://github.com/A-Kumar14/quarry/issues/new?labels=enhancement) · [Issues](https://github.com/A-Kumar14/quarry/issues)
 
@@ -31,7 +31,7 @@ Quarry is a full-stack research platform built for epistemic transparency — no
 
 **Finance Terminal** — a command-driven market terminal. Type `AAPL`, `COMPARE AAPL MSFT NVDA`, `/analyze NVDA`, or plain English to get live prices, sparklines, charts, and AI analysis.
 
-**Quarry Write** — a document editor with floating formatting toolbar, markdown shortcuts, focus mode, live word count, and read-time estimate. Claim Landscape lets you insert verified claims directly from search results into the document. Export with APA or MLA bibliography generated from your cited sources.
+**Quarry Workspace** — a document surface with floating formatting toolbar, markdown shortcuts, focus mode, live word count, and read-time estimate. Claim Landscape lets you insert verified claims directly from search results into your notes. Export with APA or MLA bibliography generated from cited sources.
 
 ---
 
@@ -44,7 +44,7 @@ Quarry is a full-stack research platform built for epistemic transparency — no
 | Perspectives tab | Yes — clusters viewpoints by outlet lean | No |
 | Source provenance dots | Yes — colour-coded by funding type, editorial lean, credibility tier | No |
 | Deep mode sub-query transparency | Yes — shows every sub-query run | No |
-| Write surface with citation insertion | Yes — insert claims from search into doc | No |
+| Workspace with citation insertion | Yes — insert claims from search into notes | No |
 | Pipeline trace | Yes — raw claims extracted, verified, contested counts shown | No |
 
 ---
@@ -129,9 +129,9 @@ Use the tab bar to switch between:
 
 Toggle **Deep** next to the search bar for multi-pass analysis on complex topics. A sub-query transparency panel shows the decomposition Quarry used.
 
-### Quarry Write (`/write`)
+### Quarry Workspace (`/write`)
 
-A document-first writing surface connected to your search results:
+A document-first workspace connected to your search results:
 
 - **Floating toolbar** — appears on text selection; Bold, Italic, Underline, Strikethrough, Link, Highlight
 - **Markdown shortcuts** — `# ` / `## ` / `### ` for headings, `- ` for bullets, `1. ` for numbered lists, `> ` for blockquotes, `` ` `` for inline code

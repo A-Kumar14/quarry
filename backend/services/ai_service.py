@@ -17,7 +17,7 @@ async def decompose_query(query: str, llm_client) -> list[str]:
     the query is already simple.
     """
     prompt = f"""You are a research query decomposer for
-an investigative journalism tool.
+an investigative research tool.
 
 Given this query: "{query}"
 
@@ -151,7 +151,7 @@ For each contradiction, assign a `severity` field:
 ## Edge cases
 - If only one source provides a specific claim and others are silent on it, do NOT flag it as a contradiction — only flag when two or more sources actively conflict.
 - If sources contradict each other AND one of them provides a citation or primary source backing its claim, note this in the `notes` field.
-- If all sources appear to be reprinting the same wire story (identical phrasing across sources), note this in the `consensus` field and return an empty contradictions array.
+- If all sources appear to be reprinting the same wire report (identical phrasing across sources), note this in the `consensus` field and return an empty contradictions array.
 - If the content is too brief, too vague, or too opinionated to yield meaningful fact-checking, return an empty contradictions array with a note in `consensus`.
 
 ## Output requirements
@@ -174,10 +174,10 @@ Return this exact JSON shape:
       ]
     }
   ],
-  "consensus": "one sentence about what all sources broadly agree on, or a note about content quality (e.g. 'All sources appear to reprint the same Reuters wire story'), or empty string if nothing notable"
+  "consensus": "one sentence about what all sources broadly agree on, or a note about content quality (e.g. 'All sources appear to reprint the same Reuters wire report'), or empty string if nothing notable"
 }"""
 
-RESEARCH_SYSTEM_PROMPT = """You are **Quarry Research** — a conversational AI research assistant built for students, academics, journalists, and professionals. You help with every stage of the research process: finding and synthesising information, explaining concepts, reviewing and comparing literature, outlining and drafting papers, critiquing arguments, constructing bibliographies, and answering follow-up questions in depth.
+RESEARCH_SYSTEM_PROMPT = """You are **Quarry Research** — a conversational AI research assistant built for students, academics, analysts, and professionals. You help with every stage of the research process: finding and synthesising information, explaining concepts, reviewing and comparing literature, outlining and drafting notes, critiquing arguments, constructing bibliographies, and answering follow-up questions in depth.
 
 ## Core principles
 
@@ -507,11 +507,30 @@ contested: Two or more sources make directly
   conflicting timelines, or one source denying
   what another asserts.
 
-Important: most claims in a news story will be
+Important: most claims in a fast-moving report will be
 single_source or corroborated. Do not default
 everything to single_source — actively look for
 claims that appear across multiple sources and
 mark them verified or corroborated accordingly."""
+
+_SOURCE_ECOLOGY_PROMPT = """You are generating a source ecology brief for Quarry, an epistemic research tool for analysts and researchers.
+
+Task:
+- Analyze the source set structure, not topic content.
+- Focus on: dominant outlet roles, state-adjacent/state-backed presence, independence/diversity, structural gaps, and skew.
+- If role/affiliation fields are present, trust them and do not second-guess.
+
+Return ONLY valid JSON in this exact shape:
+{
+  "summary": "1-3 sentences, max 80 words, calm analytical tone",
+  "tags": ["short_tag_1", "short_tag_2"]
+}
+
+Rules:
+- summary must not restate the query or claims.
+- tags must be 2-4 short snake_case strings.
+- Prefer concrete structural observations (e.g., no_local_or_ngo_sources).
+- No markdown, no extra text."""
 
 
 def extract_claims(sources: list[dict], scraped: list[dict], llm) -> list[dict]:
@@ -595,6 +614,68 @@ def reconcile_claims(claims: list[dict], enriched_sources: list[dict], llm) -> l
     except Exception as exc:
         logger.error("reconcile_claims.failed: %s", exc)
     return []
+
+def summarize_source_ecology(query: str, sources: list[dict], llm) -> dict:
+    """
+    Generate a short source-base summary for Source Intelligence.
+    Returns {"summary": str, "tags": list[str]} and never raises.
+    """
+    fallback = {
+        "summary": (
+            "Source mix analysis is unavailable for this run. Review domain diversity and outlet "
+            "types in the source list."
+        ),
+        "tags": ["analysis_unavailable", "review_source_mix"],
+    }
+    if not sources:
+        return {
+            "summary": "No sources retrieved yet, so source composition cannot be assessed.",
+            "tags": ["no_sources_yet", "insufficient_signal"],
+        }
+
+    try:
+        source_rows = []
+        for src in sources[:20]:
+            source_rows.append({
+                "domain": src.get("domain", ""),
+                "title": src.get("title", ""),
+                "role": src.get("role", src.get("source_role", "")),
+                "affiliation": src.get(
+                    "affiliation",
+                    src.get("state_affiliation", src.get("funding_type", "")),
+                ),
+                "tier": src.get("tier", src.get("credibility_tier")),
+            })
+
+        messages = [
+            {"role": "system", "content": _SOURCE_ECOLOGY_PROMPT},
+            {"role": "user", "content": json.dumps({"query": query, "sources": source_rows})},
+        ]
+        raw = llm.chat_sync(
+            messages,
+            model="openai/gpt-4o-mini",
+            timeout=14,
+            max_tokens=250,
+        ).strip()
+
+        if raw.startswith("```"):
+            raw = raw.replace("```json", "").replace("```", "").strip()
+        data = json.loads(raw)
+        summary = str(data.get("summary", "")).strip()
+        tags = data.get("tags", [])
+        if not isinstance(tags, list):
+            tags = []
+        tags = [str(t).strip() for t in tags if str(t).strip()][:4]
+
+        if not summary:
+            return fallback
+
+        if len(tags) < 2:
+            tags = tags + ["source_mix_overview", "source_composition"]
+        return {"summary": summary, "tags": tags[:4]}
+    except Exception as exc:
+        logger.error("summarize_source_ecology.failed: %s", exc)
+        return fallback
 
 
 class AIService:
@@ -863,6 +944,10 @@ class AIService:
         # ── Epistemic pipeline (extract + reconcile claims) ───────────────────
         reconciled: list[dict] = []
         raw_claims_count = 0
+        source_brief = {
+            "summary": "No sources retrieved yet, so source composition cannot be assessed.",
+            "tags": ["no_sources_yet", "insufficient_signal"],
+        }
         if sources and not (is_fin and ticker):
             import concurrent.futures as _cf
             _llm = self._get_llm()
@@ -880,6 +965,18 @@ class AIService:
                         reconciled = _rfut.result(timeout=12)
                     except Exception:
                         reconciled = []
+            with _cf.ThreadPoolExecutor(max_workers=1) as _pool:
+                _sfut = _pool.submit(summarize_source_ecology, query, sources, _llm)
+                try:
+                    source_brief = _sfut.result(timeout=14)
+                except Exception:
+                    source_brief = {
+                        "summary": (
+                            "Source mix analysis is unavailable for this run. Review domain "
+                            "diversity and outlet types in the source list."
+                        ),
+                        "tags": ["analysis_unavailable", "review_source_mix"],
+                    }
 
         # ── Build system prompt ───────────────────────────────────────────────
         system_prompt = build_explore_system_prompt(
@@ -916,7 +1013,7 @@ class AIService:
                     src["favicon"] = f"https://www.google.com/s2/favicons?domain={domain}&sz=32"
                 except Exception:
                     src["favicon"] = ""
-            yield f"data: {_json.dumps({'type': 'sources', 'sources': sources, 'claims': reconciled, 'gaps': gaps, 'quotes': quotes, 'sub_queries': sub_queries if deep else None, 'pipeline_trace': {'sources_retrieved': results_count, 'sources_enriched': len(sources), 'claims_extracted': raw_claims_count, 'claims_verified': sum(1 for c in reconciled if c.get('status') == 'verified'), 'claims_contested': sum(1 for c in reconciled if c.get('status') == 'contested'), 'pipeline_mode': 'epistemic' if bool(reconciled) else 'pass_through', 'sub_queries': sub_queries if deep else None}})}\n\n"
+            yield f"data: {_json.dumps({'type': 'sources', 'sources': sources, 'claims': reconciled, 'gaps': gaps, 'quotes': quotes, 'sub_queries': sub_queries if deep else None, 'source_brief': source_brief, 'pipeline_trace': {'sources_retrieved': results_count, 'sources_enriched': len(sources), 'claims_extracted': raw_claims_count, 'claims_verified': sum(1 for c in reconciled if c.get('status') == 'verified'), 'claims_contested': sum(1 for c in reconciled if c.get('status') == 'contested'), 'pipeline_mode': 'epistemic' if bool(reconciled) else 'pass_through', 'sub_queries': sub_queries if deep else None}})}\n\n"
 
         if stock_data:
             yield f"data: {_json.dumps({'type': 'stock', 'data': stock_data})}\n\n"

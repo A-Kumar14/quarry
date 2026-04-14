@@ -118,6 +118,7 @@ def create_user(username: str, email: str, password: str) -> dict:
             "role": "",
             "organization": "",
             "beat": "",
+            "focus_area": "",
             "expertise_level": "",
             "topics_of_focus": [],
             "preferred_source_types": [],
@@ -137,11 +138,17 @@ def update_user_profile(user_id: str, profile_data: dict) -> Optional[dict]:
             if "profile" not in u or not isinstance(u.get("profile"), dict):
                 u["profile"] = {}
             # Allowed profile fields
-            allowed = {"role", "organization", "beat", "expertise_level",
+            allowed = {"role", "organization", "beat", "focus_area", "expertise_level",
                        "topics_of_focus", "preferred_source_types", "onboarded"}
             for k, v in profile_data.items():
                 if k in allowed:
                     u["profile"][k] = v
+
+            # Keep beat/focus_area in sync while preserving backward compatibility.
+            if "focus_area" in profile_data and "beat" not in profile_data:
+                u["profile"]["beat"] = profile_data.get("focus_area", "")
+            if "beat" in profile_data and "focus_area" not in profile_data:
+                u["profile"]["focus_area"] = profile_data.get("beat", "")
             _save_users(users)
             return _public(u)
     return None

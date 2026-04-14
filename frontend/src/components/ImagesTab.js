@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import Spinner from './Spinner';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-const F   = "'DM Sans', 'Libre Franklin', system-ui, sans-serif";
+const F   = "'IBM Plex Sans', system-ui, sans-serif";
 
 /* ── Favicon with letter fallback ─────────────────────────────────────────── */
 function Favicon({ domain, name, size = 16 }) {

@@ -6,25 +6,27 @@ import { useDarkMode } from '../DarkModeContext';
 import { getSourceLibrary, removeSourceFromLibrary } from '../utils/sourceLibrary';
 import { getSourceQuality, QUALITY_COLOR } from '../utils/sourceQuality';
 import GlassCard, { glassCardStyle } from '../components/GlassCard';
-import NavControls from '../components/NavControls';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 const DOCUMENTS_KEY = 'quarry_documents';
-const STORY_DATA_KEY = 'quarry_story_data';
+const NOTES_DATA_KEY = 'quarry_notes_data';
+const LEGACY_STORY_DATA_KEY = 'quarry_story_data';
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 function getDomain(url) {
   try { return new URL(url).hostname.replace('www.', ''); } catch { return url; }
 }
 
-function loadStories() {
+function loadNotes() {
   try { return JSON.parse(localStorage.getItem(DOCUMENTS_KEY) || '[]'); } catch { return []; }
 }
 
-// Build a map of docId → Set<url> from quarry_story_data research sources
-function loadStorySourceMap() {
+// Build a map of docId → Set<url> from notes research sources.
+function loadNoteSourceMap() {
   try {
-    const data = JSON.parse(localStorage.getItem(STORY_DATA_KEY) || '{}');
+    const primary = JSON.parse(localStorage.getItem(NOTES_DATA_KEY) || '{}');
+    const legacy = JSON.parse(localStorage.getItem(LEGACY_STORY_DATA_KEY) || '{}');
+    const data = (primary && Object.keys(primary).length > 0) ? primary : legacy;
     const map = {};
     for (const [docId, val] of Object.entries(data)) {
       const urls = new Set();
@@ -38,12 +40,12 @@ function loadStorySourceMap() {
   } catch { return {}; }
 }
 
-// Find which story documents reference a given URL (content + research sources)
-function getStoriesForSource(url, stories, storySourceMap) {
+// Find which note documents reference a given URL (content + research sources)
+function getNotesForSource(url, notes, noteSourceMap) {
   const domain = getDomain(url);
-  return stories.filter(s => {
+  return notes.filter(s => {
     if ((s.content || '').includes(url) || (s.content || '').includes(domain)) return true;
-    const urls = storySourceMap[s.id];
+    const urls = noteSourceMap[s.id];
     if (urls && (urls.has(url) || [...urls].some(u => getDomain(u) === domain))) return true;
     return false;
   });
@@ -77,10 +79,10 @@ function CopyButton({ text }) {
 }
 
 /* ── Source card (inside library modal) ──────────────────────────────────── */
-function SourceCard({ src, stories, storySourceMap, onRemove, onOpenDoc }) {
+function SourceCard({ src, notes, noteSourceMap, onRemove, onOpenDoc }) {
   const linked = useMemo(
-    () => getStoriesForSource(src.url, stories, storySourceMap),
-    [src.url, stories, storySourceMap]
+    () => getNotesForSource(src.url, notes, noteSourceMap),
+    [src.url, notes, noteSourceMap]
   );
 
   return (
@@ -142,13 +144,13 @@ function SourceCard({ src, stories, storySourceMap, onRemove, onOpenDoc }) {
         </div>
       )}
 
-      {/* Linked stories */}
+      {/* Linked notes */}
       {linked.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-          {linked.map((story, i) => (
+          {linked.map((note, i) => (
             <span key={i}
-              onClick={() => onOpenDoc && onOpenDoc(story)}
-              title="Open in Write"
+              onClick={() => onOpenDoc && onOpenDoc(note)}
+              title="Open in Notes"
               style={{
                 padding: '2px 8px', borderRadius: 99, fontSize: '0.60rem',
                 fontFamily: 'var(--font-family)', background: 'rgba(30,58,138,0.08)',
@@ -159,7 +161,7 @@ function SourceCard({ src, stories, storySourceMap, onRemove, onOpenDoc }) {
               onMouseEnter={e => { if (onOpenDoc) e.currentTarget.style.background = 'rgba(30,58,138,0.18)'; }}
               onMouseLeave={e => { e.currentTarget.style.background = 'rgba(30,58,138,0.08)'; }}
             >
-              ✍️ {(story.title || 'Untitled').slice(0, 32)}
+              ✍️ {(note.title || 'Untitled').slice(0, 32)}
             </span>
           ))}
         </div>
@@ -185,8 +187,8 @@ function LibraryModal({ onClose }) {
   const [dark] = useDarkMode();
   const navigate = useNavigate();
   const [sources, setSources] = useState(() => getSourceLibrary());
-  const [stories] = useState(() => loadStories());
-  const [storySourceMap] = useState(() => loadStorySourceMap());
+  const [notes] = useState(() => loadNotes());
+  const [noteSourceMap] = useState(() => loadNoteSourceMap());
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('recent'); // recent | quality | alpha
   const [filter, setFilter] = useState('all'); // all | high | medium | unknown
@@ -198,7 +200,7 @@ function LibraryModal({ onClose }) {
       docId: doc.id,
     }));
     onClose();
-    navigate('/write');
+    navigate(`/notes/${doc.id}`);
   }, [navigate, onClose]);
 
   const remove = (url) => {
@@ -333,7 +335,7 @@ function LibraryModal({ onClose }) {
             </div>
           ) : (
             displayed.map(src => (
-              <SourceCard key={src.url} src={src} stories={stories} storySourceMap={storySourceMap} onRemove={remove} onOpenDoc={openDoc} />
+              <SourceCard key={src.url} src={src} notes={notes} noteSourceMap={noteSourceMap} onRemove={remove} onOpenDoc={openDoc} />
             ))
           )}
         </div>
@@ -507,7 +509,7 @@ function TopicMapModal({ onClose }) {
     if (node.urls?.length > 1) {
       const badge = String(node.urls.length);
       const bFont = Math.min(8, 7 / Math.max(globalScale, 0.5));
-      ctx.font = `700 ${bFont}px DM Sans, system-ui, sans-serif`;
+      ctx.font = `700 ${bFont}px IBM Plex Sans, system-ui, sans-serif`;
       ctx.fillStyle = '#fff';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -516,7 +518,7 @@ function TopicMapModal({ onClose }) {
 
     // Label
     const fontSize = Math.min(13, Math.max(8, 11 / Math.max(globalScale, 0.6)));
-    ctx.font = `600 ${fontSize}px DM Sans, system-ui, sans-serif`;
+    ctx.font = `600 ${fontSize}px IBM Plex Sans, system-ui, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.fillStyle = dark ? 'rgba(230,237,243,0.94)' : 'rgba(26,24,20,0.90)';
@@ -536,7 +538,7 @@ function TopicMapModal({ onClose }) {
     if (isHovered) {
       // Full tooltip on hover
       const fontSize = Math.min(12, Math.max(8, 10 / Math.max(globalScale, 0.5)));
-      ctx.font = `600 ${fontSize}px DM Sans, system-ui, sans-serif`;
+      ctx.font = `600 ${fontSize}px IBM Plex Sans, system-ui, sans-serif`;
       const w = ctx.measureText(link.label).width + 16, h = fontSize + 10;
       ctx.fillStyle = dark ? 'rgba(15,18,28,0.96)' : 'rgba(255,252,242,0.97)';
       ctx.beginPath();
@@ -552,7 +554,7 @@ function TopicMapModal({ onClose }) {
     } else {
       // Always-visible dim inline label
       const fontSize = Math.min(9, Math.max(6, 8 / Math.max(globalScale, 0.7)));
-      ctx.font = `400 ${fontSize}px DM Sans, system-ui, sans-serif`;
+      ctx.font = `400 ${fontSize}px IBM Plex Sans, system-ui, sans-serif`;
       ctx.fillStyle = dark ? 'rgba(180,190,210,0.45)' : 'rgba(60,50,40,0.38)';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -1024,7 +1026,7 @@ function EntryCard({ icon, title, subtitle, stat, onClick, illustration: Illustr
 }
 
 /* ── Stats bar ───────────────────────────────────────────────────────────── */
-function StatsBar({ sources, storyCount }) {
+function StatsBar({ sources, noteCount }) {
   const topDomains = useMemo(() => {
     const freq = {};
     for (const s of sources) { freq[s.domain] = (freq[s.domain] || 0) + 1; }
@@ -1066,13 +1068,13 @@ function StatsBar({ sources, storyCount }) {
         </div>
       </GlassCard>
 
-      {/* Stories */}
+      {/* Notes */}
       <GlassCard style={{ flex: '1 1 100px', padding: '16px 20px', borderRadius: 14 }}>
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: '2rem', fontWeight: 700, color: 'var(--fg-primary)', lineHeight: 1 }}>
-          {storyCount}
+          {noteCount}
         </div>
         <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', color: 'var(--fg-dim)', marginTop: 5, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-          Stories
+          Notes
         </div>
       </GlassCard>
 
@@ -1219,7 +1221,7 @@ export default function SourcesPage() {
   const [modal, setModal] = useState(null); // 'library' | 'map'
   const sources     = useMemo(() => getSourceLibrary(), []);
   const sourceCount = sources.length;
-  const storyCount  = useMemo(() => loadStories().length, []);
+  const noteCount  = useMemo(() => loadNotes().length, []);
 
   return (
     <div style={{
@@ -1256,7 +1258,6 @@ export default function SourcesPage() {
         <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.88rem', fontWeight: 600, color: 'var(--fg-primary)', flex: 1 }}>
           Sources
         </span>
-        <NavControls />
       </div>
 
       {/* Main content */}
@@ -1271,7 +1272,7 @@ export default function SourcesPage() {
         </div>
 
         {/* Stats bar */}
-        <StatsBar sources={sources} storyCount={storyCount} />
+        <StatsBar sources={sources} noteCount={noteCount} />
 
         {/* Recent sources inline preview */}
         <RecentSourcesPreview sources={sources} onOpenLibrary={() => setModal('library')} />
@@ -1281,8 +1282,8 @@ export default function SourcesPage() {
           <EntryCard
             icon={<BookMarked />}
             title="Source Library"
-            subtitle="Browse, filter, and manage every source from your searches. Linked to the stories that cite them."
-            stat={`${sourceCount} source${sourceCount !== 1 ? 's' : ''} · ${storyCount} stor${storyCount !== 1 ? 'ies' : 'y'}`}
+            subtitle="Browse, filter, and manage every source from your searches. Linked to the notes that cite them."
+            stat={`${sourceCount} source${sourceCount !== 1 ? 's' : ''} · ${noteCount} note${noteCount !== 1 ? 's' : ''}`}
             illustration={LibrarySVG}
             onClick={() => setModal('library')}
           />

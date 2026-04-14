@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300;1,9..40,400&family=IBM+Plex+Mono:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
 
 :root {
   --bg-primary:     #EDE8DF;
@@ -13,13 +13,14 @@
   --fg-dim:         rgba(80,58,22,0.42);
   --accent:         #F97316;
   --accent-dim:     rgba(249,115,22,0.12);
+  --primary:        #F97316;
   --blue:           #1e40af;
   --blue-light:     #1e3a8a;
   --blue-dim:       rgba(30,58,138,0.10);
   --border:         rgba(175,150,105,0.18);
   --error:          #DC2626;
-  --font-family:    'DM Sans', system-ui, sans-serif;
-  --font-serif:     'Playfair Display', Georgia, serif;
+  --font-family:    'IBM Plex Sans', system-ui, sans-serif;
+  --font-serif:     'IBM Plex Serif', Georgia, serif;
   --font-mono:      'IBM Plex Mono', 'JetBrains Mono', 'Fira Code', monospace;
 
   /* Document card */
@@ -147,6 +148,7 @@ html.dark #root {
   /* Accents — slightly brighter orange to pop on dark bg */
   --accent:       #fb923c;
   --accent-dim:   rgba(251,146,60,0.15);
+  --primary:      #fb923c;
   --blue:         #60a5fa;
   --blue-light:   #3b82f6;
   --blue-dim:     rgba(96,165,250,0.12);
@@ -200,7 +202,7 @@ html.dark #root {
   font-weight: 500;
   vertical-align: middle;
   margin-left: 3px;
-  font-family: 'DM Sans', system-ui, sans-serif;
+  font-family: var(--font-family);
 }
 .conf-v {
   background: rgba(34,197,94,0.10);

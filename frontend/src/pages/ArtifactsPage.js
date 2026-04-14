@@ -64,7 +64,7 @@ export default function ArtifactsPage() {
       content: doc.content,
       docId: doc.id,
     }));
-    navigate('/write');
+    navigate(`/notes/${doc.id}`);
   }
 
   const filtered = docs.filter(d =>
@@ -94,8 +94,8 @@ export default function ArtifactsPage() {
           Artifacts
         </span>
         <div style={{ marginLeft: 'auto' }}>
-          <button onClick={() => navigate('/write')} style={ORANGE_BTN}>
-            + New story
+          <button onClick={() => navigate('/notes')} style={ORANGE_BTN}>
+            + New note
           </button>
         </div>
       </div>
@@ -106,7 +106,7 @@ export default function ArtifactsPage() {
         {/* Header row */}
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 16 }}>
           <span style={{ fontFamily: 'var(--font-serif)', fontSize: '1.4rem', color: 'var(--fg-primary)', fontWeight: 400 }}>
-            Your stories
+            Your notes
           </span>
           <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.75rem', color: 'var(--fg-dim)' }}>
             {docs.length} document{docs.length !== 1 ? 's' : ''}
@@ -125,7 +125,7 @@ export default function ArtifactsPage() {
           <input
             value={filter}
             onChange={e => setFilter(e.target.value)}
-            placeholder="Search your stories..."
+            placeholder="Search your notes..."
             style={{
               flex: 1, border: 'none', background: 'transparent', outline: 'none',
               fontFamily: 'var(--font-family)', fontSize: '0.82rem',
@@ -139,13 +139,13 @@ export default function ArtifactsPage() {
           <div style={{ textAlign: 'center', padding: '60px 0' }}>
             <FileText size={40} color="var(--fg-dim)" style={{ margin: '0 auto 12px', display: 'block' }} />
             <p style={{ fontFamily: 'var(--font-family)', fontSize: '1rem', color: 'var(--fg-secondary)', marginBottom: 6 }}>
-              No stories yet
+              No notes yet
             </p>
             <p style={{ fontFamily: 'var(--font-family)', fontSize: '0.82rem', color: 'var(--fg-dim)', marginBottom: 16 }}>
-              Stories you write in Quarry appear here.
+              Notes you write in Quarry appear here.
             </p>
             <button
-              onClick={() => navigate('/write')}
+              onClick={() => navigate('/notes')}
               style={{
                 padding: '6px 16px', borderRadius: 7, cursor: 'pointer',
                 border: '1px solid var(--accent)', background: 'transparent',
@@ -153,7 +153,7 @@ export default function ArtifactsPage() {
                 color: 'var(--accent)',
               }}
             >
-              Write your first story
+              Create your first note
             </button>
           </div>
         )}

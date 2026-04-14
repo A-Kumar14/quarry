@@ -17,7 +17,7 @@ const MERMAID_THEME = {
   securityLevel: 'loose',
   theme: 'base',
   themeVariables: {
-    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontFamily: '"IBM Plex Sans", system-ui, sans-serif',
     fontSize: '13px',
     // Sepia palette
     background:          '#EDE8DF',

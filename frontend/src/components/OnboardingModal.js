@@ -37,15 +37,15 @@ const STEPS = [
     icon: Quote,
     color: '#10b981',
     title: 'Build a quote bank',
-    body: 'The Quotes tab extracts verbatim quotes attributed to named sources. Click "Insert" to drop any quote directly into your draft in the Write editor.',
-    tip: 'Great for quickly building a sourced draft.',
+    body: 'The Quotes tab extracts verbatim quotes attributed to named sources. Click "Insert" to drop any quote directly into your notes workspace.',
+    tip: 'Great for quickly building sourced notes.',
   },
   {
     icon: Pen,
     color: '#F97316',
-    title: 'Write with your sources',
-    body: 'Use the Write page to draft your story. Sources you\'ve gathered automatically appear in your sidebar. Insert claims and quotes with one click.',
-    tip: 'Click "Write" in the nav bar to get started.',
+    title: 'Work in Notes with your sources',
+    body: 'Use the Notes page to draft your analysis. Sources you\'ve gathered automatically appear in your sidebar. Insert claims and quotes with one click.',
+    tip: 'Click "Notes" in the nav bar to get started.',
   },
 ];
 

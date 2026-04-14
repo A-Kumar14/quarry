@@ -5,9 +5,8 @@
  */
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Settings, Clock, User, Sun, Moon, CalendarDays, ChevronRight } from 'lucide-react';
+import { Settings, Clock, User, Sun, Moon, ChevronRight } from 'lucide-react';
 import { useDarkMode } from '../DarkModeContext';
-import { useSettings } from '../SettingsContext';
 
 /* ── Tiny toggle switch ─────────────────────────────────────────────────── */
 function Toggle({ on, onToggle }) {
@@ -31,7 +30,6 @@ function Toggle({ on, onToggle }) {
 
 /* ── Quick-settings popover ─────────────────────────────────────────────── */
 function SettingsPopover({ dark, setDark, onClose }) {
-  const { settings, set } = useSettings();
   const navigate = useNavigate();
 
   const surface = dark
@@ -74,19 +72,6 @@ function SettingsPopover({ dark, setDark, onClose }) {
         <Toggle on={dark} onToggle={() => setDark(d => !d)} />
       </div>
 
-      {/* Calendar ticker */}
-      <div style={row} onClick={() => set('showCalendar', !settings.showCalendar)}>
-        <div style={{ flexShrink: 0, opacity: 0.6, display: 'flex' }}>
-          <CalendarDays size={12} style={{ color: 'var(--fg-secondary)' }} />
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.73rem', fontWeight: 500, color: 'var(--fg-primary)' }}>Event Ticker</div>
-          <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.61rem', fontWeight: 300, color: 'var(--fg-dim)', marginTop: 1 }}>Calendar bar at top</div>
-        </div>
-        <Toggle on={settings.showCalendar} onToggle={() => set('showCalendar', !settings.showCalendar)} />
-      </div>
-
-      {/* Divider */}
       <div style={{ height: 1, background: dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)', margin: '3px 0' }} />
 
       {/* All settings */}
@@ -106,8 +91,9 @@ function SettingsPopover({ dark, setDark, onClose }) {
 }
 
 /* ── Shared icon button style ───────────────────────────────────────────── */
-function IconBtn({ children, onClick, title, active, dark }) {
+function IconBtn({ children, onClick, title, active, dark, compact = false }) {
   const [hov, setHov] = useState(false);
+  const btnSize = compact ? 29 : 31;
   return (
     <button
       onClick={onClick}
@@ -116,7 +102,7 @@ function IconBtn({ children, onClick, title, active, dark }) {
       onMouseLeave={() => setHov(false)}
       style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        width: 30, height: 30, borderRadius: 8, border: 'none', outline: 'none',
+        width: btnSize, height: btnSize, borderRadius: 9, border: '1px solid transparent', outline: 'none',
         cursor: 'pointer',
         background: active
           ? 'rgba(249,115,22,0.14)'
@@ -129,6 +115,7 @@ function IconBtn({ children, onClick, title, active, dark }) {
           : hov
             ? dark ? 'rgba(230,237,243,0.96)' : 'rgba(38,24,10,0.92)'
             : dark ? 'rgba(230,237,243,0.72)' : 'rgba(60,42,18,0.72)',
+        borderColor: active ? 'rgba(249,115,22,0.28)' : hov ? 'rgba(175,150,105,0.25)' : 'transparent',
       }}
     >
       {children}
@@ -137,7 +124,7 @@ function IconBtn({ children, onClick, title, active, dark }) {
 }
 
 /* ── The exported component ─────────────────────────────────────────────── */
-export default function NavControls() {
+export default function NavControls({ compact = false }) {
   const [dark, setDark] = useDarkMode();
   const [open, setOpen] = useState(false);
   const location = useLocation();
@@ -158,14 +145,15 @@ export default function NavControls() {
 
   /* Pill container surface */
   const pill = dark
-    ? { background: 'rgba(30,33,44,0.75)', border: '1px solid rgba(255,255,255,0.11)', boxShadow: '0 2px 12px rgba(0,0,0,0.35)' }
-    : { background: 'rgba(255,252,242,0.82)', border: '1px solid rgba(175,150,105,0.30)', boxShadow: '0 2px 12px rgba(140,110,60,0.10)' };
+    ? { background: 'rgba(28,31,40,0.76)', border: '1px solid rgba(255,255,255,0.11)', boxShadow: '0 2px 12px rgba(0,0,0,0.35)' }
+    : { background: 'var(--glass-bg)', border: '1px solid var(--border)', boxShadow: '0 1px 6px rgba(140,110,60,0.10)' };
 
   return (
     <div ref={wrapRef} style={{ position: 'relative' }}>
     <div style={{
       display: 'flex', alignItems: 'center', gap: 1,
-      padding: '2px 4px', borderRadius: 10,
+      padding: compact ? '2px 4px' : '3px 5px',
+      borderRadius: 12,
       backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
       ...pill,
     }}>
@@ -173,31 +161,34 @@ export default function NavControls() {
       {/* Settings */}
       <IconBtn
         dark={dark}
+        compact={compact}
         active={onSettings || open}
         onClick={() => setOpen(o => !o)}
         title="Settings"
       >
-        <Settings size={14} strokeWidth={1.8} />
+        <Settings size={13.5} strokeWidth={1.8} />
       </IconBtn>
 
       {/* Saved */}
       <IconBtn
         dark={dark}
+        compact={compact}
         active={onSaved}
         onClick={() => navigate('/saved')}
         title="Saved searches"
       >
-        <Clock size={14} strokeWidth={1.8} />
+        <Clock size={13.5} strokeWidth={1.8} />
       </IconBtn>
 
       {/* Account */}
       <IconBtn
         dark={dark}
+        compact={compact}
         active={onProfile}
         onClick={() => navigate('/profile')}
         title="My Profile"
       >
-        <User size={14} strokeWidth={1.8} />
+        <User size={13.5} strokeWidth={1.8} />
       </IconBtn>
 
     </div>

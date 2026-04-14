@@ -11,6 +11,19 @@ function fmt(n) {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
 
+/* ── Reddit URL helper ───────────────────────────────────────────────────── */
+function buildRedditThreadUrl(permalink) {
+  const raw = typeof permalink === 'string' ? permalink.trim() : '';
+  if (!raw) return 'https://www.reddit.com';
+  if (/^https?:\/\//i.test(raw)) return raw;
+  const safePermalink = raw.startsWith('/') ? raw : `/${raw}`;
+  try {
+    return new URL(safePermalink, 'https://www.reddit.com').toString();
+  } catch {
+    return 'https://www.reddit.com';
+  }
+}
+
 /* ── Credibility tier breakdown from sources list ────────────────────────── */
 function credibilityBreakdown(subQ, allSources) {
   if (!allSources?.length) return null;
@@ -125,7 +138,7 @@ function DeepModePerspectives({ subQueries, sources }) {
 
 /* ── Reddit card ─────────────────────────────────────────────────────────── */
 function RedditCard({ post }) {
-  const threadUrl = `https://www.reddit.com${post.permalink}`;
+  const threadUrl = buildRedditThreadUrl(post?.permalink);
   return (
     <GlassCard style={{ padding: '14px 16px' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
@@ -183,12 +196,19 @@ function EmptyState() {
 }
 
 /* ── Main export ──────────────────────────────────────────────────────────── */
-export default function PerspectivesTab({ query, isDeepMode = false, subQueries = [], sources = [] }) {
+export default function PerspectivesTab({ query, isDeepMode = false, subQueries = [], sources = [], prefetchedData = null }) {
   const [posts,  setPosts]  = useState([]);
+  const [opinionSummary, setOpinionSummary] = useState('');
   const [status, setStatus] = useState('loading');
 
   useEffect(() => {
     if (isDeepMode) return; // deep mode doesn't fetch Reddit
+    if (prefetchedData && typeof prefetchedData === 'object') {
+      setPosts(prefetchedData.posts || []);
+      setOpinionSummary(typeof prefetchedData.opinionSummary === 'string' ? prefetchedData.opinionSummary : '');
+      setStatus(prefetchedData.status || 'idle');
+      return;
+    }
     let cancelled = false;
     setStatus('loading');
     fetch(`${API}/explore/perspectives?q=${encodeURIComponent(query)}&limit=5`)
@@ -196,11 +216,12 @@ export default function PerspectivesTab({ query, isDeepMode = false, subQueries 
       .then(data => {
         if (cancelled) return;
         setPosts(data?.posts || []);
+        setOpinionSummary(typeof data?.opinion_summary === 'string' ? data.opinion_summary : '');
         setStatus('done');
       })
-      .catch(() => { if (!cancelled) setStatus('error'); });
+      .catch(() => { if (!cancelled) { setOpinionSummary(''); setStatus('error'); } });
     return () => { cancelled = true; };
-  }, [query, isDeepMode]);
+  }, [query, isDeepMode, prefetchedData]);
 
   /* Deep mode: show sub-query angle cards */
   if (isDeepMode) {
@@ -216,6 +237,28 @@ export default function PerspectivesTab({ query, isDeepMode = false, subQueries 
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {opinionSummary && (
+        <GlassCard style={{ padding: '12px 14px' }}>
+          <div style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: '0.62rem',
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            color: 'var(--fg-dim)',
+            marginBottom: 6,
+          }}>
+            Reddit pulse
+          </div>
+          <div style={{
+            fontFamily: 'var(--font-family)',
+            fontSize: '0.82rem',
+            lineHeight: 1.5,
+            color: 'var(--fg-secondary)',
+          }}>
+            {opinionSummary}
+          </div>
+        </GlassCard>
+      )}
       {posts.map(post => <RedditCard key={post.id} post={post} />)}
     </div>
   );

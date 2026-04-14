@@ -4,9 +4,8 @@ import { User, Briefcase, Building2, BookOpen, Star, Tags, Layers, LogOut, Arrow
 import { useAuth } from '../contexts/AuthContext';
 import { useDarkMode } from '../DarkModeContext';
 import GlassCard from '../components/GlassCard';
-import NavControls from '../components/NavControls';
 
-const ROLES = ['Investigative Journalist', 'Policy Analyst', 'Academic Researcher', 'Student', 'Editor', 'Other'];
+const ROLES = ['News Researcher', 'Policy Analyst', 'Academic Researcher', 'Student', 'Independent Analyst', 'Other'];
 const EXPERTISE = ['Beginner', 'Intermediate', 'Expert'];
 const SOURCE_TYPES = [
   'Academic / peer-reviewed', 'Mainstream quality news', 'Wire services (Reuters, AP, AFP)',
@@ -62,7 +61,7 @@ export default function ProfilePage() {
   const [form, setForm] = useState({
     role:                   p.role || '',
     organization:           p.organization || '',
-    beat:                   p.beat || '',
+    focus_area:             p.focus_area || p.beat || '',
     expertise_level:        p.expertise_level || '',
     topics_of_focus:        p.topics_of_focus || [],
     preferred_source_types: p.preferred_source_types || [],
@@ -90,7 +89,7 @@ export default function ProfilePage() {
 
   const handleSave = async () => {
     setSaving(true);
-    await updateProfile({ ...form, onboarded: true });
+    await updateProfile({ ...form, beat: form.focus_area, onboarded: true });
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
@@ -157,7 +156,6 @@ export default function ProfilePage() {
         }}>
           Profile
         </span>
-        <NavControls />
       </div>
 
       {/* ── Content ── */}
@@ -266,14 +264,14 @@ export default function ProfilePage() {
 
               <div style={divider} />
 
-              {/* Beat */}
+              {/* Focus area */}
               <FieldGroup>
-                <SectionLabel icon={BookOpen}>Journalism beat / area of focus</SectionLabel>
+                <SectionLabel icon={BookOpen}>Focus area</SectionLabel>
                 <input
                   style={inputStyle}
-                  placeholder="e.g. Climate Policy, Defence, Health, Tech Regulation"
-                  value={form.beat}
-                  onChange={e => set('beat', e.target.value)}
+                  placeholder="e.g. Climate Policy, Defence, Health, Technology Regulation"
+                  value={form.focus_area}
+                  onChange={e => set('focus_area', e.target.value)}
                   onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
                   onBlur={e => e.currentTarget.style.borderColor = 'var(--border)'}
                 />

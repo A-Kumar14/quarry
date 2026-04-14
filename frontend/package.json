@@ -7,10 +7,15 @@
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^7.3.7",
     "@mui/material": "^7.3.7",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-hover-card": "^1.1.15",
+    "@radix-ui/react-tooltip": "^1.2.8",
     "autoprefixer": "^10.4.27",
+    "cobe": "^2.0.1",
     "framer-motion": "^12.38.0",
     "lucide-react": "^0.564.0",
     "postcss": "^8.5.8",
+    "qss": "^3.0.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-force-graph-2d": "^1.29.1",
@@ -49,5 +54,11 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^6.0.2"
   }
 }
