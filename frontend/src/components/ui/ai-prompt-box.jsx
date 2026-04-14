@@ -28,10 +28,14 @@ const styles = `
   }
 `;
 
-// Inject styles into document
+// Inject styles into document (guard against duplicate injection on hot-reload)
+let _stylesInjected = false;
 const styleSheet = document.createElement("style");
 styleSheet.innerText = styles;
-document.head.appendChild(styleSheet);
+if (!_stylesInjected) {
+  document.head.appendChild(styleSheet);
+  _stylesInjected = true;
+}
 
 // Textarea Component
 const Textarea = React.forwardRef(({ className, ...props }, ref) => (
@@ -530,7 +534,7 @@ export const PromptInputBox = React.forwardRef((props, ref) => {
       let messagePrefix = "";
       if (showSearch) messagePrefix = "[Search: ";
       else if (showThink) messagePrefix = "[Think: ";
-      else if (showNotes) messagePrefix = "[Notes: ";
+      else if (showNotes && !selectedNote) messagePrefix = "[Notes: ";
       const formattedInput = messagePrefix ? `${messagePrefix}${baseInput}]` : baseInput;
       onSend(formattedInput, files);
       setInput("");
