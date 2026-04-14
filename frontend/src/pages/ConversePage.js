@@ -47,13 +47,23 @@ export default function ConversePage() {
     } catch (_) {}
   }
 
-  function openSession(sessionId, branchId) {
+  async function openSession(sessionId, branchId) {
     const session = sessions.find(s => s.id === sessionId);
     if (!session) return;
     const branch = session.branches.find(b => b.id === branchId) || session.branches[0];
     setActiveSessionId(sessionId);
     setActiveBranchId(branch.id);
-    setMessages([]);
+    try {
+      const res = await fetch(`${API}/chat/sessions/${sessionId}/branches/${branch.id}/messages`);
+      if (res.ok) {
+        const data = await res.json();
+        setMessages(data.messages || []);
+      } else {
+        setMessages([]);
+      }
+    } catch (_) {
+      setMessages([]);
+    }
   }
 
   async function handleNewSession() {

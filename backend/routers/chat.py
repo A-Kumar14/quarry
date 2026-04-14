@@ -104,6 +104,12 @@ async def search_conversations(q: str):
     return {"results": results}
 
 
+@router.get("/sessions/{session_id}/branches/{branch_id}/messages")
+async def get_messages(session_id: str, branch_id: str):
+    messages = store.get_branch_messages(session_id, branch_id)
+    return {"messages": messages}
+
+
 # ── POST /chat/message — agentic SSE ─────────────────────────────────────────
 
 @router.post("/message")

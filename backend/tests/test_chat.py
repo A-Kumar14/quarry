@@ -226,3 +226,20 @@ def test_chat_message_emits_done(client, monkeypatch, tmp_path, parse_sse):
     resp = _stream_chat(client, {"session_id": sid, "branch_id": bid, "message": "hi", "history": []})
     events = parse_sse(resp.text)
     assert "[DONE]" in events
+
+
+def test_get_branch_messages(client, monkeypatch, tmp_path):
+    import services.conversation_store as cs
+    monkeypatch.setattr(cs, "DATA_FILE", tmp_path / "conversations.json")
+    cs._data_cache = None
+
+    sid, bid = cs.create_session()
+    cs.add_message(sid, bid, {
+        "id": "m1", "role": "user", "content": "hi",
+        "timestamp": "2026-01-01T00:00:00", "research_data": None,
+    })
+
+    resp = client.get(f"/chat/sessions/{sid}/branches/{bid}/messages")
+    assert resp.status_code == 200
+    assert len(resp.json()["messages"]) == 1
+    assert resp.json()["messages"][0]["content"] == "hi"
