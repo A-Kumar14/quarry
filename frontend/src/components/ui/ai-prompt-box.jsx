@@ -1,7 +1,7 @@
 import React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { ArrowUp, Paperclip, Square, X, StopCircle, Mic, Globe, BrainCog, FolderCode } from "lucide-react";
+import { ArrowUp, Paperclip, Square, X, StopCircle, Mic, Globe, BrainCog, Pencil } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 // Utility function for className merging
@@ -385,7 +385,7 @@ export const PromptInputBox = React.forwardRef((props, ref) => {
   const [isRecording, setIsRecording] = React.useState(false);
   const [showSearch, setShowSearch] = React.useState(false);
   const [showThink, setShowThink] = React.useState(false);
-  const [showCanvas, setShowCanvas] = React.useState(false);
+  const [showNotes, setShowNotes] = React.useState(false);
   const uploadInputRef = React.useRef(null);
   const promptBoxRef = React.useRef(null);
 
@@ -399,7 +399,7 @@ export const PromptInputBox = React.forwardRef((props, ref) => {
     }
   };
 
-  const handleCanvasToggle = () => setShowCanvas((prev) => !prev);
+  const handleNotesToggle = () => setShowNotes((prev) => !prev);
 
   const isImageFile = (file) => file.type.startsWith("image/");
 
@@ -469,7 +469,7 @@ export const PromptInputBox = React.forwardRef((props, ref) => {
       let messagePrefix = "";
       if (showSearch) messagePrefix = "[Search: ";
       else if (showThink) messagePrefix = "[Think: ";
-      else if (showCanvas) messagePrefix = "[Canvas: ";
+      else if (showNotes) messagePrefix = "[Notes: ";
       const formattedInput = messagePrefix ? `${messagePrefix}${input}]` : input;
       onSend(formattedInput, files);
       setInput("");
@@ -548,8 +548,8 @@ export const PromptInputBox = React.forwardRef((props, ref) => {
                 ? "Search the web..."
                 : showThink
                 ? "Think deeply..."
-                : showCanvas
-                ? "Create on canvas..."
+                : showNotes
+                ? "Add a note..."
                 : placeholder
             }
             className="text-base"
@@ -656,7 +656,7 @@ export const PromptInputBox = React.forwardRef((props, ref) => {
                       transition={{ duration: 0.2 }}
                       className="text-xs overflow-hidden whitespace-nowrap text-[#F97316] flex-shrink-0"
                     >
-                      Think
+                      Deep
                     </motion.span>
                   )}
                 </AnimatePresence>
@@ -666,25 +666,25 @@ export const PromptInputBox = React.forwardRef((props, ref) => {
 
               <button
                 type="button"
-                onClick={handleCanvasToggle}
+                onClick={handleNotesToggle}
                 className={cn(
                   "rounded-full transition-all flex items-center gap-1 px-2 py-1 border h-8",
-                  showCanvas
+                  showNotes
                     ? "bg-[#F97316]/15 border-[#F97316] text-[#F97316]"
                     : "bg-transparent border-transparent text-[var(--fg-dim)] hover:text-[var(--fg-primary)]"
                 )}
               >
                 <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
                   <motion.div
-                    animate={{ rotate: showCanvas ? 360 : 0, scale: showCanvas ? 1.1 : 1 }}
-                    whileHover={{ rotate: showCanvas ? 360 : 15, scale: 1.1, transition: { type: "spring", stiffness: 300, damping: 10 } }}
+                    animate={{ rotate: showNotes ? 360 : 0, scale: showNotes ? 1.1 : 1 }}
+                    whileHover={{ rotate: showNotes ? 360 : 15, scale: 1.1, transition: { type: "spring", stiffness: 300, damping: 10 } }}
                     transition={{ type: "spring", stiffness: 260, damping: 25 }}
                   >
-                    <FolderCode className={cn("w-4 h-4", showCanvas ? "text-[#F97316]" : "text-inherit")} />
+                    <Pencil className={cn("w-4 h-4", showNotes ? "text-[#F97316]" : "text-inherit")} />
                   </motion.div>
                 </div>
                 <AnimatePresence>
-                  {showCanvas && (
+                  {showNotes && (
                     <motion.span
                       initial={{ width: 0, opacity: 0 }}
                       animate={{ width: "auto", opacity: 1 }}
@@ -692,7 +692,7 @@ export const PromptInputBox = React.forwardRef((props, ref) => {
                       transition={{ duration: 0.2 }}
                       className="text-xs overflow-hidden whitespace-nowrap text-[#F97316] flex-shrink-0"
                     >
-                      Canvas
+                      Notes
                     </motion.span>
                   )}
                 </AnimatePresence>
