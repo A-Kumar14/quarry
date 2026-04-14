@@ -3,7 +3,7 @@ import { ChevronRight, RefreshCw, Star } from 'lucide-react';
 import Spinner from './Spinner';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-const F   = "'DM Sans', 'Libre Franklin', system-ui, sans-serif";
+const F   = "'IBM Plex Sans', system-ui, sans-serif";
 
 /* ── Helpers ──────────────────────────────────────────────────────────────── */
 

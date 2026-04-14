@@ -5,14 +5,14 @@ import {
   Copy, Check, X, Search, FileText, Maximize2,
   ChevronLeft, ChevronRight, FilePlus, Loader2, Sparkles
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useDarkMode } from '../DarkModeContext';
 import { TIER_COLOR, LEAN_LABEL } from '../utils/sourceProfile';
-import NavControls from '../components/NavControls';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 const DOCUMENTS_KEY = 'quarry_documents';
-const STORY_DATA_KEY = 'quarry_story_data'; // per-doc sources + summaries
+const NOTES_DATA_KEY = 'quarry_notes_data';
+const LEGACY_STORY_DATA_KEY = 'quarry_story_data'; // legacy fallback
 
 function loadDocuments() {
   try {
@@ -30,6 +30,25 @@ function saveDocument(doc) {
       docs.unshift(doc);
     }
     localStorage.setItem(DOCUMENTS_KEY, JSON.stringify(docs.slice(0, 50)));
+  } catch {}
+}
+
+function readNotesResearchData() {
+  try {
+    const primary = JSON.parse(localStorage.getItem(NOTES_DATA_KEY) || '{}');
+    if (primary && Object.keys(primary).length > 0) return primary;
+    return JSON.parse(localStorage.getItem(LEGACY_STORY_DATA_KEY) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function writeNotesResearchData(data) {
+  try {
+    const payload = JSON.stringify(data || {});
+    localStorage.setItem(NOTES_DATA_KEY, payload);
+    // Keep legacy key in sync for compatibility with older surfaces.
+    localStorage.setItem(LEGACY_STORY_DATA_KEY, payload);
   } catch {}
 }
 
@@ -494,7 +513,7 @@ function CitationPicker({ claims, filter, setFilter, onInsert, onClose }) {
         {claims.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '16px 0' }}>
             <p style={{ fontFamily: 'var(--font-family)', fontSize: '0.75rem', color: 'var(--fg-secondary)', marginBottom: 10 }}>
-              No verified claims loaded.<br />Search for your story first.
+              No verified claims loaded.<br />Search for your topic first.
             </p>
             <button
               onClick={() => navigate('/search')}
@@ -597,10 +616,10 @@ function AIFormatterPopup({ onApply, onClose }) {
   );
 }
 
-/* ── Story sidebar ────────────────────────────────────────────────────────── */
-function StorySidebar({ open, onToggle, stories, currentDocId, onOpenStory, onNewStory, onDeleteStory }) {
+/* ── Notes sidebar ────────────────────────────────────────────────────────── */
+function NotesSidebar({ open, onToggle, notes, currentDocId, onOpenNote, onNewNote, onDeleteNote }) {
   const [dark] = useDarkMode();
-  const [ctxMenu, setCtxMenu] = React.useState(null); // { x, y, story }
+  const [ctxMenu, setCtxMenu] = React.useState(null); // { x, y, note }
 
   React.useEffect(() => {
     if (!ctxMenu) return;
@@ -614,21 +633,21 @@ function StorySidebar({ open, onToggle, stories, currentDocId, onOpenStory, onNe
 
   // Deduplicate by title — keep the most-recently-updated entry per title
   const seen = new Set();
-  const deduped = stories.filter(s => {
-    const key = (s.title || 'Untitled story').trim().toLowerCase();
+  const deduped = notes.filter(s => {
+    const key = (s.title || 'Untitled note').trim().toLowerCase();
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
 
-  const todayStories     = deduped.filter(s => s.updatedAt >= midnight.getTime());
-  const yesterdayStories = deduped.filter(s => s.updatedAt >= yesterdayStart.getTime() && s.updatedAt < midnight.getTime());
-  const earlierStories   = deduped.filter(s => s.updatedAt < yesterdayStart.getTime());
+  const todayNotes     = deduped.filter(s => s.updatedAt >= midnight.getTime());
+  const yesterdayNotes = deduped.filter(s => s.updatedAt >= yesterdayStart.getTime() && s.updatedAt < midnight.getTime());
+  const earlierNotes   = deduped.filter(s => s.updatedAt < yesterdayStart.getTime());
 
   const groups = [
-    { label: 'Today',     items: todayStories },
-    { label: 'Yesterday', items: yesterdayStories },
-    { label: 'Earlier',   items: earlierStories },
+    { label: 'Today',     items: todayNotes },
+    { label: 'Yesterday', items: yesterdayNotes },
+    { label: 'Earlier',   items: earlierNotes },
   ].filter(g => g.items.length > 0);
 
   return (
@@ -644,24 +663,24 @@ function StorySidebar({ open, onToggle, stories, currentDocId, onOpenStory, onNe
       {/* Sidebar content — hidden by overflow when closed */}
       <div style={{ width: 200, height: '100%', display: 'flex', flexDirection: 'column', overflowY: 'auto', padding: '12px 10px' }}>
 
-        {/* + New story */}
+        {/* + New note */}
         <button
-          onClick={onNewStory}
+          onClick={onNewNote}
           style={{
             ...ORANGE_BTN,
             width: '100%', justifyContent: 'center',
             fontSize: '0.72rem', marginBottom: 14, borderRadius: 7,
           }}
         >
-          + New story
+          + New note
         </button>
 
-        {/* Stories list */}
-        <span style={{ ...SECTION_LABEL, marginBottom: 10 }}>Stories</span>
+        {/* Notes list */}
+        <span style={{ ...SECTION_LABEL, marginBottom: 10 }}>Notes</span>
 
-        {stories.length === 0 && (
+        {notes.length === 0 && (
           <p style={{ fontFamily: 'var(--font-family)', fontSize: '0.70rem', color: 'var(--fg-dim)', lineHeight: 1.5 }}>
-            No stories yet.<br />Start writing to save one.
+            No notes yet.<br />Start writing to save one.
           </p>
         )}
 
@@ -674,13 +693,13 @@ function StorySidebar({ open, onToggle, stories, currentDocId, onOpenStory, onNe
             }}>
               {label}
             </div>
-            {items.map(story => {
-              const isActive = story.id === currentDocId;
+            {items.map(note => {
+              const isActive = note.id === currentDocId;
               return (
                 <div
-                  key={story.id}
-                  onClick={() => onOpenStory(story)}
-                  onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, story }); }}
+                  key={note.id}
+                  onClick={() => onOpenNote(note)}
+                  onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, note }); }}
                   style={{
                     padding: '5px 7px',
                     borderRadius: 6,
@@ -698,11 +717,11 @@ function StorySidebar({ open, onToggle, stories, currentDocId, onOpenStory, onNe
                     color: 'var(--fg-primary)', lineHeight: 1.3,
                     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                   }}>
-                    {story.title || 'Untitled story'}
+                    {note.title || 'Untitled note'}
                   </div>
                   <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.58rem', color: 'var(--fg-dim)', marginTop: 2 }}>
-                    {story.wordCount || 0}w
-                    {story.sourceCount > 0 ? ` · ${story.sourceCount} src` : ''}
+                    {note.wordCount || 0}w
+                    {note.sourceCount > 0 ? ` · ${note.sourceCount} src` : ''}
                   </div>
                 </div>
               );
@@ -747,7 +766,7 @@ function StorySidebar({ open, onToggle, stories, currentDocId, onOpenStory, onNe
           }}
         >
           <div
-            onClick={() => { onDeleteStory(ctxMenu.story); setCtxMenu(null); }}
+            onClick={() => { onDeleteNote(ctxMenu.note); setCtxMenu(null); }}
             style={{
               padding: '8px 14px',
               fontFamily: 'var(--font-family)', fontSize: '0.78rem',
@@ -757,7 +776,7 @@ function StorySidebar({ open, onToggle, stories, currentDocId, onOpenStory, onNe
             onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,38,38,0.08)'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
           >
-            Delete story
+            Delete note
           </div>
         </div>,
         document.body
@@ -768,6 +787,7 @@ function StorySidebar({ open, onToggle, stories, currentDocId, onOpenStory, onNe
 
 /* ── Main page ────────────────────────────────────────────────────────────── */
 export default function WritePage() {
+  const { id: routeNoteId } = useParams();
   const [dark] = useDarkMode();
   const [title,               setTitle]               = useState('');
   const [content,             setContent]             = useState('');
@@ -775,7 +795,7 @@ export default function WritePage() {
   const [sidebarOpen,         setSidebarOpen]         = useState(
     typeof window !== 'undefined' && window.innerWidth >= 1024
   );
-  const [allStories,          setAllStories]          = useState([]);
+  const [allNotes,            setAllNotes]            = useState([]);
   const [sessionSources,      setSessionSources]      = useState([]);
   const [sessionClaims,       setSessionClaims]       = useState([]);
   const [pipelineTrace,       setPipelineTrace]       = useState(null);
@@ -806,7 +826,7 @@ export default function WritePage() {
   const imageInputRef  = useRef(null);
   const navigate     = useNavigate();
   const docIdRef     = useRef(
-    Date.now().toString(36) + Math.random().toString(36).slice(2)
+    routeNoteId || (Date.now().toString(36) + Math.random().toString(36).slice(2))
   );
 
   /* ── Load session data on mount ── */
@@ -826,7 +846,7 @@ export default function WritePage() {
         // Restore saved research sources + AI summaries for this doc
         const docId = session.docId || docIdRef.current;
         try {
-          const allData = JSON.parse(localStorage.getItem(STORY_DATA_KEY) || '{}');
+          const allData = readNotesResearchData();
           const saved = allData[docId];
           if (saved) {
             if (saved.researchSources?.length)         setResearchSources(saved.researchSources);
@@ -848,16 +868,38 @@ export default function WritePage() {
   useEffect(() => {
     try {
       const docs = JSON.parse(localStorage.getItem(DOCUMENTS_KEY) || '[]');
-      setAllStories(docs);
-    } catch { setAllStories([]); }
+      setAllNotes(docs);
+    } catch { setAllNotes([]); }
   }, []);
+
+  /* ── Route-based note deep link ── */
+  useEffect(() => {
+    if (!routeNoteId) return;
+    try {
+      const docs = JSON.parse(localStorage.getItem(DOCUMENTS_KEY) || '[]');
+      const doc = docs.find(d => d.id === routeNoteId);
+      if (!doc) return;
+      docIdRef.current = routeNoteId;
+      setTitle(doc.title || '');
+      setContent(doc.content || '');
+      try {
+        const allData = readNotesResearchData();
+        const saved = allData[routeNoteId];
+        if (saved) {
+          if (saved.researchSources?.length) setResearchSources(saved.researchSources);
+          if (saved.selectedResearchSources?.length) setSelectedResearchSources(saved.selectedResearchSources);
+          if (saved.aiSummaries) setAiSummaries(saved.aiSummaries);
+        }
+      } catch {}
+    } catch {}
+  }, [routeNoteId]);
 
   /* ── Listen for storage changes (new saves from same session) ── */
   useEffect(() => {
     const handler = () => {
       try {
         const docs = JSON.parse(localStorage.getItem(DOCUMENTS_KEY) || '[]');
-        setAllStories(docs);
+        setAllNotes(docs);
       } catch {}
     };
     window.addEventListener('storage', handler);
@@ -869,7 +911,7 @@ export default function WritePage() {
     if (!title && !content) return;
     const doc = {
       id: docIdRef.current,
-      title: title || 'Untitled story',
+      title: title || 'Untitled note',
       content,
       updatedAt: Date.now(),
       wordCount: content.split(/\s+/).filter(Boolean).length,
@@ -877,7 +919,7 @@ export default function WritePage() {
       query: title,
     };
     saveDocument(doc);
-    setAllStories(loadDocuments());
+    setAllNotes(loadDocuments());
     // Write docId back to session storage so page reloads reuse the same document
     try {
       const raw = sessionStorage.getItem('quarry_write_session');
@@ -1243,7 +1285,7 @@ export default function WritePage() {
   }, [title, detectUnsourced]);
 
   const handleExportMarkdown = useCallback(() => {
-    const filename = (title || 'quarry-story').replace(/\s+/g, '-').toLowerCase();
+    const filename = (title || 'quarry-note').replace(/\s+/g, '-').toLowerCase();
     const plainText = content.replace(/<[^>]*>?/gm, '');
     const blob = new Blob(
       ['# ' + (title || 'Untitled') + '\n\n' + plainText],
@@ -1263,16 +1305,16 @@ export default function WritePage() {
     });
   }, [content]);
 
-  const handleOpenStory = useCallback((story) => {
+  const handleOpenNote = useCallback((note) => {
     sessionStorage.setItem('quarry_write_session', JSON.stringify({
-      query:   story.title,
-      content: story.content,
-      docId:   story.id,
+      query:   note.title,
+      content: note.content,
+      docId:   note.id,
     }));
     window.location.reload();
   }, []);
 
-  const handleNewStory = useCallback(() => {
+  const handleNewNote = useCallback(() => {
     sessionStorage.removeItem('quarry_write_session');
     window.location.reload();
   }, []);
@@ -1283,7 +1325,7 @@ export default function WritePage() {
     // Save doc content
     const doc = {
       id: docIdRef.current,
-      title: title || 'Untitled story',
+      title: title || 'Untitled note',
       content,
       updatedAt: Date.now(),
       wordCount: content.split(/\s+/).filter(Boolean).length,
@@ -1291,7 +1333,7 @@ export default function WritePage() {
       query: title,
     };
     saveDocument(doc);
-    setAllStories(loadDocuments());
+    setAllNotes(loadDocuments());
 
     // Persist docId to session so reload reopens same doc
     try {
@@ -1307,27 +1349,27 @@ export default function WritePage() {
 
     // Save research sources + AI summaries keyed by docId
     try {
-      const allData = JSON.parse(localStorage.getItem(STORY_DATA_KEY) || '{}');
+      const allData = readNotesResearchData();
       allData[docIdRef.current] = {
         researchSources,
         selectedResearchSources,
         aiSummaries,
       };
-      localStorage.setItem(STORY_DATA_KEY, JSON.stringify(allData));
+      writeNotesResearchData(allData);
     } catch {}
 
     setSaveIndicator(true);
     setTimeout(() => setSaveIndicator(false), 2000);
   }, [title, content, sessionSources, researchSources, selectedResearchSources, aiSummaries]);
 
-  const handleDeleteStory = useCallback((story) => {
+  const handleDeleteNote = useCallback((note) => {
     try {
       const docs = JSON.parse(localStorage.getItem(DOCUMENTS_KEY) || '[]');
-      const updated = docs.filter(d => d.id !== story.id);
+      const updated = docs.filter(d => d.id !== note.id);
       localStorage.setItem(DOCUMENTS_KEY, JSON.stringify(updated));
-      setAllStories(updated);
-      // If deleting the currently open story, start fresh
-      if (story.id === docIdRef.current) {
+      setAllNotes(updated);
+      // If deleting the currently open note, start fresh.
+      if (note.id === docIdRef.current) {
         sessionStorage.removeItem('quarry_write_session');
         window.location.reload();
       }
@@ -1381,7 +1423,7 @@ export default function WritePage() {
         {!focusMode && (
           <>
             <div style={{ width: 1, height: 16, background: 'var(--border)' }} />
-            <button title="Your stories" onClick={() => navigate('/artifacts')} style={{ ...GLASS_BTN, padding: '5px 8px' }}>
+            <button title="Your notes" onClick={() => navigate('/artifacts')} style={{ ...GLASS_BTN, padding: '5px 8px' }}>
               <FileText size={14} />
             </button>
           </>
@@ -1391,7 +1433,7 @@ export default function WritePage() {
         <input
           value={title}
           onChange={e => setTitle(e.target.value)}
-          placeholder="Untitled story"
+          placeholder="Untitled note"
           style={{
             background: 'transparent', border: 'none', outline: 'none',
             fontFamily: 'var(--font-family)', fontSize: '0.95rem',
@@ -1441,23 +1483,22 @@ export default function WritePage() {
             <Maximize2 size={14} />
           </button>
 
-          <NavControls />
         </div>
       </div>
 
       {/* ── BODY: sidebar | editor | drawer ── */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'row', overflow: 'hidden' }}>
 
-        {/* ── LEFT: story sidebar ── */}
+        {/* ── LEFT: notes sidebar ── */}
         {!focusMode && (
-          <StorySidebar
+          <NotesSidebar
             open={sidebarOpen}
             onToggle={() => setSidebarOpen(o => !o)}
-            stories={allStories}
+            notes={allNotes}
             currentDocId={docIdRef.current}
-            onOpenStory={handleOpenStory}
-            onNewStory={handleNewStory}
-            onDeleteStory={handleDeleteStory}
+            onOpenNote={handleOpenNote}
+            onNewNote={handleNewNote}
+            onDeleteNote={handleDeleteNote}
           />
         )}
 
@@ -1725,7 +1766,7 @@ export default function WritePage() {
                     caretColor: 'var(--accent)',
                     wordBreak: 'break-word',
                   }}
-                  data-placeholder="Start writing your story..."
+                  data-placeholder="Start writing your note..."
                 />
               </div>
 
@@ -1949,7 +1990,7 @@ export default function WritePage() {
                     }}
                   >
                     {isSearchingSources ? <Loader2 size={10} className="spin" /> : <Search size={10} />}
-                    {researchSources.length > 0 ? 'Refresh' : 'Search for your story'}
+                    {researchSources.length > 0 ? 'Refresh' : 'Search for your topic'}
                   </button>
                 </div>
 

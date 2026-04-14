@@ -75,6 +75,7 @@ class ProfileBody(BaseModel):
     role: str = ""
     organization: str = ""
     beat: str = ""
+    focus_area: str = ""
     expertise_level: str = ""
     topics_of_focus: list[str] = []
     preferred_source_types: list[str] = []
@@ -151,8 +152,11 @@ def me(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(beare
             # Ensure legacy user records have a profile field
             if "profile" not in u:
                 u["profile"] = {"role": "", "organization": "", "beat": "",
+                                "focus_area": "",
                                 "expertise_level": "", "topics_of_focus": [],
                                 "preferred_source_types": [], "onboarded": False}
+            elif "focus_area" not in u["profile"]:
+                u["profile"]["focus_area"] = u["profile"].get("beat", "")
             return _public(u)
         raise HTTPException(status_code=503, detail="No users registered yet")
 
@@ -161,8 +165,11 @@ def me(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(beare
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     if "profile" not in user:
         user["profile"] = {"role": "", "organization": "", "beat": "",
+                           "focus_area": "",
                            "expertise_level": "", "topics_of_focus": [],
                            "preferred_source_types": [], "onboarded": False}
+    elif "focus_area" not in user["profile"]:
+        user["profile"]["focus_area"] = user["profile"].get("beat", "")
     return user
 
 
@@ -188,7 +195,13 @@ def update_profile(
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-    updated = update_user_profile(user_id, body.model_dump())
+    payload = body.model_dump()
+    if payload.get("focus_area") and not payload.get("beat"):
+        payload["beat"] = payload["focus_area"]
+    elif payload.get("beat") and not payload.get("focus_area"):
+        payload["focus_area"] = payload["beat"]
+
+    updated = update_user_profile(user_id, payload)
     if not updated:
         raise HTTPException(status_code=404, detail="User not found")
     return updated

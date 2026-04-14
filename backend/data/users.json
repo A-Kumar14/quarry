@@ -6,15 +6,17 @@
     "hashed_password": "$2b$12$JhJ0D5UIalacYUhjfcRN5.p2JVwP0XxhrWFVzlkAtELqgTX2/IM3C",
     "created_at": "2026-03-27T17:34:33.690824+00:00",
     "profile": {
-      "role": "Investigative Journalist",
-      "organization": "Reuters",
-      "beat": "Defense",
-      "expertise_level": "Expert",
+      "role": "Other",
+      "organization": "OneFootball",
+      "beat": "Sports (Soccer)",
+      "expertise_level": "Intermediate",
       "topics_of_focus": [
-        "Current World Crisis, Wars, Defense"
+        "latest transfer market situation",
+        "club-to-club live news",
+        "manager news"
       ],
       "preferred_source_types": [
-        "Wire services (Reuters, AP, AFP)"
+        "Mainstream quality news"
       ],
       "onboarded": true
     }

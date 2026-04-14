@@ -18,7 +18,13 @@ from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from schemas import ExploreSearchRequest, RelatedSearchRequest, ResearchRequest, CiteRequest, OutlineRequest
+from schemas import (
+    ExploreSearchRequest, RelatedSearchRequest, ResearchRequest,
+    CiteRequest, OutlineRequest,
+    DeepAnalyzeRequest, DeepAnalysisResponse, DeepAnalysis,
+    DeepSourceContext,
+    DeepDiagramRequest, DiagramSpec,
+)
 from services.registry import ai_service, llm_service
 from services import image_service
 from slowapi import Limiter
@@ -80,7 +86,7 @@ def _build_user_context(request: Request) -> str:
         parts = []
         if p.get("role"):        parts.append(f"Role: {p['role']}")
         if p.get("organization"): parts.append(f"Organization: {p['organization']}")
-        if p.get("beat"):        parts.append(f"Journalism beat / area of focus: {p['beat']}")
+        if p.get("beat"):        parts.append(f"Focus area: {p['beat']}")
         if p.get("expertise_level"): parts.append(f"Expertise level: {p['expertise_level']}")
         if p.get("topics_of_focus"):
             parts.append(f"Topics of focus: {', '.join(p['topics_of_focus'])}")
@@ -690,25 +696,239 @@ async def explore_perspectives(
     q: str = Query(..., max_length=300),
     limit: int = Query(5, ge=1, le=10),
 ):
-    """Proxy Reddit search server-side to avoid browser CORS restrictions."""
-    url = (
-        f"https://www.reddit.com/search.json"
-        f"?q={q}&sort=relevance&limit={limit}&t=year"
-    )
+    """AI-assisted Reddit perspectives retrieval + opinion summary."""
+    import urllib.parse
+
+    geo_keywords = {
+        "war", "conflict", "ceasefire", "ukraine", "russia", "gaza", "israel",
+        "timeline", "frontline", "battle", "military", "invasion", "sanctions",
+        "geopolitics", "nato", "syria", "sudan", "iran", "china", "taiwan",
+    }
+    geo_entities = {"ukraine", "russia", "gaza", "israel", "lebanon", "syria", "sudan", "iran", "taiwan", "china"}
+    medical_terms = {"medical", "hospital", "hospitals", "clinic", "clinics", "healthcare", "health", "facility", "facilities"}
+    attack_terms = {"attack", "attacks", "target", "targeting", "strike", "strikes", "bomb", "bombing", "war", "conflict"}
+    geo_subreddits = {
+        "worldnews", "geopolitics", "ukraine", "ukrainerussiareport", "combatfootage",
+        "credibledefense", "lesscredibledefence", "europe", "middleeastnews",
+        "news", "internationalnews",
+    }
+    sports_keywords = {
+        "sports", "soccer", "football", "fifa", "uefa", "premier", "league", "la", "liga",
+        "bundesliga", "serie", "champions", "transfer", "goal", "match", "nba", "nfl", "mlb", "nhl",
+    }
+    sports_subreddits = {
+        "soccer", "football", "premierleague", "laliga", "bundesliga", "seriea",
+        "championsleague", "fifa", "worldcup", "sports", "nba", "nfl", "mlb", "hockey",
+    }
+
+    def _tokenize(text: str) -> list[str]:
+        words = re.findall(r"[a-zA-Z0-9]+", (text or "").lower())
+        stop = {
+            "the", "and", "with", "from", "that", "this", "have", "what",
+            "about", "current", "situation", "timeline", "into", "your",
+            "where", "counts", "count", "documented",
+        }
+        return [w for w in words if len(w) > 2 and w not in stop]
+
+    def _unique_keep_order(items: list[str]) -> list[str]:
+        out: list[str] = []
+        seen: set[str] = set()
+        for item in items:
+            key = item.strip().lower()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            out.append(item.strip())
+        return out
+
+    def _normalise_subreddit(name: str) -> str:
+        return (name or "").lower().replace("r/", "").strip()
+
+    def _word_set(text: str) -> set[str]:
+        return set(re.findall(r"[a-zA-Z0-9]+", (text or "").lower()))
+
+    def _token_match_score(title_words: set[str], body_words: set[str], sub_words: set[str], query_tokens: list[str]) -> tuple[float, int]:
+        if not query_tokens:
+            return 0.0, 0
+        title_hits = sum(1 for t in query_tokens if t in title_words)
+        body_hits = sum(1 for t in query_tokens if t in body_words)
+        sub_hits = sum(1 for t in query_tokens if t in sub_words)
+        # Title relevance dominates; body/subreddit are light support signals.
+        score = (title_hits * 2.5) + (body_hits * 0.45) + (sub_hits * 0.35)
+        return float(score), title_hits
+
+    async def _plan_queries(user_query: str) -> list[str]:
+        prompt = (
+            "You are helping retrieve relevant Reddit discussions for a research query. "
+            "Produce 3 short Reddit search queries that maximize relevance and avoid generic chatter. "
+            "Return ONLY JSON in shape: {\"queries\": [\"...\", \"...\", \"...\"]}."
+        )
+        uq = (user_query or "").strip()
+        uq_tokens = _tokenize(uq)
+        is_sports_fallback = any(t in sports_keywords for t in uq_tokens)
+        fallback = _unique_keep_order([
+            uq,
+            f"{uq} {'match updates' if is_sports_fallback else 'latest updates'}",
+            f"{uq} discussion",
+        ])[:3]
+        try:
+            raw = await asyncio.to_thread(
+                llm_service.chat_sync,
+                [{"role": "system", "content": prompt}, {"role": "user", "content": user_query}],
+                "openai/gpt-4o-mini",
+                12,
+                140,
+            )
+            cleaned = (raw or "").strip().replace("```json", "").replace("```", "").strip()
+            data = json.loads(cleaned)
+            if isinstance(data, dict) and isinstance(data.get("queries"), list):
+                queries = [str(x).strip() for x in data["queries"] if str(x).strip()]
+                queries = _unique_keep_order([user_query, *queries])[:3]
+                return queries if queries else fallback
+        except Exception as exc:
+            logger.warning("explore_perspectives.plan_queries_failed q=%s error=%s", user_query, exc)
+        return fallback
+
+    def _relevance_score(post: dict, token_match: float, is_geo_query: bool, is_sports_query: bool) -> float:
+        if token_match <= 0:
+            return 0.0
+        subreddit = _normalise_subreddit(post.get("subreddit_name_prefixed", ""))
+
+        # Keep popularity as tie-break signal, not dominant ranking factor.
+        social = min(float(post.get("score", 0)) / 5000.0, 1.0)
+        comments = min(float(post.get("num_comments", 0)) / 2000.0, 1.0)
+        subreddit_bonus = 0.0
+        if is_geo_query and subreddit in geo_subreddits:
+            subreddit_bonus = 1.0
+        if is_sports_query and subreddit in sports_subreddits:
+            subreddit_bonus = 0.9
+        return token_match + social + comments + subreddit_bonus
+
+    async def _summarize_reddit_opinion(user_query: str, posts: list[dict]) -> str:
+        if not posts:
+            return "No clear Reddit discussion signal was retrieved for this query."
+        reduced = [
+            {
+                "title": p.get("title", ""),
+                "subreddit": p.get("subreddit_name_prefixed", ""),
+                "score": p.get("score", 0),
+                "comments": p.get("num_comments", 0),
+            }
+            for p in posts[:8]
+        ]
+        prompt = (
+            "You are an analyst summarizing Reddit discussion patterns.\n"
+            "Given a query and retrieved Reddit posts, write 2-3 sentences on what people are discussing, "
+            "where opinions diverge, and any limits in source quality/relevance.\n"
+            "Do not restate article facts. Focus on community discourse.\n"
+            "Return ONLY JSON in shape: {\"summary\": \"...\"}."
+        )
+        try:
+            raw = await asyncio.to_thread(
+                llm_service.chat_sync,
+                [
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": json.dumps({"query": user_query, "posts": reduced})},
+                ],
+                "openai/gpt-4o-mini",
+                12,
+                180,
+            )
+            cleaned = (raw or "").strip().replace("```json", "").replace("```", "").strip()
+            data = json.loads(cleaned)
+            text = str(data.get("summary", "")).strip()
+            if text:
+                return text
+        except Exception as exc:
+            logger.warning("explore_perspectives.summarize_failed q=%s error=%s", user_query, exc)
+        return "Discussion is mixed and somewhat fragmented across subreddits; review post-level context before drawing conclusions."
+
+    planned_queries = await _plan_queries(q)
+    query_tokens = _tokenize(q)
+    is_geo_query = any(t in geo_keywords for t in query_tokens)
+    is_sports_query = any(t in sports_keywords for t in query_tokens)
+    has_geo_entities = any(t in geo_entities for t in query_tokens)
+    is_medical_attack_query = any(t in medical_terms for t in query_tokens) and any(t in attack_terms for t in query_tokens)
+    per_query_limit = max(4, min(8, limit + 2))
+    collected: dict[str, dict] = {}
+
     try:
         async with httpx.AsyncClient(
             timeout=8,
             headers={"User-Agent": "quarry-search/1.0 (web app)"},
         ) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            data = resp.json()
+            for rq in planned_queries:
+                url = (
+                    "https://www.reddit.com/search.json"
+                    f"?q={urllib.parse.quote_plus(rq)}&sort=relevance&limit={per_query_limit}&t=year"
+                )
+                resp = await client.get(url)
+                if resp.status_code != 200:
+                    continue
+                data = resp.json()
+                for child in (data.get("data", {}).get("children") or []):
+                    post = child.get("data") or {}
+                    pid = str(post.get("id", "")).strip()
+                    if not pid:
+                        continue
+                    title_words = _word_set(post.get("title", ""))
+                    body_words = _word_set(post.get("selftext", ""))
+                    sub_words = _word_set(post.get("subreddit_name_prefixed", ""))
+                    token_match, title_hits = _token_match_score(title_words, body_words, sub_words, query_tokens)
+                    subreddit = _normalise_subreddit(post.get("subreddit_name_prefixed", ""))
+                    if token_match <= 0:
+                        continue
+
+                    # Require title-level relevance, but be less strict for sports/general queries.
+                    if is_geo_query:
+                        if subreddit not in geo_subreddits and title_hits < 2:
+                            continue
+                    elif is_sports_query:
+                        if subreddit not in sports_subreddits and title_hits < 1:
+                            continue
+                    elif title_hits < 1:
+                        continue
+
+                    # For crisis/geopolitics queries, require stronger lexical relevance.
+                    if is_geo_query and token_match < 2.5:
+                        continue
+                    if is_geo_query and subreddit not in geo_subreddits and token_match < 4.0:
+                        continue
+                    if is_sports_query and token_match < 1.0:
+                        continue
+                    if is_sports_query and subreddit not in sports_subreddits and token_match < 1.8:
+                        continue
+
+                    # For medical-facility attack queries, enforce intent anchors.
+                    if is_medical_attack_query:
+                        has_medical = bool((title_words | body_words) & medical_terms)
+                        has_attack = bool((title_words | body_words) & attack_terms)
+                        has_geo = bool((title_words | body_words) & geo_entities) if has_geo_entities else True
+                        if not (has_medical and has_attack and has_geo):
+                            continue
+
+                    post["__relevance"] = _relevance_score(post, token_match, is_geo_query, is_sports_query)
+                    if pid not in collected or post["__relevance"] > collected[pid].get("__relevance", 0):
+                        collected[pid] = post
     except Exception as exc:
         logger.error("explore_perspectives.failed q=%s error=%s", q, exc)
         raise HTTPException(status_code=502, detail="Perspectives fetch failed")
 
-    posts = [c["data"] for c in (data.get("data", {}).get("children") or [])]
-    return {"posts": posts}
+    ranked = sorted(
+        collected.values(),
+        key=lambda p: (p.get("__relevance", 0), p.get("score", 0), p.get("num_comments", 0)),
+        reverse=True,
+    )
+    posts = [p for p in ranked if p.get("__relevance", 0) >= 1.0][:limit]
+    for p in posts:
+        p.pop("__relevance", None)
+
+    opinion_summary = await _summarize_reddit_opinion(q, posts)
+    return {
+        "posts": posts,
+        "opinion_summary": opinion_summary,
+        "search_queries_used": planned_queries,
+    }
 
 
 @router.get("/explore/images")
@@ -836,7 +1056,7 @@ async def explore_topic_map(request: Request, body: TopicMapRequest):
         if body.focus_query.strip() else ""
     )
     step2_prompt = (
-        "You are a knowledge-graph builder for a journalist's research library. "
+        "You are a knowledge-graph builder for a research workspace library. "
         "Using the source-topic data below, create a well-connected topic graph.\n"
         + focus_clause + "\n"
         "Sources with topics:\n" + "\n".join(enriched) + "\n\n"
@@ -884,6 +1104,7 @@ _TYPE_COLORS = {
     "Conflict": "#e24b4a",
     "Famine":   "#facc15",
     "Politics": "#7f77dd",
+    "Sports":   "#22c55e",
 }
 
 _CONFLICT_KW = {
@@ -900,14 +1121,108 @@ _POLITICS_KW = {
     "sanctions", "demonstration", "uprising", "parliament", "referendum",
     "crackdown", "detained", "arrested",
 }
+_SPORTS_KW = {
+    "soccer", "football", "fifa", "uefa", "premier", "league", "la", "liga",
+    "bundesliga", "serie", "transfer", "goal", "goals", "match", "club",
+    "coach", "manager", "stadium", "champions",
+}
+
+_SPORTS_FALLBACK_PINS = [
+    {
+        "label": "London",
+        "desc": "Premier League title race and transfer discussions.",
+        "lat": 51.5074,
+        "lng": -0.1278,
+        "type": "Sports",
+        "color": _TYPE_COLORS["Sports"],
+    },
+    {
+        "label": "Madrid",
+        "desc": "La Liga competition and squad planning updates.",
+        "lat": 40.4168,
+        "lng": -3.7038,
+        "type": "Sports",
+        "color": _TYPE_COLORS["Sports"],
+    },
+    {
+        "label": "Barcelona",
+        "desc": "Club rebuild storylines and manager strategy coverage.",
+        "lat": 41.3874,
+        "lng": 2.1686,
+        "type": "Sports",
+        "color": _TYPE_COLORS["Sports"],
+    },
+    {
+        "label": "Munich",
+        "desc": "Bundesliga title dynamics and Champions League positioning.",
+        "lat": 48.1351,
+        "lng": 11.5820,
+        "type": "Sports",
+        "color": _TYPE_COLORS["Sports"],
+    },
+    {
+        "label": "Milan",
+        "desc": "Serie A race and transfer market movement.",
+        "lat": 45.4642,
+        "lng": 9.1900,
+        "type": "Sports",
+        "color": _TYPE_COLORS["Sports"],
+    },
+    {
+        "label": "Buenos Aires",
+        "desc": "South American football headlines and player pipeline news.",
+        "lat": -34.6037,
+        "lng": -58.3816,
+        "type": "Sports",
+        "color": _TYPE_COLORS["Sports"],
+    },
+    {
+        "label": "Sao Paulo",
+        "desc": "Brazilian football transfer developments and club form.",
+        "lat": -23.5505,
+        "lng": -46.6333,
+        "type": "Sports",
+        "color": _TYPE_COLORS["Sports"],
+    },
+    {
+        "label": "Doha",
+        "desc": "Regional football governance and tournament planning signals.",
+        "lat": 25.2854,
+        "lng": 51.5310,
+        "type": "Sports",
+        "color": _TYPE_COLORS["Sports"],
+    },
+]
 
 
 def _classify_type(title: str) -> str:
     words = set(title.lower().split())
+    if words & _SPORTS_KW:    return "Sports"
     if words & _CONFLICT_KW:  return "Conflict"
     if words & _FAMINE_KW:    return "Famine"
     if words & _POLITICS_KW:  return "Politics"
     return "Conflict"
+
+
+def _build_globe_query(topic: str) -> str:
+    t = (topic or "").strip().lower()
+    if not t:
+        return "conflict OR war OR airstrike OR famine OR protest OR coup OR crisis"
+    if any(k in t for k in ("soccer", "football", "fifa", "uefa", "la liga", "premier league", "transfer")):
+        return "soccer OR football OR fifa OR uefa OR transfer OR \"premier league\" OR \"la liga\" OR \"champions league\""
+    if any(k in t for k in ("nba", "basketball")):
+        return "nba OR basketball OR playoffs OR trade"
+    if any(k in t for k in ("nfl", "american football")):
+        return "nfl OR football OR trade OR draft"
+    return f"\"{topic}\""
+
+
+def _is_sports_topic(topic: str) -> bool:
+    t = (topic or "").strip().lower()
+    return any(k in t for k in (
+        "soccer", "football", "fifa", "uefa", "premier league", "la liga",
+        "bundesliga", "serie a", "champions league", "transfer", "club"
+    ))
 
 
 def _cluster_pins(raw: list[dict], threshold_deg: float = 3.5, max_pins: int = 20) -> list[dict]:
@@ -932,14 +1247,14 @@ def _cluster_pins(raw: list[dict], threshold_deg: float = 3.5, max_pins: int = 2
 
 @router.get("/explore/globe-pins")
 @limiter.limit("30/minute")
-async def globe_pins(request: Request):
+async def globe_pins(request: Request, topic: str = ""):
     """
     Return geolocated crisis pins for the globe visualisation.
     Queries GDELT GEO API (last 24 h), clusters by proximity,
     caps at 20 pins, and caches the result for 15 minutes.
     Falls back to an empty list on any fetch error — frontend uses WORLD_PINS.
     """
-    cache_key = "globe_pins"
+    cache_key = f"globe_pins:{(topic or '').strip().lower()}"
     now = time.time()
     cached = _news_cache.get(cache_key)
     if cached and (now - cached["ts"]) < _GLOBE_PINS_TTL:
@@ -947,7 +1262,7 @@ async def globe_pins(request: Request):
 
     gdelt_url = "https://api.gdeltproject.org/api/v2/geo/geo"
     params = {
-        "query":      "conflict OR war OR airstrike OR famine OR protest OR coup OR crisis",
+        "query":      _build_globe_query(topic),
         "mode":       "artgeo",
         "format":     "json",
         "timespan":   "24h",
@@ -963,6 +1278,7 @@ async def globe_pins(request: Request):
                 articles = data.get("articles") or []
                 for article in articles:
                     title = article.get("title") or ""
+                    loc = article.get("location") or {}
 
                     # GDELT GEO API may expose lat/long at top level or inside
                     # a nested 'location' object — handle both.
@@ -970,7 +1286,6 @@ async def globe_pins(request: Request):
                     lng = (article.get("long") or article.get("longitude")
                            or article.get("lng"))
                     if lat is None or lng is None:
-                        loc = article.get("location") or {}
                         lat = loc.get("lat") or loc.get("latitude")
                         lng = (loc.get("long") or loc.get("longitude")
                                or loc.get("lng"))
@@ -982,7 +1297,9 @@ async def globe_pins(request: Request):
                         continue
 
                     ev_type = _classify_type(title)
-                    label   = (article.get("domain")
+                    label   = (article.get("name")
+                               or loc.get("name")
+                               or article.get("domain")
                                or article.get("sourcecountry")
                                or "Event")
                     raw_pins.append({
@@ -997,9 +1314,15 @@ async def globe_pins(request: Request):
         logger.warning("globe_pins.gdelt_failed: %s", exc)
 
     pins = _cluster_pins(raw_pins)
+    source_name = "gdelt"
+
+    if _is_sports_topic(topic) and len(pins) < 3:
+        pins = _SPORTS_FALLBACK_PINS
+        source_name = "sports_fallback"
     result = {
         "pins":       pins,
-        "source":     "gdelt",
+        "source":     source_name,
+        "topic":      topic,
         "fetched_at": int(now),
         "live":       len(raw_pins) > 0,
     }
@@ -1029,18 +1352,17 @@ def _fetch_news_ddg(query: str, max_results: int = 5) -> list[dict]:
     return results
 
 
-@router.post("/explore/daily-brief")
-@limiter.limit("10/minute")
-async def daily_brief(request: Request, body: DailyBriefRequest):
+async def _build_daily_digest(body: DailyBriefRequest):
     """
-    Fetch live news + generate a personalised AI daily briefing with topic cards.
+    Fetch live news + generate a personalized AI daily digest with topic cards.
     Returns JSON: { summary, topics[], articles_count }
     """
     # Build search terms from profile + local beats
     search_terms: list[str] = []
     p = body.profile or {}
-    if p.get("beat"):
-        search_terms.append(p["beat"])
+    focus_area = p.get("focus_area") or p.get("beat")
+    if focus_area:
+        search_terms.append(focus_area)
     for t in (p.get("topics_of_focus") or [])[:3]:
         if t:
             search_terms.append(t)
@@ -1078,7 +1400,7 @@ async def daily_brief(request: Request, body: DailyBriefRequest):
         parts = []
         if p.get("role"):            parts.append(f"Role: {p['role']}")
         if p.get("organization"):    parts.append(f"Org: {p['organization']}")
-        if p.get("beat"):            parts.append(f"Beat: {p['beat']}")
+        if focus_area:               parts.append(f"Focus area: {focus_area}")
         if p.get("topics_of_focus"): parts.append(f"Focus: {', '.join(p['topics_of_focus'])}")
         profile_line = " | ".join(parts)
 
@@ -1087,23 +1409,23 @@ async def daily_brief(request: Request, body: DailyBriefRequest):
         for i, a in enumerate(articles)
     ) or "No live articles fetched — use your general knowledge of today's events."
 
-    prompt = f"""You are an editorial AI briefing assistant for journalists. Today is {today}.
+    prompt = f"""You are an AI daily digest assistant for researchers and analysts. Today is {today}.
 
-JOURNALIST PROFILE: {profile_line or "General journalist"}
+USER PROFILE: {profile_line or "General researcher"}
 
 LIVE NEWS ARTICLES:
 {articles_block}
 
-Generate a daily briefing. Return ONLY a raw JSON object (no markdown fences) in this exact schema:
+Generate a daily digest. Return ONLY a raw JSON object (no markdown fences) in this exact schema:
 {{
-  "summary": "2-3 sentence personalised briefing written directly to the journalist. Mention their beat. Warm, direct, newsroom tone. Aim to spark curiosity.",
+  "summary": "2-3 sentence personalized digest written directly to the user. Mention their focus area when relevant. Calm, direct tone.",
   "topics": [
     {{
       "headline": "Punchy 7-10 word news headline",
       "summary": "2 sentences: what happened and why it matters right now.",
-      "hook": "One sharp sentence: the angle THIS journalist should take given their beat.",
+      "hook": "One sharp sentence: the best next research angle for this user.",
       "urgency": "Breaking|Developing|Analysis|Feature",
-      "beat": "Which beat this belongs to",
+      "beat": "Which focus area this belongs to",
       "source": "Source name or domain",
       "url": "URL from the articles list above, or empty string",
       "relevance": "High|Medium|Low",
@@ -1116,8 +1438,8 @@ Generate a daily briefing. Return ONLY a raw JSON object (no markdown fences) in
 Rules:
 - Include 5-7 topics total
 - Mix urgency levels (at least 1 Breaking or Developing if the news supports it)
-- Mark relevance High only if it directly overlaps with the journalist's beat
-- contradiction_potential High = sources are likely to disagree on this story
+- Mark relevance High only if it directly overlaps with the user's focus area
+- contradiction_potential High = sources are likely to disagree on this topic
 - Return ONLY the JSON object, nothing else"""
 
     try:
@@ -1135,15 +1457,33 @@ Rules:
         data["generated_at"] = today
         return JSONResponse(data)
     except Exception as exc:
-        logger.error("daily_brief.failed: %s", exc)
-        raise HTTPException(status_code=500, detail="Failed to generate daily brief")
+        logger.error("daily_digest.failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to generate daily digest")
+
+
+@router.post("/explore/daily-digest")
+@limiter.limit("10/minute")
+async def daily_digest(request: Request, body: DailyBriefRequest):
+    """
+    Daily digest endpoint (preferred).
+    """
+    return await _build_daily_digest(body)
+
+
+@router.post("/explore/daily-brief")
+@limiter.limit("10/minute")
+async def daily_brief(request: Request, body: DailyBriefRequest):
+    """
+    Backward-compatible alias for older clients.
+    """
+    return await _build_daily_digest(body)
 
 
 @router.post("/explore/story-plan")
 @limiter.limit("15/minute")
 async def story_plan(request: Request, body: StoryPlanRequest):
     """
-    Stream a full journalist story plan for a chosen topic.
+    Stream a full research plan for a chosen topic.
     SSE: data: <text chunk>\n\n  …  data: [DONE]\n\n
     """
     p = body.profile or {}
@@ -1152,22 +1492,23 @@ async def story_plan(request: Request, body: StoryPlanRequest):
         parts = []
         if p.get("role"):            parts.append(p["role"])
         if p.get("organization"):    parts.append(p["organization"])
-        if p.get("beat"):            parts.append(f"beat: {p['beat']}")
+        if p.get("focus_area") or p.get("beat"):
+            parts.append(f"focus area: {p.get('focus_area') or p.get('beat')}")
         profile_line = ", ".join(parts)
 
-    prompt = f"""You are a senior editor at a global news outlet helping a journalist ({profile_line or "general journalist"}) plan a story.
+    prompt = f"""You are a senior research editor helping a user ({profile_line or "general researcher"}) plan analysis work.
 
-STORY: {body.headline}
+TOPIC: {body.headline}
 SUMMARY: {body.summary}
-{f"JOURNALIST ANGLE: {body.hook}" if body.hook else ""}
+{f"USER ANGLE: {body.hook}" if body.hook else ""}
 
-Write a detailed, actionable story plan in this exact structure using markdown:
+Write a detailed, actionable research plan in this exact structure using markdown:
 
 ## The Angle
-One sharp paragraph: what THIS journalist's specific take should be, framed for their beat ({body.beat or "general news"}).
+One sharp paragraph: what this user's specific take should be, framed for their focus area ({body.beat or "general research"}).
 
 ## Why Now — The News Hook
-Explain why this story is urgent today. What makes this the right moment to publish?
+Explain why this topic matters now.
 
 ## Core Questions to Answer
 - Question 1 (the essential "what happened")
@@ -1176,22 +1517,22 @@ Explain why this story is urgent today. What makes this the right moment to publ
 - Question 4 (the "what comes next / implications")
 
 ## Sources to Reach Out To
-- **[Source type]** — why they matter for this story
+- **[Source type]** — why they matter for this topic
 - (list 4-5 specific source types: officials, experts, NGOs, affected people, documents)
 
 ## Potential Contradictions & Tensions
 Where are sources likely to disagree? What claims should be verified against each other? Flag 2-3 specific tensions.
 
-## Suggested Story Structure
-1. **Lede** — the single most newsworthy sentence
+## Suggested Notes Structure
+1. **Lead** — the single most important opening sentence
 2. **Nut graf** — why this matters, context
 3. **Key facts** — the 3-4 essential data points
 4. **Voices** — quotes that give human texture
 5. **Analysis** — what it means for the bigger picture
-6. **Conclusion** — what readers should watch next
+6. **Conclusion** — what to track next
 
 ## Research Starting Points
-Suggest 3 specific search queries to start the Quarry investigation."""
+Suggest 3 specific search queries to continue investigation in Quarry."""
 
     user_ctx = _build_user_context(request)
     if user_ctx:
@@ -1217,3 +1558,327 @@ Suggest 3 specific search queries to start the Quarry investigation."""
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ── Deep Analysis ─────────────────────────────────────────────────────────────
+
+_DEEP_SYSTEM_PROMPT = """\
+You are Quarry Deep Analysis — an epistemic reasoning engine embedded in an \
+investigative research tool. You receive a query and a set of web sources \
+scraped for that query.
+
+## Your task
+
+Reason internally as much as needed. Then output EXACTLY ONE JSON object \
+conforming to the schema below. Output nothing else — no preamble, no markdown \
+fences, no explanation, no chain-of-thought prose. If you are unsure about \
+a field, use null or an empty array rather than fabricating content.
+
+## Output schema
+
+{
+  "answer": "<string: concise natural-language answer, 2-4 paragraphs, \
+markdown allowed, inline citations like [Source Title](url) encouraged. \
+DO NOT include internal reasoning here — only the answer the user would read.>",
+
+  "analysis": {
+
+    "claims": [
+      {
+        "text": "<string: one complete, standalone factual claim>",
+        "confidence": "<'high' | 'medium' | 'low' | 'contested'>",
+        "sources": [
+          {
+            "title": "<string: source article title>",
+            "url": "<string: full URL>",
+            "quote": "<string: verbatim or near-verbatim excerpt | null>"
+          }
+        ]
+      }
+    ],
+
+    "gaps": [
+      {
+        "question": "<string: specific unanswered question, framed as a question>",
+        "why_it_matters": "<string: one sentence on research or epistemic significance>",
+        "severity": "<'critical' | 'moderate' | 'minor'>"
+      }
+    ],
+
+    "timeline_events": [
+      {
+        "date": "<string: ISO 8601 'YYYY-MM-DD', or approximate e.g. 'early 2024', '2023-Q2'>",
+        "event": "<string: what happened, one sentence>",
+        "source_url": "<string: URL | null>"
+      }
+    ],
+
+    "perspectives": [
+      {
+        "actor": "<string: outlet name, org name, or category e.g. 'Government of Sudan'>",
+        "role": "<'state' | 'ngo' | 'wire' | 'local' | 'academic' | 'think_tank' | 'corporate' | 'unknown'>",
+        "stance": "<string: 1-2 sentence characterisation of their position or framing>",
+        "url": "<string: representative URL | null>"
+      }
+    ]
+  }
+}
+
+## Confidence calibration
+
+- high — two or more independent, primary sources explicitly state this
+- medium — one credible source states it, or multiple sources imply it
+- low — inferred from context, single peripheral source, or paraphrase
+- contested — sources actively and explicitly disagree on this point
+
+## What NOT to do
+
+- Do NOT output any text before or after the JSON object.
+- Do NOT wrap the JSON in markdown code fences (no ```json).
+- Do NOT include your reasoning steps in the output.
+- Do NOT fabricate claims, quotes, URLs, or timeline events not present \
+in the provided sources.
+- Do NOT flag perspective differences as contradictions — \
+contradictions are factual conflicts, not editorial framing differences.
+- Do NOT include a claim in `claims[]` unless at least one source \
+in the provided context supports it.
+- If no timeline events are discernible, return an empty array for \
+timeline_events — do not invent dates.
+"""
+
+
+def _build_deep_user_message(query: str, sources: list[DeepSourceContext]) -> str:
+    """Format the query + scraped sources into a user message for the LLM."""
+    parts = [f"QUERY: {query}\n"]
+
+    if not sources:
+        parts.append("No sources were provided. Answer based on your training knowledge, but flag all claims as low-confidence and note in gaps[] that no live sources were available.\n")
+    else:
+        parts.append(f"SOURCES ({len(sources)} total):\n")
+        for i, s in enumerate(sources, 1):
+            parts.append(f"[{i}] {s.title}")
+            parts.append(f"URL: {s.url}")
+            if s.snippet:
+                parts.append(f"Snippet: {s.snippet}")
+            if s.markdown:
+                # Trim to avoid overshooting context; first 2500 chars per source
+                trimmed = s.markdown[:2500]
+                if len(s.markdown) > 2500:
+                    trimmed += "\n[…truncated]"
+                parts.append(f"Content:\n{trimmed}")
+            parts.append("")  # blank line between sources
+
+    return "\n".join(parts)
+
+
+def _parse_deep_response(raw: str) -> DeepAnalysisResponse:
+    """
+    Parse the raw LLM string into a DeepAnalysisResponse.
+    Strips accidental markdown fences before parsing.
+    Raises ValueError on invalid JSON or schema mismatch.
+    """
+    text = raw.strip()
+
+    # Strip ```json ... ``` or ``` ... ``` fences if the model disobeyed
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+        text = text.strip()
+
+    data = json.loads(text)  # raises json.JSONDecodeError on bad JSON
+
+    # Pydantic validates and coerces
+    return DeepAnalysisResponse(**data)
+
+
+@router.post("/deep_analyze", response_model=DeepAnalysisResponse)
+@limiter.limit("10/minute")
+async def deep_analyze(request: Request, body: DeepAnalyzeRequest):
+    """
+    Deep epistemic analysis of a query using pre-fetched session sources.
+
+    Accepts the query and optionally the sources already retrieved by the
+    main /explore/search call (passed back from the frontend as session_context).
+    Returns a structured DeepAnalysisResponse — NOT a stream.
+    """
+    query = body.query
+
+    # Extract sources from session_context
+    raw_sources: list[dict] = []
+    if body.session_context and isinstance(body.session_context.get("sources"), list):
+        raw_sources = body.session_context["sources"]
+
+    sources = [
+        DeepSourceContext(
+            title=s.get("title", ""),
+            url=s.get("url", ""),
+            snippet=s.get("snippet", ""),
+            markdown=s.get("markdown", ""),
+        )
+        for s in raw_sources
+        if isinstance(s, dict) and s.get("url")
+    ]
+
+    user_message = _build_deep_user_message(query, sources)
+
+    user_context = _build_user_context(request)
+    system_prompt = _DEEP_SYSTEM_PROMPT
+    if user_context:
+        system_prompt = f"{user_context}\n\n{system_prompt}"
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user",   "content": user_message},
+    ]
+
+    try:
+        raw = await asyncio.to_thread(
+            llm_service.chat_sync,
+            messages,
+            "openai/gpt-4o",   # deep mode always uses the full model
+            45,                 # timeout — deep analysis is allowed more time
+            3000,               # max_tokens — analysis JSON can be large
+        )
+    except Exception as exc:
+        logger.error("deep_analyze.llm_failed: %s", exc)
+        raise HTTPException(status_code=502, detail="LLM call failed. Please try again.")
+
+    try:
+        result = _parse_deep_response(raw)
+    except (json.JSONDecodeError, ValueError, Exception) as exc:
+        logger.error("deep_analyze.parse_failed: %s | raw=%s", exc, raw[:400])
+        raise HTTPException(
+            status_code=502,
+            detail="Deep analysis returned malformed data. Please retry.",
+        )
+
+    return result
+
+
+# ── Deep Diagram ──────────────────────────────────────────────────────────────
+
+_DEEP_DIAGRAM_SYSTEM_PROMPT = """\
+You are Quarry Diagram Engine — a specialist that decides whether the accumulated \
+session context warrants an auto-generated diagram, and if so, emits a compact \
+machine-readable diagram specification.
+
+## Decision rule
+
+Emit a diagram ONLY if at least one of the following is true:
+- There are 2 or more distinct dated events that together form a sequence → use "timeline"
+- There are 3 or more distinct actors with meaningful relationships (e.g. state, NGO, \
+armed group, corridor operators) → use "actorGraph"
+- There is a geographical route, crossing, corridor, or supply chain with multiple \
+named locations and a mix of operational/blocked/proposed statuses → use "corridorMap"
+
+If NONE of these conditions hold, output exactly: {"diagramType": null}
+
+## Output format
+
+If a diagram IS warranted, output ONLY valid JSON — no preamble, no markdown fences, \
+no explanation. Match this schema exactly:
+
+{
+  "diagramType": "timeline" | "actorGraph" | "corridorMap",
+  "title": "<8 words or fewer>",
+  "nodes": [
+    {
+      "id": "<short_snake_case_id>",
+      "label": "<display label>",
+      "type": "<see type rules below>",
+      "status": "<'operational'|'blocked'|'proposed'|'suspended'|'unknown' — corridorMap only, else omit>",
+      "meta": { ... }
+    }
+  ],
+  "edges": [
+    {
+      "source": "<node id>",
+      "target": "<node id>",
+      "label": "<relation in 3 words or fewer>",
+      "status": "<'active'|'blocked'|'proposed'|'contested' — omit if not relevant>"
+    }
+  ],
+  "meta": {
+    "context": "<one sentence>",
+    "date_range": "<e.g. '2023-10 – 2024-04' — timeline only>",
+    "confidence": "<'high'|'medium'|'low'>"
+  }
+}
+
+## Type rules
+
+timeline  — nodes have meta.date (ISO 8601 or approximate) and meta.description; \
+no edges needed.
+
+actorGraph — node.type one of: state | ngo | wire | armed_group | intergovernmental | \
+media | unknown. Edges are directional relations: label must be a short verb phrase \
+("blocks aid", "coordinates with", "receives funding", "opens crossing").
+
+corridorMap — node.type one of: border_crossing | port | warehouse | city | airstrip | \
+maritime_corridor | unknown. Edge label is a route description. Node status captures \
+current operational state.
+
+## What NOT to do
+- Do NOT emit chain-of-thought text.
+- Do NOT add markdown code fences.
+- Do NOT fabricate nodes or events not grounded in the session summary.
+- Do NOT use generic labels like "Actor A" — use real names from the session.
+- Do NOT emit more than 12 nodes or 16 edges — keep the spec renderable.
+"""
+
+
+def _build_diagram_user_message(query: str, session_summary: str) -> str:
+    parts = [f"CURRENT QUERY: {query}\n"]
+    if session_summary.strip():
+        parts.append(f"SESSION SUMMARY:\n{session_summary.strip()}")
+    else:
+        parts.append(
+            "SESSION SUMMARY: Only one query so far. "
+            "Decide based solely on the current query content."
+        )
+    return "\n".join(parts)
+
+
+def _parse_diagram_response(raw: str) -> DiagramSpec:
+    text = raw.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+        text = text.strip()
+    data = json.loads(text)
+    # Normalise: frontend sends camelCase alias, pydantic model accepts both
+    return DiagramSpec(**data)
+
+
+@router.post("/deep_diagram", response_model=DiagramSpec)
+@limiter.limit("15/minute")
+async def deep_diagram(request: Request, body: DeepDiagramRequest):
+    """
+    Decide whether the current session warrants an auto-generated diagram.
+    Returns a DiagramSpec with diagramType=null if no diagram is warranted,
+    or a full spec (timeline / actorGraph / corridorMap) otherwise.
+    """
+    user_message = _build_diagram_user_message(body.query, body.session_summary)
+    messages = [
+        {"role": "system", "content": _DEEP_DIAGRAM_SYSTEM_PROMPT},
+        {"role": "user",   "content": user_message},
+    ]
+
+    try:
+        raw = await asyncio.to_thread(
+            llm_service.chat_sync,
+            messages,
+            "openai/gpt-4o",
+            30,    # timeout
+            1500,  # max_tokens — diagram JSON is compact
+        )
+    except Exception as exc:
+        logger.error("deep_diagram.llm_failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Diagram LLM call failed.")
+
+    try:
+        return _parse_diagram_response(raw)
+    except (json.JSONDecodeError, ValueError, Exception) as exc:
+        logger.error("deep_diagram.parse_failed: %s | raw=%s", exc, raw[:300])
+        # Graceful degradation: return no-diagram spec rather than a 502
+        return DiagramSpec(diagramType=None, title="", nodes=[], edges=[])

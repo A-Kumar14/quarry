@@ -5,9 +5,8 @@ Research that shows its epistemic work — for anyone who needs to understand
 not just what is true, but how we know it and where it's contested.
 
 ## V1 Beachhead User
-Crisis journalist. 7am Doha. Editor needs a brief in 3 hours on a breaking
-Middle East story. Currently spends 2-3 hours across Google, Twitter, RSS.
-Quarry collapses that to 20 minutes.
+News-heavy researchers and analysts who need fast, source-grounded answers.
+Quarry reduces cross-site searching into one transparent workflow.
 
 ## What We Are Building (In Order)
 1. Source Database — outlet profiles (funding, lean, tier) queried per search
@@ -15,7 +14,7 @@ Quarry collapses that to 20 minutes.
 3. Claim Confidence Indicators — every sentence tagged verified/contested
 4. Claim Landscape — 2D epistemic map repurposing KnowledgeGraph.js
 5. Source Cards — rich outlet profiles on every cited source
-6. Static Landing Page — front door for journalists
+6. Static Landing Page — front door for news and research users
 
 ## What Already Works (Don't Rebuild)
 - ContradictionsTab.js — contradiction detection is live

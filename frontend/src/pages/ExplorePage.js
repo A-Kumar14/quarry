@@ -1,12 +1,11 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { Box, Typography, Skeleton, Tooltip, CircularProgress } from '@mui/material';
-import { Search, BookmarkPlus, ExternalLink, Zap, CornerDownRight, ArrowUpRight, TrendingUp, RefreshCw, Copy, Check, Edit3 } from 'lucide-react';
+import { Search, BookmarkPlus, ExternalLink, Zap, CornerDownRight, TrendingUp, RefreshCw, Copy, Check, Edit3 } from 'lucide-react';
 import { useNavigate, useSearchParams, Navigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import { motion, AnimatePresence } from 'framer-motion'; // eslint-disable-line no-unused-vars
-import { RadialBarChart, RadialBar, PolarAngleAxis } from 'recharts';
 import GlassCard from '../components/GlassCard';
 import { saveContestedClaims, saveInvestigationHistory } from './HomePage';
 import PerspectivesTab from '../components/PerspectivesTab';
@@ -16,17 +15,16 @@ import GapsTab from '../components/GapsTab';
 import QuoteBankTab from '../components/QuoteBankTab';
 import { getSourceQuality, QUALITY_COLOR } from '../utils/sourceQuality';
 import { TIER_COLOR } from '../utils/sourceProfile';
-import Toast from '../components/Toast';
 import FinanceCard from '../components/FinanceCard';
-import { useSettings, useTopOffset } from '../SettingsContext';
+import { useTopOffset } from '../SettingsContext';
 import { useDarkMode } from '../DarkModeContext';
-import NavControls from '../components/NavControls';
 import KnowledgeGraph from '../components/KnowledgeGraph'; // eslint-disable-line no-unused-vars
 import DiagramCard from '../components/DiagramCard';
-import SourceCredibilityMatrix from '../components/SourceCredibilityMatrix';
 import EntityDossier from '../components/EntityDossier';
 import OnboardingModal from '../components/OnboardingModal';
 import { useAuth } from '../contexts/AuthContext';
+import DeepPanel from '../components/DeepPanel';
+import { HoverPeek } from '../components/ui/link-preview';
 
 // ── Saved searches ────────────────────────────────────────────────────────────
 function getSaved() {
@@ -41,20 +39,19 @@ function agoE(ts) {
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   return `${Math.floor(s / 86400)}d ago`;
 }
-function addSaved(query, excerpt, fullAnswer) {
-  const items = getSaved();
-  const entry = {
-    id: Date.now().toString(),
-    query,
-    excerpt: excerpt.slice(0, 200),
-    answer: (fullAnswer || '').slice(0, 8000),
-    savedAt: Date.now(),
-  };
-  localStorage.setItem('quarry_saved', JSON.stringify([...items.filter(i => i.query !== query), entry]));
-}
-
 const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 const MAX_FOLLOW_UPS = 5;
+const ANALYSIS_PROFILE_LABELS = {
+  fast_scan: 'Fast scan',
+  careful_analysis: 'Careful analysis',
+  deep_mapping: 'Deep mapping',
+};
+
+function profileIdFromModel(modelId = '') {
+  if (modelId === 'openai/gpt-4o-mini') return 'fast_scan';
+  if (modelId === 'anthropic/claude-3.5-sonnet') return 'deep_mapping';
+  return 'careful_analysis';
+}
 
 // ── Source database hook ───────────────────────────────────────────────────────
 function useSources() {
@@ -99,12 +96,12 @@ const ANSWER_BODY_STYLES = {
 
 const GLASS_BTN = {
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-  padding: '6px 14px', borderRadius: 20, cursor: 'pointer',
-  background: 'rgba(255,250,232,0.50)',
+  padding: '6px 11px', borderRadius: 12, cursor: 'pointer',
+  background: 'var(--gbtn-bg)',
   border: '1px solid var(--border)',
-  fontFamily: 'var(--font-family)', fontSize: 13, fontWeight: 500,
+  fontFamily: 'var(--font-family)', fontSize: 12, fontWeight: 500,
   letterSpacing: '0.01em', color: 'var(--fg-secondary)', whiteSpace: 'nowrap',
-  transition: 'background 0.15s ease, color 0.15s ease', outline: 'none',
+  transition: 'background 0.15s ease, color 0.15s ease, border-color 0.15s ease', outline: 'none',
   boxShadow: 'none',
 };
 
@@ -121,70 +118,25 @@ const PAGE_BG = {
   minHeight: '100vh',
 };
 
-// ── Research completeness score ───────────────────────────────────────────────
+const chromeBarBase = (dark) => ({
+  background: dark ? 'rgba(16,18,26,0.86)' : 'rgba(237,232,223,0.90)',
+  backdropFilter: dark ? 'blur(16px) saturate(145%)' : 'blur(16px) saturate(130%)',
+  WebkitBackdropFilter: dark ? 'blur(16px) saturate(145%)' : 'blur(16px) saturate(130%)',
+});
 
-// eslint-disable-next-line no-unused-vars
-function calcCompletenessScore(sources, claims, contradictions) {
-  // Source diversity (0–30 pts)
-  const srcScore = Math.min(sources.length / 5, 1) * 30;
-
-  // Verification rate (0–35 pts)
-  const verified = claims.filter(c => ['verified', 'corroborated'].includes(c.status)).length;
-  const verifyRate = claims.length > 0 ? verified / claims.length : 0;
-  const verifyScore = verifyRate * 35;
-
-  // Claim extraction (0–20 pts)
-  const claimScore = Math.min(claims.length / 8, 1) * 20;
-
-  // Contradiction penalty (up to –15 pts)
-  const contested = claims.filter(c => c.status === 'contested').length;
-  const contradictionPenalty = Math.min(contested * 5, 15);
-
-  return Math.round(Math.max(0, Math.min(100, srcScore + verifyScore + claimScore - contradictionPenalty)));
-}
-
-// ── Completeness radial gauge ─────────────────────────────────────────────────
-
-// eslint-disable-next-line no-unused-vars
-function CompletenessGauge({ score }) {
-  const color = score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#ef4444';
-  const data = [{ value: score, fill: color }];
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, marginTop: 8 }}>
-      <div style={{ position: 'relative', width: 64, height: 64 }}>
-        <RadialBarChart
-          width={64} height={64}
-          cx={32} cy={32}
-          innerRadius={22} outerRadius={30}
-          startAngle={210} endAngle={-30}
-          data={data}
-          style={{ pointerEvents: 'none' }}
-        >
-          <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
-          <RadialBar
-            dataKey="value"
-            cornerRadius={4}
-            background={{ fill: 'var(--border)' }}
-          />
-        </RadialBarChart>
-        <div style={{
-          position: 'absolute', inset: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontFamily: 'var(--font-mono)', fontSize: '0.70rem', fontWeight: 700,
-          color,
-        }}>
-          {score}
-        </div>
-      </div>
-      <div style={{
-        fontFamily: 'var(--font-family)', fontSize: '0.58rem',
-        color: 'var(--fg-dim)', textTransform: 'uppercase', letterSpacing: '0.06em',
-      }}>
-        completeness
-      </div>
-    </div>
-  );
-}
+const CHROME_INPUT_SX = {
+  borderRadius: 999,
+  px: 1.5,
+  py: 0.6,
+  background: 'var(--glass-bg)',
+  border: '1px solid var(--border)',
+  boxShadow: '0 1px 4px rgba(140,110,60,0.06)',
+  transition: 'box-shadow 0.15s, border-color 0.15s',
+  '&:focus-within': {
+    boxShadow: '0 1px 4px rgba(140,110,60,0.06), 0 0 0 3px var(--accent-dim)',
+    borderColor: 'rgba(249,115,22,0.35)',
+  },
+};
 
 // ── Confidence-gated chip gain estimator ──────────────────────────────────────
 
@@ -217,13 +169,15 @@ function CitationLink({ href, children, sources }) {
   if (isCitation) {
     const num = parseInt(text.replace(/\D/g, ''), 10);
     const src = sources[num - 1];
+    const targetUrl = src?.url || href || '#';
     return (
-      <Tooltip title={src?.url || href || ''} placement="top">
+      <HoverPeek url={targetUrl} peekWidth={220} peekHeight={138}>
         <Box
           component="a"
-          href={src?.url || href || '#'}
+          href={targetUrl}
           target="_blank"
           rel="noopener noreferrer"
+          title={targetUrl}
           sx={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             px: '5px', height: 16, fontSize: '0.65rem', fontWeight: 600,
@@ -237,13 +191,15 @@ function CitationLink({ href, children, sources }) {
         >
           {num}
         </Box>
-      </Tooltip>
+      </HoverPeek>
     );
   }
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>
-      {children}
-    </a>
+    <HoverPeek url={href || ''} peekWidth={240} peekHeight={150}>
+      <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>
+        {children}
+      </a>
+    </HoverPeek>
   );
 }
 
@@ -254,6 +210,28 @@ function extractKeywordChips(answer) {
       .filter(t => !t.includes('\n'))
   )];
   return boldTerms.slice(0, 6);
+}
+
+function normalizeSourceBrief(sourceBrief, hasSources = false) {
+  const fallback = hasSources
+    ? {
+        summary: 'Source mix analysis is unavailable for this run. Review domain diversity and outlet types in the source list.',
+        tags: ['analysis_unavailable', 'review_source_mix'],
+      }
+    : {
+        summary: 'No sources retrieved yet, so source composition cannot be assessed.',
+        tags: ['no_sources_yet', 'insufficient_signal'],
+      };
+
+  if (!sourceBrief || typeof sourceBrief !== 'object') return fallback;
+  const summary = typeof sourceBrief.summary === 'string' ? sourceBrief.summary.trim() : '';
+  const tags = Array.isArray(sourceBrief.tags)
+    ? sourceBrief.tags.map(t => String(t).trim()).filter(Boolean).slice(0, 4)
+    : [];
+  return {
+    summary: summary || fallback.summary,
+    tags: tags.length ? tags : fallback.tags,
+  };
 }
 
 function linkifyCitations(text, sources) {
@@ -686,13 +664,14 @@ function SourceModal({ source, sourceProfile, claims, onClose, onInsert }) {
 
 function SourceIntelligencePopup({
   sources,
-  claims,
   pipelineTrace,
+  sourceBrief,
   isDeepSearch,
   selectedSource,
   onSelectSource,
   onClose,
 }) {
+  const brief = normalizeSourceBrief(sourceBrief, sources.length > 0);
   return (
     <div
       onClick={onClose}
@@ -732,18 +711,9 @@ function SourceIntelligencePopup({
                   <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.82rem', fontWeight: 800, color: 'var(--fg-primary)' }}>{sources.length}</span>
                   <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.62rem', color: 'var(--fg-dim)', marginLeft: 6 }}>sources</span>
                 </div>
-                <div style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.25)', padding: '6px 10px', borderRadius: 10 }}>
-                  <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.82rem', fontWeight: 800, color: '#22c55e' }}>
-                    {pipelineTrace?.claims_verified ?? claims.filter(c => ['verified', 'corroborated'].includes(c.status)).length}
-                  </span>
-                  <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.62rem', color: 'var(--fg-dim)', marginLeft: 6 }}>verified</span>
-                </div>
-                <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.25)', padding: '6px 10px', borderRadius: 10 }}>
-                  <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.82rem', fontWeight: 800, color: '#ef4444' }}>
-                    {pipelineTrace?.claims_contested ?? claims.filter(c => c.status === 'contested').length}
-                  </span>
-                  <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.62rem', color: 'var(--fg-dim)', marginLeft: 6 }}>contested</span>
-                </div>
+              </div>
+              <div style={{ marginTop: 10, fontFamily: 'var(--font-family)', fontSize: '0.76rem', color: 'var(--fg-secondary)', lineHeight: 1.55 }}>
+                {brief.summary}
               </div>
             </div>
 
@@ -771,55 +741,6 @@ function SourceIntelligencePopup({
         </div>
 
         <div style={{ padding: '0 18px 18px' }}>
-          {/* Pipeline stats card */}
-          {pipelineTrace && (
-            <Box
-              sx={{
-                background: 'var(--bg-secondary)',
-                border: '1px solid var(--border)',
-                borderRadius: '12px',
-                padding: '16px 18px',
-                mb: 14 / 6, // slightly less spacing than default
-              }}
-            >
-              <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.70rem', fontWeight: 600, color: 'var(--fg-secondary)', mb: 1.25, display: 'block', letterSpacing: '0.04em' }}>
-                Research pipeline
-              </Typography>
-              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
-                {[
-                  { label: 'sources', value: sources.length, color: null },
-                  { label: 'claims', value: pipelineTrace.claims_extracted ?? claims.length, color: null },
-                  { label: 'verified', value: pipelineTrace.claims_verified, color: '#22c55e' },
-                  { label: 'contested', value: pipelineTrace.claims_contested, color: '#ef4444' },
-                ].map(({ label, value, color }) => (
-                  <Box key={label}>
-                    <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '1.5rem', fontWeight: 700, color: color ?? 'var(--fg-primary)', lineHeight: 1 }}>
-                      {value}
-                    </Typography>
-                    <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', color: 'var(--fg-dim)', mt: 0.4 }}>
-                      {label}
-                    </Typography>
-                  </Box>
-                ))}
-              </Box>
-
-              {/* Pass-through mode indicator */}
-              {(pipelineTrace.pipeline_mode ?? 'epistemic') === 'pass_through' && (
-                <div style={{
-                  marginTop: 12,
-                  padding: '7px 10px',
-                  background: 'rgba(249,115,22,0.08)',
-                  borderRadius: 8,
-                  fontSize: '0.72rem',
-                  color: 'var(--fg-secondary)',
-                  lineHeight: 1.45,
-                }}>
-                  <span style={{ fontWeight: 600, color: 'var(--accent)' }}>Live query</span> — source verification not run.
-                </div>
-              )}
-            </Box>
-          )}
-
           {/* Deep-mode transparency: show which sub-queries were executed */}
           {pipelineTrace?.sub_queries && isDeepSearch && Array.isArray(pipelineTrace.sub_queries) && (
             <div style={{
@@ -1211,38 +1132,6 @@ function BentoImages({ query }) {
   );
 }
 
-// ── Inline images ─────────────────────────────────────────────────────────────
-
-function InlineImages({ visualQuery }) {
-  const [photos, setPhotos] = useState([]);
-  useEffect(() => {
-    if (!visualQuery) return;
-    let cancelled = false;
-    fetch(`${API}/explore/images?q=${encodeURIComponent(visualQuery)}&page=0`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => { if (!cancelled && data?.images?.length) setPhotos(data.images.slice(0, 3)); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [visualQuery]);
-  if (!photos.length) return null;
-  return (
-    <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-      {photos.map((photo, i) => (
-        <a key={i} href={photo.source || '#'} target="_blank" rel="noopener noreferrer"
-          style={{ flex: 1, borderRadius: 10, overflow: 'hidden', display: 'block', textDecoration: 'none', aspectRatio: '16/10' }}>
-          <img src={photo.image} alt={photo.title || visualQuery}
-            onError={e => { e.target.parentElement.style.display = 'none'; }}
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transition: 'transform 0.2s', backgroundColor: '#e5ddd0' }}
-            onMouseEnter={e => { e.target.style.transform = 'scale(1.03)'; }}
-            onMouseLeave={e => { e.target.style.transform = 'scale(1)'; }}
-          />
-        </a>
-      ))}
-    </div>
-  );
-}
-
-
 // Split an answer string into alternating text / diagram segments.
 // During streaming, an unclosed [DIAGRAM] block is hidden to avoid raw
 // syntax leaking into the rendered output.
@@ -1284,7 +1173,8 @@ function CollapsibleAnswer({ answer, streaming, sources, onNewSearch }) {
   const isEmpty = !streaming && (
     !answer ||
     /i couldn.{0,10}t find relevant results/i.test(answer) ||
-    /no (relevant |search )?results/i.test(answer)
+    /no (relevant |search )?results/i.test(answer) ||
+    /no summary could be generated/i.test(answer)
   );
 
   const parts = useMemo(
@@ -1466,9 +1356,13 @@ function PipelineTrace({ trace }) {
   );
 }
 
-function FollowUpBar({ onSubmit, atMax }) {
+function FollowUpBar({ onSubmit, atMax, enabled = true }) {
   const [text, setText] = useState('');
-  const submit = () => { const t = text.trim(); if (t) { onSubmit(t); setText(''); } };
+  const canAsk = enabled && text.trim().length > 0;
+  const submit = () => {
+    const t = text.trim();
+    if (enabled && t) { onSubmit(t); setText(''); }
+  };
 
   if (atMax) {
     return (
@@ -1479,90 +1373,231 @@ function FollowUpBar({ onSubmit, atMax }) {
   }
   return (
     <Box component="form" onSubmit={e => { e.preventDefault(); submit(); }} sx={{
-      width: '100%', display: 'flex', alignItems: 'center', gap: 1.5,
-      borderBottom: '1px solid var(--border)', pb: 0.75,
-      '&:focus-within': { borderBottomColor: 'var(--accent)' },
+      width: '100%', display: 'flex', alignItems: 'center', gap: 0.95,
+      ...CHROME_INPUT_SX,
+      px: 1.1,
+      py: 0.42,
+      opacity: enabled ? 1 : 0.72,
     }}>
       <CornerDownRight size={15} color="var(--fg-dim)" strokeWidth={2} style={{ flexShrink: 0 }} />
       <input
         value={text} onChange={e => setText(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }}
-        placeholder="Ask a detailed follow-up about your research..." autoComplete="off"
-        style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: '0.9rem', fontFamily: 'var(--font-family)', fontWeight: 300, color: 'var(--fg-primary)', padding: '4px 0' }}
+        onKeyDown={e => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            submit();
+          }
+        }}
+        placeholder={enabled ? 'Ask a detailed follow-up about your research...' : 'Wait for current response before asking a follow-up...'}
+        autoComplete="off"
+        readOnly={!enabled}
+        style={{
+          flex: 1, border: 'none', outline: 'none', background: 'transparent',
+          fontSize: '0.88rem', fontFamily: 'var(--font-family)', fontWeight: 300,
+          color: 'var(--fg-primary)', padding: '3px 0',
+        }}
       />
-      {text.trim() && (
-        <button type="submit" style={{ ...GLASS_BTN_ACCENT, padding: '5px 14px', fontSize: 12 }}>
-          Ask
-        </button>
-      )}
+      <button
+        type="submit"
+        disabled={!canAsk}
+        style={{
+          ...GLASS_BTN_ACCENT,
+          padding: '5px 11px',
+          fontSize: 11.5,
+          opacity: canAsk ? 1 : 0.45,
+          cursor: canAsk ? 'pointer' : 'not-allowed',
+        }}
+      >
+        Ask
+      </button>
     </Box>
   );
 }
 
 // ── Mini tab strip ────────────────────────────────────────────────────────────
 
-function MiniTabStrip({ active, onChange, hasContradictions, contradictionsLoading, hasSources, hasGaps, hasQuotes }) {
+function MiniTabStrip({ active, onChange }) {
   const tabs = [
-    { key: 'answer',         label: 'Result' },
-    { key: 'perspectives',   label: 'Perspectives' },
-    ...(hasSources ? [{ key: 'citations', label: 'Citations' }] : []),
-    { key: 'images',         label: 'Images' },
-    { key: 'contradictions', label: 'Contradictions', dot: contradictionsLoading ? true : hasContradictions },
-    ...(hasGaps   ? [{ key: 'gaps',   label: 'Gaps' }]   : []),
-    ...(hasQuotes ? [{ key: 'quotes', label: 'Quotes' }] : []),
-    ...(hasSources ? [{ key: 'dossier', label: 'Sources' }] : []),
+    { key: 'answer', label: 'Answer', title: 'AI-synthesised answer' },
+    { key: 'images', label: 'Images', title: 'Related images for this query' },
   ];
 
   return (
     <Box sx={{
-      display: 'flex', gap: 0.5, flexWrap: 'nowrap',
+      display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'nowrap',
       overflowX: 'auto', borderTop: '1px solid var(--border)', pt: 1.25, mt: 1.5,
       '&::-webkit-scrollbar': { display: 'none' }, scrollbarWidth: 'none',
     }}>
+      <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.56rem', color: 'var(--fg-dim)', letterSpacing: '0.10em', textTransform: 'uppercase', mr: 0.5, flexShrink: 0 }}>
+        View
+      </Typography>
       {tabs.map(t => (
-        <Box
-          key={t.key}
-          onClick={() => onChange(t.key)}
-          sx={{
-            px: 1.25, py: 0.45, borderRadius: 999, cursor: 'pointer', flexShrink: 0,
-            fontFamily: 'var(--font-family)', fontSize: '0.72rem',
-            fontWeight: active === t.key ? 500 : 400,
-            color: active === t.key ? '#fff' : 'var(--fg-secondary)',
-            background: active === t.key ? 'var(--accent)' : 'var(--gbtn-bg)',
-            border: '1px solid',
-            borderColor: active === t.key ? 'transparent' : 'var(--border)',
-            transition: 'all 0.14s',
-            display: 'flex', alignItems: 'center', gap: '4px',
-            '&:hover': { color: active === t.key ? '#fff' : 'var(--fg-primary)', borderColor: active === t.key ? 'transparent' : 'rgba(249,115,22,0.3)' },
-          }}
-        >
-          {t.label}
-          {t.dot && (
-            <span style={{ display: 'inline-block', width: 5, height: 5, borderRadius: '50%', background: '#d97706', verticalAlign: 'middle' }} />
-          )}
-        </Box>
+        <Tooltip key={t.key} title={t.title} placement="top">
+          <Box
+            onClick={() => onChange(t.key)}
+            sx={{
+              px: 1.25, py: 0.45, borderRadius: 999, cursor: 'pointer', flexShrink: 0,
+              fontFamily: 'var(--font-family)', fontSize: '0.72rem',
+              fontWeight: active === t.key ? 500 : 400,
+              color: active === t.key ? '#fff' : 'var(--fg-secondary)',
+              background: active === t.key ? 'var(--accent)' : 'var(--gbtn-bg)',
+              border: '1px solid',
+              borderColor: active === t.key ? 'transparent' : 'var(--border)',
+              transition: 'all 0.14s',
+              display: 'flex', alignItems: 'center', gap: '4px',
+              '&:hover': { color: active === t.key ? '#fff' : 'var(--fg-primary)', borderColor: active === t.key ? 'transparent' : 'rgba(249,115,22,0.3)' },
+            }}
+          >
+            {t.label}
+          </Box>
+        </Tooltip>
       ))}
     </Box>
   );
 }
 
+// ── Searching / generating loading card ───────────────────────────────────────
+function SearchingCard({ sources, isDeepSearch }) {
+  const [tick, setTick] = React.useState(0);
+
+  // Cycle through micro-copy every 2.2 s
+  React.useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 2200);
+    return () => clearInterval(id);
+  }, []);
+
+  const hasSources = sources.length > 0;
+
+  const PHASES_NONE  = ['Searching the web…',       'Finding relevant sources…',  'Retrieving live data…'];
+  const PHASES_DEEP  = ['Decomposing query…',        'Running sub-queries…',       'Cross-referencing sources…'];
+  const PHASES_HAVE  = ['Analysing sources…',        'Evaluating credibility…',    'Generating response…'];
+
+  const pool  = hasSources ? PHASES_HAVE : (isDeepSearch ? PHASES_DEEP : PHASES_NONE);
+  const label = pool[tick % pool.length];
+
+  const skeletonWidths = [72, 90, 65, 82, 55, 78, 48, 68];
+
+  return (
+    <GlassCard style={{ padding: '24px 28px', minHeight: 220 }}>
+      <style>{`
+        @keyframes srPulse  { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.75)} }
+        @keyframes srFadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes srShim   { 0%,100%{opacity:0.35} 50%{opacity:0.65} }
+      `}</style>
+
+      {/* Phase indicator */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+        <span style={{
+          width: 7, height: 7, borderRadius: '50%',
+          background: 'var(--accent)', display: 'inline-block',
+          animation: 'srPulse 1.4s ease-in-out infinite',
+          flexShrink: 0,
+          boxShadow: '0 0 6px rgba(249,115,22,0.5)',
+        }} />
+        <span style={{
+          fontFamily: 'var(--font-mono)', fontSize: '0.68rem',
+          color: 'var(--accent)', letterSpacing: '0.06em',
+          animation: 'srFadeIn 0.3s ease',
+          key: label,
+        }}>
+          {label}
+        </span>
+        {isDeepSearch && (
+          <span style={{
+            marginLeft: 'auto',
+            fontFamily: 'var(--font-mono)', fontSize: '0.58rem',
+            color: 'var(--fg-dim)', background: 'rgba(249,115,22,0.08)',
+            border: '1px solid rgba(249,115,22,0.22)',
+            borderRadius: 5, padding: '2px 7px',
+          }}>
+            Deep mode
+          </span>
+        )}
+      </div>
+
+      {/* Skeleton body lines */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginBottom: 22 }}>
+        {skeletonWidths.map((w, i) => (
+          <div key={i} style={{
+            height: i === 0 ? 14 : 11,
+            width: `${w}%`,
+            borderRadius: 5,
+            background: 'var(--bg-tertiary)',
+            animation: `srShim 1.6s ease-in-out infinite`,
+            animationDelay: `${i * 0.09}s`,
+          }} />
+        ))}
+      </div>
+
+      {/* Source chips — appear as domains arrive */}
+      {hasSources && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', animation: 'srFadeIn 0.25s ease' }}>
+          <span style={{
+            fontFamily: 'var(--font-mono)', fontSize: '0.58rem',
+            color: 'var(--fg-dim)', letterSpacing: '0.08em', textTransform: 'uppercase', marginRight: 2,
+          }}>
+            {sources.length} source{sources.length !== 1 ? 's' : ''}
+          </span>
+          {sources.slice(0, 4).map((s, i) => {
+            let domain = s.url;
+            try { domain = new URL(s.url).hostname.replace('www.', ''); } catch {}
+            return (
+              <span key={i} style={{
+                fontFamily: 'var(--font-mono)', fontSize: '0.60rem',
+                color: 'var(--fg-secondary)', background: 'var(--bg-secondary)',
+                border: '1px solid var(--border)', borderRadius: 5,
+                padding: '2px 7px',
+                animation: `srFadeIn 0.2s ease ${i * 0.06}s both`,
+              }}>
+                {domain}
+              </span>
+            );
+          })}
+          {sources.length > 4 && (
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.60rem', color: 'var(--fg-dim)' }}>
+              +{sources.length - 4} more
+            </span>
+          )}
+        </div>
+      )}
+    </GlassCard>
+  );
+}
+
 // ── Result block ──────────────────────────────────────────────────────────────
 
-function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowUp, onNewSearch, isDeepSearch, deepLabel, relatedSearches = [], loadingRelated = false, visualQuery = '', contradictions = null, stockData = null, claims = [], pipelineTrace = null, onWrite, onInsertClaim, gaps = [], quotes = [] }) {
+function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowUp, onNewSearch, isDeepSearch, deepLabel, relatedSearches = [], loadingRelated = false, visualQuery = '', contradictions = null, stockData = null, claims = [], pipelineTrace = null, sourceBrief = null, onWrite, onInsertClaim, gaps = [], quotes = [], sessionContext = null, onPromptAsk }) {
   const [activeTab,       setActiveTab]       = useState('answer');
   const [copied,          setCopied]          = useState(false);
   const [processedAnswer, setProcessedAnswer] = useState('');
   const [selectedSource,  setSelectedSource]  = useState(null);
   const [showSourceIntelPopup, setShowSourceIntelPopup] = useState(false);
+  const [signalPopup,          setSignalPopup]          = useState(null); // 'contradictions'|'perspectives'|'gaps'|'quotes'|'sources'
+  const [perspectivesState, setPerspectivesState] = useState({
+    status: 'idle',
+    posts: [],
+    opinionSummary: '',
+    queryKey: '',
+  });
   const sourceMap = useSources();
+
+  // Buffer: keep SearchingCard visible until streaming is truly done.
+  // `revealed` only flips to true after streaming ends and processedAnswer is set,
+  // preventing any partially-assembled answer from flashing through.
+  const [revealed, setRevealed] = useState(false);
 
   useEffect(() => {
     if (!streaming && answer) {
-      if (claims && claims.length > 0) {
-        setProcessedAnswer(injectConfidenceBadges(answer, claims));
-      } else {
-        setProcessedAnswer(answer);
-      }
+      const processed = (claims && claims.length > 0)
+        ? injectConfidenceBadges(answer, claims)
+        : answer;
+      setProcessedAnswer(processed);
+      // Small tick so processedAnswer is committed before we reveal the card
+      const t = setTimeout(() => setRevealed(true), 60);
+      return () => clearTimeout(t);
+    }
+    if (streaming) {
+      setRevealed(false);
     }
   }, [streaming, answer, claims]);
 
@@ -1575,17 +1610,90 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
   }, [answer]);
 
   const contradictionsLoading = contradictions === null;
-  const hasContradictions     = contradictions?.contradictions?.length > 0;
   const chips    = answer ? extractKeywordChips(answer) : [];
   const sourcesCount = sources.length;
-  const blockScore = calcCompletenessScore(sources, claims, contradictions?.contradictions ?? []);
-  const blockScoreColor = blockScore >= 70 ? '#5dcaa5' : blockScore >= 40 ? 'var(--accent)' : '#e24b4a';
-  const verifiedCount =
-    pipelineTrace?.claims_verified ??
-    claims.filter(c => ['verified', 'corroborated'].includes(c.status)).length;
-  const contestedCount =
-    pipelineTrace?.claims_contested ??
-    claims.filter(c => c.status === 'contested').length;
+  const answerForState = (processedAnswer || answer || '').trim();
+  const noSourceResultState = !streaming && sourcesCount === 0 && (
+    !answerForState ||
+    /i couldn.{0,10}t find relevant results/i.test(answerForState) ||
+    /no (relevant |search )?results/i.test(answerForState) ||
+    /no summary could be generated/i.test(answerForState)
+  );
+  const blockScore = (() => {
+    const srcScore = Math.min(sources.length / 5, 1) * 30;
+    const verified = claims.filter(c => ['verified', 'corroborated'].includes(c.status)).length;
+    const verifyScore = claims.length > 0 ? (verified / claims.length) * 35 : 0;
+    const claimScore = Math.min(claims.length / 8, 1) * 20;
+    const penalty = Math.min((contradictions?.contradictions ?? []).filter(x => x).length * 5, 15);
+    return Math.round(Math.max(0, Math.min(100, srcScore + verifyScore + claimScore - penalty)));
+  })();
+  const sourceBriefData = normalizeSourceBrief(sourceBrief, sources.length > 0);
+  const evidenceActions = useMemo(() => {
+    const actions = [];
+    const topContested = (claims || []).find((c) => c.status === 'contested' && (c.claim_text || c.claim));
+    if (topContested) {
+      actions.push({
+        id: 'verify_contested',
+        label: 'Verify contested claim',
+        query: `${(topContested.claim_text || topContested.claim || '').slice(0, 120)} primary source verification`,
+      });
+    }
+    if (Array.isArray(gaps) && gaps.length > 0 && String(gaps[0]).trim()) {
+      actions.push({
+        id: 'fill_gap',
+        label: 'Fill top gap',
+        query: String(gaps[0]).trim(),
+      });
+    }
+    const contradictionTopic = contradictions?.contradictions?.[0]?.topic || contradictions?.contradictions?.[0]?.summary;
+    if (contradictionTopic) {
+      actions.push({
+        id: 'trace_disagreement',
+        label: 'Trace disagreement',
+        query: `${contradictionTopic} source disagreement evidence`,
+      });
+    }
+    return actions.slice(0, 3);
+  }, [claims, gaps, contradictions]);
+
+  useEffect(() => {
+    const q = (question || '').trim();
+    const queryKey = q.toLowerCase();
+    if (!q || isDeepSearch) {
+      setPerspectivesState({ status: 'idle', posts: [], opinionSummary: '', queryKey });
+      return;
+    }
+
+    if (
+      perspectivesState.queryKey === queryKey &&
+      (perspectivesState.status === 'loading' || perspectivesState.status === 'done')
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    setPerspectivesState({ status: 'loading', posts: [], opinionSummary: '', queryKey });
+
+    fetch(`${API}/explore/perspectives?q=${encodeURIComponent(q)}&limit=5`)
+      .then(r => { if (!r.ok) throw new Error('non-2xx'); return r.json(); })
+      .then(data => {
+        if (cancelled) return;
+        setPerspectivesState({
+          status: 'done',
+          posts: data?.posts || [],
+          opinionSummary: typeof data?.opinion_summary === 'string' ? data.opinion_summary : '',
+          queryKey,
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPerspectivesState({ status: 'error', posts: [], opinionSummary: '', queryKey });
+      });
+
+    return () => { cancelled = true; };
+    // Intentionally do not depend on perspectivesState to avoid fetch loops.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [question, isDeepSearch]);
 
   // eslint-disable-next-line no-unused-vars
   const graphData = useMemo(() => {
@@ -1608,7 +1716,7 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
       {isFollowUp && (
         <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75, px: 1.25, py: 0.4, borderRadius: '20px', background: 'rgba(0,0,0,0.04)', border: '1px solid var(--border)', alignSelf: 'flex-start' }}>
           <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.75rem', fontWeight: 400, color: 'var(--fg-dim)' }}>
-            ↩ You asked: <span style={{ color: 'var(--fg-secondary)', fontWeight: 500 }}>{question}</span>
+            ↩ Follow-up
           </Typography>
         </Box>
       )}
@@ -1628,8 +1736,8 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
         {showSourceIntelPopup && (
           <SourceIntelligencePopup
             sources={sources}
-            claims={claims}
             pipelineTrace={pipelineTrace}
+            sourceBrief={sourceBriefData}
             isDeepSearch={isDeepSearch}
             selectedSource={selectedSource}
             onSelectSource={src => { setSelectedSource(src); setShowSourceIntelPopup(false); }}
@@ -1658,11 +1766,17 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
 
         {/* ── MAIN CONTENT: AI Response ── */}
         <Box sx={{ flex: 1, minWidth: 0, padding: { xs: '16px 0', md: '16px 0' } }}>
-          {answer ? (
-            <GlassCard style={{ padding: '24px 28px' }}>
 
-              {/* Images — always shown first when on answer tab */}
-              {activeTab === 'answer' && visualQuery && <InlineImages visualQuery={visualQuery} />}
+          {!revealed ? (
+            /* ── Loading state: SearchingCard until answer is fully ready ── */
+            <SearchingCard sources={sources} isDeepSearch={isDeepSearch} />
+          ) : answer ? (
+            <motion.div
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+            >
+            <GlassCard style={{ padding: '24px 28px' }}>
 
               {/* Copy button — floating top-right */}
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
@@ -1699,6 +1813,27 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
                 {activeTab === 'answer' && (
                   <>
                     <CollapsibleAnswer answer={processedAnswer || answer} streaming={streaming} sources={sources} onNewSearch={onNewSearch} />
+                    {!streaming && evidenceActions.length > 0 && !noSourceResultState && (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1.2 }}>
+                        {evidenceActions.map((action) => (
+                          <Box
+                            key={action.id}
+                            component="button"
+                            onClick={() => onNewSearch(action.query)}
+                            sx={{
+                              px: 1.05, py: 0.42, borderRadius: 999,
+                              border: '1px solid var(--border)', background: 'var(--bg-secondary)',
+                              color: 'var(--fg-secondary)', cursor: 'pointer',
+                              fontFamily: 'var(--font-family)', fontSize: '0.69rem',
+                              transition: 'all 0.12s',
+                              '&:hover': { borderColor: 'rgba(249,115,22,0.35)', color: 'var(--accent)' },
+                            }}
+                          >
+                            {action.label}
+                          </Box>
+                        ))}
+                      </Box>
+                    )}
 
                     {/* Contested callout */}
                     {(() => {
@@ -1728,7 +1863,7 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
                     })()}
                   </>
                 )}
-                {activeTab === 'perspectives'  && <PerspectivesTab query={question} isDeepMode={isDeepSearch} subQueries={pipelineTrace?.sub_queries || []} sources={sources} />}
+                {activeTab === 'perspectives'  && <PerspectivesTab query={question} isDeepMode={isDeepSearch} subQueries={pipelineTrace?.sub_queries || []} sources={sources} prefetchedData={perspectivesState} />}
                 {activeTab === 'citations'     && <CitationsPanel sources={sources} query={question} />}
                 {activeTab === 'images'        && <BentoImages query={visualQuery || question} />}
                 {activeTab === 'contradictions' && (
@@ -1742,8 +1877,11 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
               </Box>
               <style>{`@keyframes tabFadeIn { from { opacity: 0; } to { opacity: 1; } }`}</style>
 
+              {/* Tab strip — Result + Images only */}
+              <MiniTabStrip active={activeTab} onChange={setActiveTab} />
+
               {/* Keyword chips (answer tab only) */}
-              {activeTab === 'answer' && chips.length > 0 && (
+              {activeTab === 'answer' && chips.length > 0 && !noSourceResultState && (
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 2 }}>
                   {chips.map((chip, i) => (
                     <Box
@@ -1762,18 +1900,9 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
                   ))}
                 </Box>
               )}
-
-              {/* Mini tab strip */}
-              <MiniTabStrip
-                active={activeTab}
-                onChange={setActiveTab}
-                hasContradictions={hasContradictions}
-                contradictionsLoading={contradictionsLoading}
-                hasSources={sources.length > 0}
-                hasGaps={gaps.length > 0}
-                hasQuotes={quotes.length > 0}
-              />
             </GlassCard>
+            </motion.div>
+
           ) : (
             <GlassCard style={{ padding: '22px 26px' }}>
               <Skeleton variant="rectangular" width="40%" height={12} sx={{ borderRadius: 4, bgcolor: 'var(--bg-tertiary)', mb: 2 }} />
@@ -1786,8 +1915,44 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
             </GlassCard>
           )}
 
+          {noSourceResultState && (
+            <GlassCard style={{ padding: '14px 16px', marginTop: 10 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.78rem', color: 'var(--fg-secondary)' }}>
+                  No reliable sources were found yet for this query.
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                  <Box
+                    component="button"
+                    onClick={() => onNewSearch(`${question} latest updates`)}
+                    sx={{
+                      border: '1px solid var(--border)', background: 'var(--bg-secondary)',
+                      borderRadius: '8px', px: 1.1, py: 0.55, cursor: 'pointer',
+                      fontFamily: 'var(--font-family)', fontSize: '0.72rem', color: 'var(--fg-secondary)',
+                      '&:hover': { borderColor: 'rgba(249,115,22,0.35)', color: 'var(--accent)' },
+                    }}
+                  >
+                    Try broader search
+                  </Box>
+                  <Box
+                    component="button"
+                    onClick={() => onNewSearch(`background on ${question}`)}
+                    sx={{
+                      border: '1px solid var(--border)', background: 'var(--bg-secondary)',
+                      borderRadius: '8px', px: 1.1, py: 0.55, cursor: 'pointer',
+                      fontFamily: 'var(--font-family)', fontSize: '0.72rem', color: 'var(--fg-secondary)',
+                      '&:hover': { borderColor: 'rgba(30,58,138,0.30)', color: 'var(--blue)' },
+                    }}
+                  >
+                    Search background context
+                  </Box>
+                </Box>
+              </Box>
+            </GlassCard>
+          )}
+
           {/* Related searches — below answer in center column */}
-          {(relatedSearches.length > 0 || loadingRelated) && answer && (
+          {(relatedSearches.length > 0 || loadingRelated) && answer && !noSourceResultState && (
             <Box sx={{ mt: 1.5 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 1.1, px: 0.5 }}>
                 <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'var(--blue)' }} />
@@ -1842,86 +2007,337 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
             gap: 2,
             mt: '16px'
           }}>
-            {/* Source Intelligence Card */}
+            {/* Source Intelligence Card — quiet annotation */}
             <Box
               component="button"
               onClick={() => setShowSourceIntelPopup(true)}
               sx={{
                 width: '100%',
                 textAlign: 'left',
-                borderRadius: '16px',
-                padding: '16px',
+                borderRadius: '12px',
+                padding: '12px 14px',
                 background: 'var(--bg-secondary)',
                 border: '1px solid var(--border)',
                 cursor: 'pointer',
                 transition: 'all 0.16s ease',
                 '&:hover': {
-                  borderColor: 'rgba(249,115,22,0.6)',
+                  borderColor: 'rgba(249,115,22,0.35)',
                   transform: 'translateY(-1px)',
                 },
               }}
             >
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                 <Typography sx={{
                   fontFamily: 'var(--font-family)',
-                  fontSize: '0.625rem',
+                  fontSize: '0.60rem',
                   fontWeight: 600,
                   color: 'var(--fg-dim)',
-                  letterSpacing: '0.14em',
+                  letterSpacing: '0.12em',
                   textTransform: 'uppercase',
-                  opacity: 0.8,
                 }}>
-                  Source Intelligence
+                  Sources
                 </Typography>
-                {sources.length > 0 && (
-                  <Box sx={{
-                    display: 'flex', alignItems: 'center', gap: '4px',
-                    background: `${blockScoreColor}18`,
-                    border: `1px solid ${blockScoreColor}40`,
-                    borderRadius: '6px', padding: '2px 6px',
-                  }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', fontWeight: 700, color: blockScoreColor }}>{blockScore}</span>
-                    <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.55rem', color: 'var(--fg-dim)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>completeness</span>
-                  </Box>
-                )}
-              </Box>
-
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                <Box>
-                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '2.25rem', fontWeight: 500, color: 'var(--fg-primary)', lineHeight: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', fontWeight: 600, color: 'var(--fg-secondary)' }}>
                     {sourcesCount}
                   </Typography>
-                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.75rem', color: 'var(--fg-dim)', mt: 0.25, textTransform: 'uppercase', opacity: 0.8 }}>
-                    sources
-                  </Typography>
-                </Box>
-                <Box sx={{ textAlign: 'right' }}>
-                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.85rem', fontWeight: 500, color: '#22c55e', lineHeight: 1.4 }}>
-                    {verifiedCount} verified
-                  </Typography>
-                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.85rem', fontWeight: 500, color: '#ef4444', lineHeight: 1.4 }}>
-                    {contestedCount} contested
-                  </Typography>
+                  {sourcesCount > 0 && (
+                    <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.58rem', color: 'var(--fg-dim)' }}>
+                      · {blockScore}/100
+                    </Typography>
+                  )}
                 </Box>
               </Box>
+              <Typography sx={{
+                fontFamily: 'var(--font-family)',
+                fontSize: '0.68rem',
+                color: 'var(--fg-secondary)',
+                lineHeight: 1.5,
+                overflow: 'hidden',
+                display: '-webkit-box',
+                WebkitLineClamp: 1,
+                WebkitBoxOrient: 'vertical',
+              }}>
+                {sourceBriefData.summary}
+              </Typography>
             </Box>
 
-            {/* Source Credibility Matrix */}
-            {sources.length > 0 && (
-              <Box sx={{
-                borderRadius: '16px',
-                padding: '16px',
-                background: 'var(--bg-secondary)',
-                border: '1px solid var(--border)',
-              }}>
-                <SourceCredibilityMatrix sources={sources} />
+            {/* ── Signal Cards ────────────────────────────────────────────── */}
+
+            {/* Contradictions signal card */}
+            {contradictions && contradictions.contradictions?.length > 0 && (
+              <Box
+                component="button"
+                onClick={() => setSignalPopup('contradictions')}
+                sx={{
+                  width: '100%', textAlign: 'left', borderRadius: '14px',
+                  padding: '14px', background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border)', cursor: 'pointer',
+                  transition: 'all 0.16s ease',
+                  '&:hover': { borderColor: 'rgba(239,68,68,0.5)', transform: 'translateY(-1px)' },
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25 }}>
+                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.6rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                    Contradictions
+                  </Typography>
+                  <Box sx={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', px: '6px', py: '2px' }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', fontWeight: 700, color: '#ef4444' }}>{contradictions.contradictions.length}</span>
+                  </Box>
+                </Box>
+                {contradictions.contradictions.slice(0, 2).map((c, i) => (
+                  <Box key={i} sx={{ mb: 0.75, display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                    <Box sx={{ width: 5, height: 5, borderRadius: '50%', background: '#ef4444', mt: '5px', flexShrink: 0 }} />
+                    <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.74rem', color: 'var(--fg-primary)', lineHeight: 1.45,
+                      overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                      {c.topic || c.summary}
+                    </Typography>
+                  </Box>
+                ))}
+                <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', color: 'rgba(249,115,22,0.8)', mt: 1 }}>
+                  View all →
+                </Typography>
               </Box>
             )}
+
+            {/* Perspectives signal card */}
+            {sources.length > 0 && (
+              <Box
+                component="button"
+                onClick={() => setSignalPopup('perspectives')}
+                sx={{
+                  width: '100%', textAlign: 'left', borderRadius: '14px',
+                  padding: '14px', background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border)', cursor: 'pointer',
+                  transition: 'all 0.16s ease',
+                  '&:hover': { borderColor: 'rgba(249,115,22,0.45)', transform: 'translateY(-1px)' },
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25 }}>
+                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.6rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                    Perspectives
+                  </Typography>
+                  <Box sx={{ background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.3)', borderRadius: '6px', px: '6px', py: '2px' }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', fontWeight: 700, color: 'var(--accent)' }}>{sources.length}</span>
+                  </Box>
+                </Box>
+                {sources.slice(0, 3).map((s, i) => (
+                  <Box key={i} sx={{ mb: 0.6, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Box sx={{ width: 5, height: 5, borderRadius: '50%', background: 'rgba(249,115,22,0.5)', flexShrink: 0 }} />
+                    <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.73rem', color: 'var(--fg-secondary)',
+                      overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                      {(() => { try { return new URL(s.url).hostname.replace('www.', ''); } catch { return s.title || s.url; } })()}
+                    </Typography>
+                  </Box>
+                ))}
+                <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', color: 'rgba(249,115,22,0.8)', mt: 1 }}>
+                  View all →
+                </Typography>
+              </Box>
+            )}
+
+            {/* Gaps signal card */}
+            {gaps.length > 0 && (
+              <Box
+                component="button"
+                onClick={() => setSignalPopup('gaps')}
+                sx={{
+                  width: '100%', textAlign: 'left', borderRadius: '14px',
+                  padding: '14px', background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border)', cursor: 'pointer',
+                  transition: 'all 0.16s ease',
+                  '&:hover': { borderColor: 'rgba(234,179,8,0.45)', transform: 'translateY(-1px)' },
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25 }}>
+                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.6rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                    Gaps
+                  </Typography>
+                  <Box sx={{ background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.3)', borderRadius: '6px', px: '6px', py: '2px' }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', fontWeight: 700, color: '#ca8a04' }}>{gaps.length}</span>
+                  </Box>
+                </Box>
+                {gaps.slice(0, 2).map((g, i) => (
+                  <Box key={i} sx={{ mb: 0.75, display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                    <Box sx={{ width: 5, height: 5, borderRadius: '50%', background: '#ca8a04', mt: '5px', flexShrink: 0 }} />
+                    <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.74rem', color: 'var(--fg-primary)', lineHeight: 1.45,
+                      overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                      {g}
+                    </Typography>
+                  </Box>
+                ))}
+                <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', color: 'rgba(249,115,22,0.8)', mt: 1 }}>
+                  View all →
+                </Typography>
+              </Box>
+            )}
+
+            {/* Quotes signal card */}
+            {quotes.length > 0 && (
+              <Box
+                component="button"
+                onClick={() => setSignalPopup('quotes')}
+                sx={{
+                  width: '100%', textAlign: 'left', borderRadius: '14px',
+                  padding: '14px', background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border)', cursor: 'pointer',
+                  transition: 'all 0.16s ease',
+                  '&:hover': { borderColor: 'rgba(99,102,241,0.45)', transform: 'translateY(-1px)' },
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25 }}>
+                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.6rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                    Quotes
+                  </Typography>
+                  <Box sx={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '6px', px: '6px', py: '2px' }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', fontWeight: 700, color: '#6366f1' }}>{quotes.length}</span>
+                  </Box>
+                </Box>
+                {quotes.slice(0, 2).map((q, i) => (
+                  <Box key={i} sx={{ mb: 0.75, borderLeft: '2px solid rgba(99,102,241,0.4)', pl: '8px' }}>
+                    <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.73rem', color: 'var(--fg-primary)', lineHeight: 1.4, fontStyle: 'italic',
+                      overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                      "{q.quote}"
+                    </Typography>
+                    <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--fg-dim)', mt: '3px' }}>
+                      — {q.speaker}
+                    </Typography>
+                  </Box>
+                ))}
+                <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', color: 'rgba(249,115,22,0.8)', mt: 1 }}>
+                  View all →
+                </Typography>
+              </Box>
+            )}
+
+            {/* Sources signal card */}
+            {sources.length > 0 && (
+              <Box
+                component="button"
+                onClick={() => setSignalPopup('sources')}
+                sx={{
+                  width: '100%', textAlign: 'left', borderRadius: '14px',
+                  padding: '14px', background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border)', cursor: 'pointer',
+                  transition: 'all 0.16s ease',
+                  '&:hover': { borderColor: 'rgba(34,197,94,0.45)', transform: 'translateY(-1px)' },
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25 }}>
+                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.6rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                    Sources
+                  </Typography>
+                  <Box sx={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '6px', px: '6px', py: '2px' }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', fontWeight: 700, color: '#16a34a' }}>{sources.length}</span>
+                  </Box>
+                </Box>
+                {sources.slice(0, 3).map((s, i) => (
+                  <Box key={i} sx={{ mb: 0.6, display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                    <Box sx={{ width: 5, height: 5, borderRadius: '50%', background: '#22c55e', mt: '5px', flexShrink: 0 }} />
+                    <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.73rem', color: 'var(--fg-primary)', lineHeight: 1.4,
+                      overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                      {s.title || s.url}
+                    </Typography>
+                  </Box>
+                ))}
+                <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', color: 'rgba(249,115,22,0.8)', mt: 1 }}>
+                  View all →
+                </Typography>
+              </Box>
+            )}
+
+            {/* Deep Analysis panel — shown only in Deep mode, after search completes */}
+            {isDeepSearch && !streaming && answer && (
+              <DeepPanel
+                query={question}
+                sessionContext={sessionContext || { sources: sources.map(s => ({ title: s.title || '', url: s.url || '', snippet: s.snippet || '' })) }}
+                onPromptAsk={q => { if (onPromptAsk) onPromptAsk(q); else onNewSearch(q); }}
+              />
+            )}
+
           </Box>
         )}
       </Box>
 
       {/* Outline builder removed per user request */}
+
+      {/* ── Signal popup modal ───────────────────────────────────────────────── */}
+      {signalPopup && (
+        <Box
+          onClick={() => setSignalPopup(null)}
+          sx={{
+            position: 'fixed', inset: 0, zIndex: 1400,
+            background: 'rgba(0,0,0,0.48)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            p: 2,
+          }}
+        >
+          <Box
+            onClick={e => e.stopPropagation()}
+            sx={{
+              width: '100%', maxWidth: 700,
+              maxHeight: '82vh',
+              background: 'var(--bg-primary)',
+              border: '1px solid var(--border)',
+              borderRadius: '18px',
+              display: 'flex', flexDirection: 'column',
+              boxShadow: '0 24px 64px rgba(0,0,0,0.28)',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Modal header */}
+            <Box sx={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              px: 3, py: 2,
+              borderBottom: '1px solid var(--border)',
+              flexShrink: 0,
+            }}>
+              <Typography sx={{
+                fontFamily: 'var(--font-serif)', fontSize: '1.05rem', fontWeight: 600,
+                color: 'var(--fg-primary)',
+              }}>
+                {{ contradictions: 'Contradictions', perspectives: 'Perspectives', gaps: 'Research Gaps', quotes: 'Quote Bank', sources: 'Sources' }[signalPopup]}
+              </Typography>
+              <Box
+                component="button"
+                onClick={() => setSignalPopup(null)}
+                sx={{
+                  background: 'none', border: '1px solid var(--border)', borderRadius: '8px',
+                  width: 30, height: 30, cursor: 'pointer', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center',
+                  color: 'var(--fg-dim)', fontSize: '1rem', lineHeight: 1,
+                  transition: 'all 0.14s',
+                  '&:hover': { background: 'var(--bg-secondary)', color: 'var(--fg-primary)' },
+                }}
+              >
+                ✕
+              </Box>
+            </Box>
+
+            {/* Modal body — scrollable */}
+            <Box sx={{ flex: 1, overflowY: 'auto', p: 3 }}>
+              {signalPopup === 'contradictions' && (
+                contradictionsLoading
+                  ? <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.82rem', color: 'var(--fg-dim)', fontStyle: 'italic' }}>Checking sources for contradictions…</Typography>
+                  : <ContradictionsTab data={contradictions} sources={sources} />
+              )}
+              {signalPopup === 'perspectives' && (
+                <PerspectivesTab query={question} isDeepMode={isDeepSearch} subQueries={pipelineTrace?.sub_queries || []} sources={sources} prefetchedData={perspectivesState} />
+              )}
+              {signalPopup === 'gaps' && (
+                <GapsTab gaps={gaps} loading={streaming && gaps.length === 0} onNewSearch={(q) => { setSignalPopup(null); onNewSearch(q); }} />
+              )}
+              {signalPopup === 'quotes' && (
+                <QuoteBankTab quotes={quotes} loading={streaming && quotes.length === 0} onInsertClaim={(q) => { setSignalPopup(null); onInsertClaim(q); }} />
+              )}
+              {signalPopup === 'sources' && (
+                <CitationsPanel sources={sources} query={question} />
+              )}
+            </Box>
+          </Box>
+        </Box>
+      )}
 
     </Box>
   );
@@ -1929,19 +2345,18 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
 
 // ── Top bar (results + searching) ─────────────────────────────────────────────
 
-function TopBar({ query, setQuery, onSubmit, deepMode, onToggleDeep, onReset, answer, onSave, onShare, saved, navigate, onWrite, streaming }) {
+function TopBar({ query, setQuery, onSubmit, deepMode, onToggleDeep, onReset, navigate, streaming }) {
+  const [dark] = useDarkMode();
   const handleKey = e => { if (e.key === 'Enter' && !e.shiftKey && !streaming) { e.preventDefault(); onSubmit(); } };
 
   return (
     <Box sx={{
       position: 'sticky', top: 0, zIndex: 'var(--z-topbar)',
-      background: 'rgba(26,22,20,0.82)',
-      backdropFilter: 'blur(20px) saturate(180%)',
-      WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+      ...chromeBarBase(dark),
       borderBottom: '1px solid var(--border)',
-      px: 3, py: 1,
+      px: { xs: 1.25, md: 2 }, py: 0.9,
     }}>
-      <Box sx={{ maxWidth: 1100, mx: 'auto', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+      <Box sx={{ maxWidth: 1180, mx: 'auto', display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
 
         {/* Quarry wordmark — clicking redirects to home */}
         <Box onClick={() => { onReset(); navigate('/'); }} sx={{ cursor: 'pointer', flexShrink: 0, mr: 0.5, userSelect: 'none' }}>
@@ -1960,13 +2375,13 @@ function TopBar({ query, setQuery, onSubmit, deepMode, onToggleDeep, onReset, an
           component="form"
           onSubmit={e => { e.preventDefault(); onSubmit(); }}
           sx={{
-            flex: 1, maxWidth: 540, display: 'flex', alignItems: 'center', gap: 1,
-            borderRadius: 999, px: 1.5, py: 0.6,
-            background: 'var(--glass-bg)',
-            border: '1px solid var(--border)',
-            boxShadow: '0 1px 4px rgba(140,110,60,0.06)',
-            transition: 'box-shadow 0.15s, border-color 0.15s',
-            '&:focus-within': { boxShadow: '0 1px 4px rgba(140,110,60,0.06), 0 0 0 3px var(--accent-dim)', borderColor: 'rgba(249,115,22,0.35)' },
+            ...CHROME_INPUT_SX,
+            flex: '1 1 320px',
+            minWidth: 220,
+            maxWidth: { xs: '100%', md: 460 },
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
           }}
         >
           <Search size={14} style={{ color: 'var(--fg-dim)', flexShrink: 0 }} />
@@ -1984,86 +2399,40 @@ function TopBar({ query, setQuery, onSubmit, deepMode, onToggleDeep, onReset, an
           />
         </Box>
 
-        {/* Action buttons */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, ml: 0.25 }}>
-          <button
-            style={{
-              ...GLASS_BTN_ACCENT,
-              opacity: streaming ? 0.55 : 1,
-              cursor: streaming ? 'not-allowed' : 'pointer',
-              pointerEvents: streaming ? 'none' : 'auto',
-            }}
-            onClick={onSubmit}
-            disabled={streaming}
-            aria-label={streaming ? 'Searching…' : 'Search'}
-          >
-            {streaming ? <RefreshCw size={11} style={{ animation: 'spin 0.9s linear infinite' }} /> : null}
-            {streaming ? 'Searching…' : 'Search'}
-          </button>
+        {/* ── Right cluster: Search + Deep toggle + nav icons ── */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, ml: 'auto' }}>
 
-          <button
-            style={{
-              ...GLASS_BTN,
-              background: deepMode ? 'rgba(249,115,22,0.12)' : 'var(--glass-bg)',
-              border: deepMode ? '1px solid rgba(249,115,22,0.5)' : '1px solid var(--glass-border)',
-              color: deepMode ? '#F97316' : 'var(--fg-secondary)',
-            }}
-            onClick={onToggleDeep}
-          >
-            <Zap size={11} fill={deepMode ? 'var(--accent)' : 'none'} color={deepMode ? 'var(--accent)' : 'var(--fg-secondary)'} />
-            Deep
-          </button>
-
-          <span style={{
-            background: 'var(--accent-dim)', color: 'var(--accent)',
-            border: '1px solid var(--accent)', borderRadius: 20,
-            padding: '4px 12px', fontSize: 11, fontWeight: 500,
-            fontFamily: 'var(--font-family)', whiteSpace: 'nowrap',
-            flexShrink: 0,
-          }}>
-            Research mode
-          </span>
-
-          {answer && (
-            <>
-              <button style={{ ...GLASS_BTN, color: '#000000' }} onClick={onSave}>
-                <BookmarkPlus size={11} color={saved ? 'var(--accent)' : '#000000'} />
-                {saved ? 'Saved' : 'Save'}
-              </button>
-              <button style={{ ...GLASS_BTN, color: '#000000' }} onClick={onShare}>
-                <ArrowUpRight size={11} color="#000000" />
-                Share
-              </button>
-            </>
-          )}
-
-          {onWrite && (
-            <Box
-              onClick={onWrite}
-              sx={{
-                display: 'flex', alignItems: 'center', gap: 0.5,
-                px: 1.25, py: 0.5,
-                background: 'rgba(249,115,22,0.10)',
-                border: '1px solid rgba(249,115,22,0.30)',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                '&:hover': { background: 'rgba(249,115,22,0.18)' },
-                transition: 'background 0.15s',
+          <Tooltip title={deepMode ? 'Deep mode on — multi-pass retrieval' : 'Enable Deep mode'} placement="bottom">
+            <button
+              style={{
+                ...GLASS_BTN,
+                background: deepMode ? 'rgba(249,115,22,0.12)' : 'var(--glass-bg)',
+                border: deepMode ? '1px solid rgba(249,115,22,0.5)' : '1px solid var(--glass-border)',
+                color: deepMode ? '#F97316' : 'var(--fg-secondary)',
               }}
+              onClick={onToggleDeep}
             >
-              <Edit3 size={13} color="var(--accent)" />
-              <Typography sx={{
-                fontFamily: 'var(--font-family)',
-                fontSize: '0.72rem',
-                fontWeight: 500,
-                color: 'var(--accent)',
-              }}>
-                Write
-              </Typography>
-            </Box>
-          )}
+              <Zap size={11} fill={deepMode ? 'var(--accent)' : 'none'} color={deepMode ? 'var(--accent)' : 'var(--fg-secondary)'} />
+              Deep
+            </button>
+          </Tooltip>
 
-          <NavControls />
+          <Tooltip title="Run search" placement="bottom">
+            <button
+              style={{
+                ...GLASS_BTN_ACCENT,
+                opacity: streaming ? 0.55 : 1,
+                cursor: streaming ? 'not-allowed' : 'pointer',
+                pointerEvents: streaming ? 'none' : 'auto',
+              }}
+              onClick={onSubmit}
+              disabled={streaming}
+            >
+              {streaming ? <RefreshCw size={11} style={{ animation: 'spin 0.9s linear infinite' }} /> : null}
+              {streaming ? 'Searching…' : 'Search'}
+            </button>
+          </Tooltip>
+
         </Box>
       </Box>
     </Box>
@@ -2298,12 +2667,24 @@ export default function ExplorePage() {
   const [sources,      setSources]      = useState([]);
   const [answer,       setAnswer]       = useState('');
   const [errorMsg,     setErrorMsg]     = useState('');
-  const [saved,        setSaved]        = useState(false);
   const [streaming,    setStreaming]    = useState(false);
   const [isDeep,       setIsDeep]       = useState(false);
   const [isDeepSearch, setIsDeepSearch] = useState(false);
+  const [selectedModel, setSelectedModel] = useState(() => {
+    try {
+      return localStorage.getItem('quarry_selected_model') || 'openai/gpt-4o';
+    } catch {
+      return 'openai/gpt-4o';
+    }
+  });
+  const [selectedProfileId, setSelectedProfileId] = useState(() => {
+    try {
+      return localStorage.getItem('quarry_analysis_profile') || 'careful_analysis';
+    } catch {
+      return 'careful_analysis';
+    }
+  });
   const [deepLabel,    setDeepLabel]    = useState('');
-  const [toast,        setToast]        = useState({ show: false, message: '' });
   const abortRef = useRef(null);
 
   const [contradictions,  setContradictions]  = useState(null);
@@ -2314,24 +2695,23 @@ export default function ExplorePage() {
   const [stockData,       setStockData]       = useState(null);
   const [claimsData,      setClaimsData]      = useState([]);
   const [pipelineTrace,   setPipelineTrace]   = useState(null);
+  const [sourceBrief,     setSourceBrief]     = useState(null);
   const [gapsData,        setGapsData]        = useState([]);
   const [quotesData,      setQuotesData]      = useState([]);
   const sourcesRef       = useRef([]);
   const claimsDataRef    = useRef([]);
   const pipelineTraceRef = useRef(null);
+  const sourceBriefRef   = useRef(null);
   const gapsDataRef      = useRef([]);
   const quotesDataRef    = useRef([]);
   const { articles: trendingArticles, trending: isTrending, spinning: trendingSpinning, refetch: refetchTrending } = useTrendingChips();
   const topOffset = useTopOffset();
   const [dark] = useDarkMode();
-  const { settings } = useSettings();
   const followUpAbortRef  = useRef(null);
   const lastBlockRef      = useRef(null);
   const submittedQueryRef = useRef('');
 
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-
-  const completenessScore = calcCompletenessScore(sources, claimsData, contradictions?.contradictions ?? []);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Onboarding: show modal for new users who haven't completed the tour
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -2350,18 +2730,40 @@ export default function ExplorePage() {
   useEffect(() => {
     const q = searchParams.get('q');
     const next = searchParams.get('next');
+    const model = searchParams.get('model');
+    const ap = searchParams.get('ap');
+    const deepFlag = searchParams.get('d');
+
+    if (model && model.trim()) {
+      const nextModel = model.trim();
+      setSelectedModel(nextModel);
+      try { localStorage.setItem('quarry_selected_model', nextModel); } catch {}
+      if (!ap) {
+        const profileFromModel = profileIdFromModel(nextModel);
+        setSelectedProfileId(profileFromModel);
+        try { localStorage.setItem('quarry_analysis_profile', profileFromModel); } catch {}
+      }
+    }
+    if (ap && ap.trim()) {
+      const profile = ap.trim();
+      setSelectedProfileId(profile);
+      try { localStorage.setItem('quarry_analysis_profile', profile); } catch {}
+    }
+    const deepFromUrl = deepFlag === 'true';
+    if (deepFromUrl) setIsDeep(true);
 
     if (q && q.trim()) {
-      if (next === 'write') {
+      if (next === 'write' || next === 'notes') {
         sessionStorage.setItem('quarry_next_action', 'write');
       }
       setQuery(q.trim());
-      runSearch(decodeURIComponent(q));
+      runSearch(q.trim(), deepFromUrl, model || '');
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const runSearch = useCallback(async (q, deepEnabled = false) => {
+  const runSearch = useCallback(async (q, deepEnabled = false, modelOverride = '') => {
     if (!q?.trim()) return;
+    const modelToUse = (modelOverride || selectedModel || 'openai/gpt-4o').trim();
 
     // Persist to search history (max 20, deduplicated, most recent first)
     try {
@@ -2377,12 +2779,13 @@ export default function ExplorePage() {
 
     setPhase('searching');
     setSources([]); sourcesRef.current = [];
-    setAnswer(''); setSaved(false); setErrorMsg('');
+    setAnswer(''); setErrorMsg('');
     setStreaming(true); setContradictions(null); setFollowUpBlocks([]);
     setRelatedSearches([]); setLoadingRelated(false); setIsDeepSearch(deepEnabled);
     setStockData(null);
     setClaimsData([]); claimsDataRef.current = [];
     setPipelineTrace(null); pipelineTraceRef.current = null;
+    setSourceBrief(null); sourceBriefRef.current = null;
     setGapsData([]); gapsDataRef.current = [];
     setQuotesData([]); quotesDataRef.current = [];
     setDeepLabel(deepEnabled ? '1/2' : '');
@@ -2393,9 +2796,19 @@ export default function ExplorePage() {
     let accumulatedAnswer = '';
 
     const readStream = async (queryStr, skipSources = false) => {
+      const _token = localStorage.getItem('quarry_token') || '';
       const res = await fetch(`${API}/explore/search?deep=${deepEnabled ? 'true' : 'false'}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: queryStr }), signal,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(_token && { 'Authorization': `Bearer ${_token}` }),
+        },
+        body: JSON.stringify({
+          query: queryStr,
+          model: modelToUse,
+          analysis_profile: selectedProfileId,
+        }),
+        signal,
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -2417,7 +2830,7 @@ export default function ExplorePage() {
           if (raw === '[DONE]') { setStreaming(false); continue; }
           try {
             const evt = JSON.parse(raw);
-            if      (evt.type === 'sources' && !skipSources) { const _s = evt.sources || []; setSources(_s); sourcesRef.current = _s; if (evt.claims) { const normalised = evt.claims.map(c => ({ ...c, claim_text: c.claim_text ?? c.claim ?? '', status: c.status === 'uncertain' ? 'single_source' : (c.status ?? 'single_source'), source_outlets: c.source_outlets ?? (c.source_outlet ? [c.source_outlet] : []), })); setClaimsData(normalised); claimsDataRef.current = normalised; saveContestedClaims(q.trim(), normalised); } if (evt.pipeline_trace) { setPipelineTrace(evt.pipeline_trace); pipelineTraceRef.current = evt.pipeline_trace; } if (evt.gaps)   { setGapsData(evt.gaps);     gapsDataRef.current   = evt.gaps; } if (evt.quotes) { setQuotesData(evt.quotes); quotesDataRef.current = evt.quotes; } }
+            if      (evt.type === 'sources' && !skipSources) { const _s = evt.sources || []; setSources(_s); sourcesRef.current = _s; if (evt.claims) { const normalised = evt.claims.map(c => ({ ...c, claim_text: c.claim_text ?? c.claim ?? '', status: c.status === 'uncertain' ? 'single_source' : (c.status ?? 'single_source'), source_outlets: c.source_outlets ?? (c.source_outlet ? [c.source_outlet] : []), })); setClaimsData(normalised); claimsDataRef.current = normalised; saveContestedClaims(q.trim(), normalised); } if (evt.pipeline_trace) { setPipelineTrace(evt.pipeline_trace); pipelineTraceRef.current = evt.pipeline_trace; } if (evt.source_brief) { setSourceBrief(evt.source_brief); sourceBriefRef.current = evt.source_brief; } if (evt.gaps)   { setGapsData(evt.gaps);     gapsDataRef.current   = evt.gaps; } if (evt.quotes) { setQuotesData(evt.quotes); quotesDataRef.current = evt.quotes; } }
             else if (evt.type === 'chunk')                   { accumulatedAnswer += evt.text; setAnswer(prev => prev + evt.text); }
             else if (evt.type === 'error')                   setErrorMsg(evt.text);
             else if (evt.type === 'contradictions')          { const cd = evt.data === null ? false : evt.data; setContradictions(cd); if (cd && cd.contradictions?.length > 0) saveInvestigationHistory(q.trim(), cd.contradictions); }
@@ -2445,7 +2858,7 @@ export default function ExplorePage() {
           claims: claimsDataRef.current,
           pipelineTrace: pipelineTraceRef.current,
         }));
-        navigate('/write');
+        navigate('/notes');
       }
       if (searchSuccess && accumulatedAnswer) {
         setLoadingRelated(true);
@@ -2455,7 +2868,7 @@ export default function ExplorePage() {
         }).then(r => r.json()).then(data => setRelatedSearches(data.related || [])).catch(() => {}).finally(() => setLoadingRelated(false));
       }
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedModel, selectedProfileId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // If the user toggles Deep mid-session, re-run the currently loaded query.
   useEffect(() => {
@@ -2467,40 +2880,15 @@ export default function ExplorePage() {
 
   const handleSubmit = () => { if (query.trim()) runSearch(query, isDeep); };
 
-  const handleSave = useCallback(() => {
-    if (!answer) return;
-    // Download as markdown
-    const filename = `quarry-${query.slice(0, 40).replace(/\s+/g, '-')}-${Date.now()}.md`;
-    const content  = `# ${query}\n\n${answer}\n\n---\n*Saved from Quarry*`;
-    const blob     = new Blob([content], { type: 'text/markdown' });
-    const url      = URL.createObjectURL(blob);
-    const a        = document.createElement('a');
-    a.href = url; a.download = filename; a.click();
-    URL.revokeObjectURL(url);
-    // Persist to localStorage
-    const firstPara = answer.replace(/^#+\s+.+$/gm, '').replace(/\*\*/g, '').replace(/\[(\d+)\]/g, '').replace(/\n+/g, ' ').trim().slice(0, 200);
-    addSaved(query, firstPara, answer);
-    setSaved(true);
-  }, [answer, query]);
-
-  const handleShare = useCallback(() => {
-    const q = submittedQueryRef.current || query;
-    if (!q) return;
-    const url = `${window.location.origin}${window.location.pathname}?q=${encodeURIComponent(q)}`;
-    navigator.clipboard.writeText(url).then(() => {
-      setToast({ show: true, message: 'Link copied to clipboard' });
-      setTimeout(() => setToast(t => ({ ...t, show: false })), 2000);
-    });
-  }, [query]);
-
   const handleWrite = useCallback(() => {
     sessionStorage.setItem('quarry_write_session', JSON.stringify({
       query: query,
       sources: sourcesRef.current,
       claims: claimsDataRef.current,
       pipelineTrace: pipelineTraceRef.current,
+      sourceBrief: sourceBriefRef.current,
     }));
-    navigate('/write');
+    navigate('/notes');
   }, [query, navigate]);
 
   const handleInsertClaim = useCallback((claim) => {
@@ -2521,9 +2909,10 @@ export default function ExplorePage() {
       sources:       sourcesRef.current,
       claims:        claimsDataRef.current,
       pipelineTrace: pipelineTraceRef.current,
+      sourceBrief: sourceBriefRef.current,
       insertedClaim: claimText,
     }));
-    navigate('/write');
+    navigate('/notes');
   }, [query, navigate]);
 
   const runFollowUp = useCallback(async followUpText => {
@@ -2533,13 +2922,23 @@ export default function ExplorePage() {
 
     const blockId = `fu_${Date.now()}`;
     const followUpVisualQuery = deriveImageQuery(followUpText, submittedQueryRef.current);
-    setFollowUpBlocks(prev => [...prev, { id: blockId, question: followUpText, sources: [], answer: '', streaming: true, errorMsg: '', relatedSearches: [], loadingRelated: false, visualQuery: followUpVisualQuery }]);
+    setFollowUpBlocks(prev => [...prev, { id: blockId, question: followUpText, sources: [], answer: '', streaming: true, errorMsg: '', relatedSearches: [], loadingRelated: false, visualQuery: followUpVisualQuery, sourceBrief: null }]);
 
     let blockAnswer = '';
     try {
-      const res = await fetch(`${API}/explore/search`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: followUpText, context: submittedQueryRef.current }),
+      const authToken = localStorage.getItem('quarry_token') || '';
+      const res = await fetch(`${API}/explore/search?deep=${isDeep ? 'true' : 'false'}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({
+          query: followUpText,
+          context: submittedQueryRef.current,
+          model: selectedModel,
+          analysis_profile: selectedProfileId,
+        }),
         signal: followUpAbortRef.current.signal,
       });
       if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || `HTTP ${res.status}`); }
@@ -2560,7 +2959,7 @@ export default function ExplorePage() {
           if (raw === '[DONE]') { update(b => ({ ...b, streaming: false })); break; }
           try {
             const evt = JSON.parse(raw);
-            if      (evt.type === 'sources') update(b => ({ ...b, sources: evt.sources || [] }));
+            if      (evt.type === 'sources') update(b => ({ ...b, sources: evt.sources || [], sourceBrief: evt.source_brief || null }));
             else if (evt.type === 'chunk')   { blockAnswer += evt.text; update(b => ({ ...b, answer: b.answer + evt.text })); }
             else if (evt.type === 'error')   update(b => ({ ...b, errorMsg: evt.text }));
           } catch { /* ignore */ }
@@ -2577,7 +2976,7 @@ export default function ExplorePage() {
           .catch(() => setFollowUpBlocks(prev => prev.map(b => b.id === blockId ? { ...b, loadingRelated: false } : b)));
       }
     }
-  }, [followUpBlocks.length]);
+  }, [followUpBlocks.length, isDeep, selectedModel, selectedProfileId]);
 
   const resetSearch = () => {
     if (followUpAbortRef.current) followUpAbortRef.current.abort();
@@ -2586,6 +2985,7 @@ export default function ExplorePage() {
     setIsDeepSearch(false); setDeepLabel(''); setStockData(null);
     setClaimsData([]); claimsDataRef.current = [];
     setPipelineTrace(null); pipelineTraceRef.current = null;
+    setSourceBrief(null); sourceBriefRef.current = null;
     setGapsData([]); gapsDataRef.current = [];
     setQuotesData([]); quotesDataRef.current = [];
   };
@@ -2599,11 +2999,6 @@ export default function ExplorePage() {
     }
     return (
       <>
-        {/* Top-right nav cluster — sits below calendar bar when visible */}
-        <div style={{ position: 'fixed', top: topOffset + 12 + (settings.showCalendar ? 36 : 0), right: 16, zIndex: 'var(--z-popup)', transition: 'top 0.18s ease' }}>
-          <NavControls />
-        </div>
-
         <Box sx={{ ...PAGE_BG, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', minHeight: '100vh', gap: 1.5, px: 3, pb: 8, paddingTop: `${topOffset + 12}px` }}>
 
 
@@ -2775,7 +3170,6 @@ export default function ExplorePage() {
             @keyframes spin { from{transform:rotate(0)} to{transform:rotate(360deg)} }
           `}</style>
         </Box>
-        <Toast show={toast.show} message={toast.message} />
       </>
     );
   }
@@ -2787,9 +3181,8 @@ export default function ExplorePage() {
         <TopBar
           query={query} setQuery={setQuery} onSubmit={handleSubmit}
           deepMode={isDeep} onToggleDeep={() => setIsDeep(d => !d)}
-          onReset={resetSearch} answer={answer} onSave={handleSave} onShare={handleShare}
-          saved={saved} navigate={navigate} streaming={streaming}
-          onWrite={sources.length > 0 ? handleWrite : undefined}
+          onReset={resetSearch} navigate={navigate} streaming={streaming}
+
         />
         <Box sx={{ maxWidth: 1100, mx: 'auto', px: 3, pt: 4, pb: 8 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
@@ -2830,14 +3223,12 @@ export default function ExplorePage() {
             </Box>
           </Box>
         </Box>
-        <Toast show={toast.show} message={toast.message} />
       </Box>
     );
   }
 
   // ── Results ──
   const lastFollowUp = followUpBlocks.length > 0 ? followUpBlocks[followUpBlocks.length - 1] : null;
-  // eslint-disable-next-line no-unused-vars
   const canFollowUp  = phase === 'results' && (lastFollowUp ? !lastFollowUp.streaming : (!streaming && answer.length > 0));
 
   return (
@@ -2846,9 +3237,7 @@ export default function ExplorePage() {
       <TopBar
         query={query} setQuery={setQuery} onSubmit={handleSubmit}
         deepMode={isDeep} onToggleDeep={() => setIsDeep(d => !d)}
-        onReset={resetSearch} answer={answer} onSave={handleSave} onShare={handleShare}
-        saved={saved} navigate={navigate} streaming={streaming}
-        onWrite={sources.length > 0 ? handleWrite : undefined}
+        onReset={resetSearch} navigate={navigate} streaming={streaming}
       />
 
       {/* Scrollable content */}
@@ -2867,84 +3256,46 @@ export default function ExplorePage() {
           flexDirection: 'column',
         }}>
           <div style={{ width: 200, padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
-            {/* This session */}
-            <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.58rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 2 }}>
-              This session
-            </div>
+            {/* Active session — breadcrumb style */}
             <div style={{
-              background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-              borderRadius: 8, padding: '8px 10px',
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '6px 8px', borderRadius: 6,
+              border: '1px solid rgba(249,115,22,0.22)',
+              background: 'rgba(249,115,22,0.04)',
             }}>
-              <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.75rem', fontWeight: 500, color: 'var(--fg-primary)', marginBottom: 5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {(submittedQueryRef.current || query).slice(0, 40)}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.60rem', color: 'var(--fg-dim)' }}>
-                  {followUpBlocks.length + 1} exchange{followUpBlocks.length + 1 !== 1 ? 's' : ''}
-                </div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.60rem', color: 'var(--fg-dim)' }}>
-                  {sources.length} sources
-                </div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.60rem', color: 'var(--accent)', marginTop: 2 }}>
-                  ● Active now
-                </div>
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
+              <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.72rem', fontWeight: 400, color: 'var(--fg-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {(submittedQueryRef.current || query).slice(0, 38)}
               </div>
             </div>
 
             {/* Past sessions */}
-            <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.58rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase', marginTop: 6 }}>
-              Past sessions
+            <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.57rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase', marginTop: 8 }}>
+              Recent
             </div>
-            {getSaved().slice(0, 3).map((item, i) => (
+            {getSaved().slice(0, 4).map((item, i) => (
               <div
                 key={i}
                 onClick={() => navigate(`/search?q=${encodeURIComponent(item.query)}`)}
                 style={{
-                  background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                  borderRadius: 8, padding: '7px 9px', cursor: 'pointer',
-                  transition: 'border-color 0.13s',
+                  padding: '5px 8px', borderRadius: 6, cursor: 'pointer',
+                  transition: 'background 0.12s',
                 }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(249,115,22,0.4)'}
-                onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
               >
-                <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.72rem', fontWeight: 400, color: 'var(--fg-primary)', marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.70rem', fontWeight: 400, color: 'var(--fg-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {item.query}
-                </div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.58rem', color: 'var(--fg-dim)' }}>
-                  {agoE(item.savedAt)}
                 </div>
               </div>
             ))}
             {getSaved().length === 0 && (
-              <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.70rem', color: 'var(--fg-dim)', fontStyle: 'italic' }}>
-                No saved sessions yet
+              <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', color: 'var(--fg-dim)', fontStyle: 'italic', padding: '4px 8px' }}>
+                No recent searches
               </div>
             )}
 
-            {/* Completeness score */}
-            <div style={{ marginTop: 'auto', paddingTop: 12 }}>
-              <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.58rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 6 }}>
-                Completeness
-              </div>
-              {(() => {
-                const score = completenessScore;
-                const color = score >= 70 ? '#5dcaa5' : score >= 40 ? 'var(--accent)' : '#e24b4a';
-                return (
-                  <>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.80rem', fontWeight: 700, color }}>{score}</span>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.58rem', color: 'var(--fg-dim)' }}>/100</span>
-                    </div>
-                    <div style={{ height: 4, background: 'var(--bg-tertiary)', borderRadius: 999, overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${score}%`, background: color, borderRadius: 999, transition: 'width 0.5s ease' }} />
-                    </div>
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.58rem', color: 'var(--fg-dim)', marginTop: 4 }}>
-                      {score >= 70 ? 'Well covered' : score >= 40 ? 'In progress' : sources.length === 0 ? 'No results yet' : 'Needs more sources'}
-                    </div>
-                  </>
-                );
-              })()}
-            </div>
+            <div style={{ marginTop: 'auto' }} />
           </div>
         </div>
 
@@ -2967,7 +3318,7 @@ export default function ExplorePage() {
         </button>
 
         <Box sx={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
-        <Box sx={{ maxWidth: 1100, mx: 'auto', px: 3, pt: 3, pb: 4, display: 'flex', flexDirection: 'column' }}>
+        <Box sx={{ maxWidth: 1100, mx: 'auto', px: 3, pt: 3, pb: 6, display: 'flex', flexDirection: 'column' }}>
           <ResultBlock
             key={submittedQueryRef.current}
             question={submittedQueryRef.current || query} sources={sources} answer={answer}
@@ -2977,10 +3328,12 @@ export default function ExplorePage() {
             relatedSearches={relatedSearches} loadingRelated={loadingRelated}
             visualQuery={visualQuery} contradictions={contradictions}
             stockData={stockData}
-            claims={claimsData} pipelineTrace={pipelineTrace}
+            claims={claimsData} pipelineTrace={pipelineTrace} sourceBrief={sourceBrief}
             onWrite={handleWrite}
             onInsertClaim={handleInsertClaim}
             gaps={gapsData} quotes={quotesData}
+            sessionContext={{ sources: sources.map(s => ({ title: s.title || '', url: s.url || '', snippet: s.snippet || '' })) }}
+            onPromptAsk={newSearch}
           />
 
           {followUpBlocks.map((block, i) => (
@@ -2993,6 +3346,7 @@ export default function ExplorePage() {
                 relatedSearches={block.relatedSearches || []}
                 loadingRelated={block.loadingRelated || false}
                 visualQuery={block.visualQuery || ''}
+                sourceBrief={block.sourceBrief || null}
               />
             </Box>
           ))}
@@ -3003,19 +3357,21 @@ export default function ExplorePage() {
       {/* Sticky follow-up bar — always visible */}
       <Box sx={{
         borderTop: '1px solid var(--border)',
-        background: 'rgba(26,22,20,0.82)',
-        backdropFilter: 'blur(20px) saturate(180%)',
-        WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-        px: 3, py: 1.25,
+        ...chromeBarBase(dark),
+        px: { xs: 1.25, md: 2 }, py: 0.7,
         flexShrink: 0,
+        boxShadow: dark ? '0 -10px 24px rgba(0,0,0,0.28)' : '0 -8px 20px rgba(84,61,27,0.08)',
       }}>
-        <Box sx={{ maxWidth: 1100, mx: 'auto' }}>
-          <FollowUpBar onSubmit={runFollowUp} atMax={followUpBlocks.length >= MAX_FOLLOW_UPS} />
+        <Box sx={{ maxWidth: 1100, mx: 'auto', pb: 'max(2px, env(safe-area-inset-bottom))' }}>
+          <FollowUpBar
+            onSubmit={runFollowUp}
+            atMax={followUpBlocks.length >= MAX_FOLLOW_UPS}
+            enabled={canFollowUp}
+          />
         </Box>
       </Box>
 
       <style>{`@keyframes blinkPulse { 50% { opacity: 0; } }`}</style>
-      <Toast show={toast.show} message={toast.message} />
     </Box>
   );
 }

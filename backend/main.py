@@ -20,6 +20,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from routers import explore
 from routers.sources import router as sources_router
 from routers.auth import router as auth_router
+from routers.notes import router as notes_router
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -123,6 +124,7 @@ app.add_middleware(AuthMiddleware)
 app.include_router(explore.router)
 app.include_router(sources_router)
 app.include_router(auth_router)
+app.include_router(notes_router)
 
 
 # ── Generic exception handler (prevents API key / traceback leakage) ──────────

@@ -1,11 +1,26 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Sun, Moon, Zap, Trash2, RotateCcw, Key, Eye, EyeOff, BookOpen, Search } from 'lucide-react';
+import {
+  ArrowLeft, Sun, Moon, Zap, Trash2, RotateCcw, Key, Eye, EyeOff,
+  BookOpen, Search, FlaskConical, Cpu, History,
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useSettings } from '../SettingsContext';
 import { useDarkMode } from '../DarkModeContext';
 import { clearSourceLibrary } from '../utils/sourceLibrary';
 
 const DOCUMENTS_KEY = 'quarry_documents';
+
+const MODELS = [
+  { id: 'openai/gpt-4o',               label: 'GPT-4o',           note: 'Balanced — default' },
+  { id: 'openai/gpt-4o-mini',           label: 'GPT-4o mini',      note: 'Fast & cheap' },
+  { id: 'anthropic/claude-3.5-sonnet',  label: 'Claude 3.5 Sonnet', note: 'Best reasoning' },
+];
+
+const DEPTH_OPTIONS = [
+  { id: 'quick',     label: 'Quick',     note: '3 sub-questions' },
+  { id: 'standard',  label: 'Standard',  note: '5 sub-questions' },
+  { id: 'thorough',  label: 'Thorough',  note: '8 sub-questions' },
+];
 
 /* ── Primitives ─────────────────────────────────────────────────────────── */
 function Toggle({ checked, onChange }) {
@@ -114,6 +129,41 @@ function DangerRow({ icon, label, description, onConfirm }) {
   );
 }
 
+/* Pill selector — for model and depth chooser */
+function PillSelect({ options, value, onChange }) {
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingBottom: 12 }}>
+      {options.map(opt => {
+        const active = value === opt.id;
+        return (
+          <button
+            key={opt.id}
+            onClick={() => onChange(opt.id)}
+            style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+              padding: '7px 13px', borderRadius: 10, cursor: 'pointer',
+              border: `1px solid ${active ? 'rgba(249,115,22,0.55)' : 'var(--border)'}`,
+              background: active ? 'rgba(249,115,22,0.09)' : 'transparent',
+              transition: 'all 0.15s',
+            }}
+          >
+            <span style={{
+              fontFamily: 'var(--font-family)', fontSize: '0.77rem', fontWeight: active ? 600 : 400,
+              color: active ? 'var(--accent)' : 'var(--fg-primary)',
+            }}>{opt.label}</span>
+            {opt.note && (
+              <span style={{
+                fontFamily: 'var(--font-mono)', fontSize: '0.60rem',
+                color: active ? 'rgba(249,115,22,0.7)' : 'var(--fg-dim)', marginTop: 1,
+              }}>{opt.note}</span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ── Main page ───────────────────────────────────────────────────────────── */
 export default function SettingsPage() {
   const navigate = useNavigate();
@@ -130,9 +180,13 @@ export default function SettingsPage() {
     notify('API key saved.');
   };
 
-  const clearStories = () => {
-    try { localStorage.removeItem(DOCUMENTS_KEY); localStorage.removeItem('quarry_story_data'); } catch {}
-    notify('All stories cleared.');
+  const clearNotes = () => {
+    try {
+      localStorage.removeItem(DOCUMENTS_KEY);
+      localStorage.removeItem('quarry_notes_data');
+      localStorage.removeItem('quarry_story_data');
+    } catch {}
+    notify('All notes cleared.');
   };
 
   const clearSessions = () => {
@@ -141,6 +195,11 @@ export default function SettingsPage() {
       localStorage.removeItem('quarry_sessions_index');
     } catch {}
     notify('Research sessions cleared.');
+  };
+
+  const clearHistory = () => {
+    try { localStorage.removeItem('quarry_search_history'); } catch {}
+    notify('Search history cleared.');
   };
 
   const clearSources = () => {
@@ -186,7 +245,7 @@ export default function SettingsPage() {
         <div style={{ width: 1, height: 16, background: 'var(--border)' }} />
         <span style={{
           fontFamily: 'var(--font-family)', fontSize: '0.88rem',
-          fontWeight: 600, color: 'var(--fg-primary)',
+          fontWeight: 600, color: 'var(--fg-primary)', flex: 1,
         }}>
           Settings
         </span>
@@ -224,6 +283,59 @@ export default function SettingsPage() {
               label="Deep Mode by Default"
               description="Always use multi-pass retrieval and sub-query decomposition"
               right={<Toggle checked={settings.deepModeDefault || false} onChange={v => set('deepModeDefault', v)} />}
+            />
+          </Card>
+        </div>
+
+        {/* ── Deep Research ── */}
+        <div>
+          <SectionLabel>Deep Research</SectionLabel>
+          <Card>
+            <Row
+              icon={<FlaskConical size={15} />}
+              label="Deep Research by Default"
+              description="Automatically start autonomous research agent on every search"
+              right={<Toggle checked={settings.deepResearchDefault || false} onChange={v => set('deepResearchDefault', v)} />}
+            />
+            <Divider />
+            <Row
+              icon={<FlaskConical size={15} style={{ opacity: 0 }} />}
+              label="Research Depth"
+              description="Number of sub-questions the agent explores per research run"
+              right={null}
+            />
+            <PillSelect
+              options={DEPTH_OPTIONS}
+              value={settings.deepResearchDepth || 'standard'}
+              onChange={v => set('deepResearchDepth', v)}
+            />
+            <Divider />
+            <Row
+              icon={<FlaskConical size={15} style={{ opacity: 0 }} />}
+              label="Show Live Progress Feed"
+              description="Display each search step as the research agent works"
+              right={<Toggle checked={settings.showResearchProgress !== false} onChange={v => set('showResearchProgress', v)} />}
+            />
+          </Card>
+        </div>
+
+        {/* ── AI Model ── */}
+        <div>
+          <SectionLabel>AI Model</SectionLabel>
+          <Card>
+            <Row
+              icon={<Cpu size={15} />}
+              label="Default Model"
+              description="Used for all standard searches — Deep Research always uses GPT-4o"
+              right={null}
+            />
+            <PillSelect
+              options={MODELS}
+              value={settings.defaultModel || 'openai/gpt-4o'}
+              onChange={v => {
+                set('defaultModel', v);
+                localStorage.setItem('quarry_selected_model', v);
+              }}
             />
           </Card>
         </div>
@@ -287,8 +399,8 @@ export default function SettingsPage() {
           <Card>
             <Row
               icon={<BookOpen size={15} />}
-              label="Open last story on startup"
-              description="Resume where you left off when navigating to Write"
+              label="Open last note on startup"
+              description="Resume where you left off when navigating to Notes"
               right={<Toggle checked={settings.resumeLastStory || false} onChange={v => set('resumeLastStory', v)} />}
             />
           </Card>
@@ -300,9 +412,9 @@ export default function SettingsPage() {
           <Card>
             <DangerRow
               icon={<Trash2 size={15} />}
-              label="Clear All Stories"
+              label="Clear All Notes"
               description="Permanently delete all saved documents"
-              onConfirm={clearStories}
+              onConfirm={clearNotes}
             />
             <Divider />
             <DangerRow
@@ -310,6 +422,13 @@ export default function SettingsPage() {
               label="Clear Research Sessions"
               description="Delete all saved multi-phase research sessions"
               onConfirm={clearSessions}
+            />
+            <Divider />
+            <DangerRow
+              icon={<History size={15} />}
+              label="Clear Search History"
+              description="Remove all locally stored past search queries"
+              onConfirm={clearHistory}
             />
             <Divider />
             <DangerRow

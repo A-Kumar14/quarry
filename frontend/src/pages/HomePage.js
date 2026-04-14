@@ -1,12 +1,17 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { Search, ChevronDown, Zap, FileText, PenLine, AlertTriangle, ExternalLink, Plus, X } from 'lucide-react';
-import { getBeats, saveBeat, deleteBeat, incrementBeatActivity } from '../utils/beats';
+import createGlobe from 'cobe';
+import { useNavigate } from 'react-router-dom';
+import { Search, Zap } from 'lucide-react';
+import { getBeats, incrementBeatActivity } from '../utils/beats';
 import { useDarkMode } from '../DarkModeContext';
 import DailyTopicsModal from '../components/DailyTopicsModal';
+import NotesModal from '../components/NotesModal';
 import { useAuth } from '../contexts/AuthContext';
 import OnboardingModal from '../components/OnboardingModal';
 import GlassCard from '../components/GlassCard';
+import { useNotes } from '../hooks/useNotes';
+import { buildDailyDigestSignature, getCachedDailyDigest, setCachedDailyDigest } from '../utils/dailyDigestCache';
+import { PromptInputBox } from '../components/ui/ai-prompt-box';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -17,41 +22,61 @@ const T = {
   glassBorder: '1px solid var(--glass-border)',
   glassShadow: 'var(--glass-shadow)',
   accent:      '#F97316',
-  accentDim:   'rgba(249,115,22,0.15)',
+  accentDim:   'rgba(249,115,22,0.12)',
+  accentBorder: 'rgba(249,115,22,0.40)',
+  accentGlow:  'rgba(249,115,22,0.25)',
   fg:          'var(--fg-primary)',
   fgSec:       'var(--fg-secondary)',
   fgDim:       'var(--fg-dim)',
   border:      'var(--border)',
-  serif:       "'Playfair Display',Georgia,serif",
-  sans:        "'DM Sans',system-ui,sans-serif",
+  serif:       "'IBM Plex Serif',Georgia,serif",
+  sans:        "'IBM Plex Sans',system-ui,sans-serif",
   mono:        "'IBM Plex Mono',monospace",
 };
 
-const FALLBACK_SUGGESTIONS = [
-  'Sudan humanitarian crisis 2025',
-  'Gaza reconstruction funding',
-  'Haiti gang violence displacement',
-  'Myanmar junta airstrikes',
-  'Sahel drought food insecurity',
+const ANALYSIS_PROFILES = [
+  {
+    id: 'fast_scan',
+    label: 'Fast scan',
+    description: 'Quick pass across the web',
+    model: 'openai/gpt-4o-mini',
+    modelHint: 'GPT-4o mini',
+  },
+  {
+    id: 'careful_analysis',
+    label: 'Careful analysis',
+    description: 'Balanced depth and speed',
+    model: 'openai/gpt-4o',
+    modelHint: 'GPT-4o',
+  },
+  {
+    id: 'deep_mapping',
+    label: 'Deep mapping',
+    description: 'Thorough structure and cross-checks',
+    model: 'anthropic/claude-3.5-sonnet',
+    modelHint: 'Claude 3.5 Sonnet',
+  },
 ];
 
-const TOPICS = [
-  { id: 'world',    label: 'World',    gnews: ''           },
-  { id: 'politics', label: 'Politics', gnews: 'nation'     },
-  { id: 'sports',   label: 'Sports',   gnews: 'sports'     },
-  { id: 'tech',     label: 'Tech',     gnews: 'technology' },
-  { id: 'finance',  label: 'Finance',  gnews: 'business'   },
-];
+function profileIdFromModel(modelId = '') {
+  const found = ANALYSIS_PROFILES.find((p) => p.model === modelId);
+  return found ? found.id : 'careful_analysis';
+}
 
 /* ── Investigation history helpers ──────────────────────────────────────── */
-const INVESTIGATION_HISTORY_KEY = 'quarry_investigation_history';
+const RESEARCH_HISTORY_KEY = 'quarry_research_history';
+const LEGACY_INVESTIGATION_HISTORY_KEY = 'quarry_investigation_history';
 
 export function saveInvestigationHistory(query, contradictions) {
   if (!query) return;
   try {
-    const existing = JSON.parse(localStorage.getItem(INVESTIGATION_HISTORY_KEY) || '[]');
+    const existingPrimary = JSON.parse(localStorage.getItem(RESEARCH_HISTORY_KEY) || '[]');
+    const existingLegacy = JSON.parse(localStorage.getItem(LEGACY_INVESTIGATION_HISTORY_KEY) || '[]');
+    const existing = existingPrimary.length > 0 ? existingPrimary : existingLegacy;
     const entry = { query, timestamp: Date.now(), contradictions: contradictions || [] };
-    localStorage.setItem(INVESTIGATION_HISTORY_KEY, JSON.stringify([entry, ...existing].slice(0, 50)));
+    const payload = JSON.stringify([entry, ...existing].slice(0, 50));
+    localStorage.setItem(RESEARCH_HISTORY_KEY, payload);
+    localStorage.setItem(LEGACY_INVESTIGATION_HISTORY_KEY, payload);
   } catch {}
 }
 
@@ -75,408 +100,164 @@ export function saveContestedClaims(query, claims) {
   } catch {}
 }
 
-function loadContestedClaims() {
-  try { return JSON.parse(localStorage.getItem(CONTESTED_KEY) || '[]'); }
-  catch { return []; }
-}
-
-/* ── Live trending hook ──────────────────────────────────────────────────── */
-function useTrendingNews() {
-  const [articles, setArticles] = useState([]);
-  const [isLive,   setIsLive]   = useState(false);
-  const [spinning, setSpinning] = useState(false);
-
-  const fetch_ = useCallback(async (force = false) => {
-    setSpinning(true);
-    try {
-      const url = `${API}/explore/trending-news?max=6${force ? '&force=true' : ''}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error('trending error');
-      const data = await res.json();
-      const arts = (data.articles || []).filter(a => a.title).slice(0, 6);
-      if (arts.length >= 3) { setArticles(arts); setIsLive(true); }
-    } catch {}
-    finally { setSpinning(false); }
-  }, []);
-
-  useEffect(() => { fetch_(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return { articles, isLive, spinning, refetch: () => fetch_(true) };
-}
-
-/* ── Topic-filtered news hook ────────────────────────────────────────────── */
-function useTopicNews(topic) {
-  const [articles, setArticles] = useState([]);
-  const [loading,  setLoading]  = useState(false);
-
-  useEffect(() => {
-    if (topic === 'world') return;
-    setLoading(true);
-    const gnews = TOPICS.find(t => t.id === topic)?.gnews || '';
-    const param  = gnews ? `&topic=${gnews}` : '';
-    fetch(`${API}/explore/trending-news?max=10${param}`)
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then(data => {
-        const raw = (data.articles || []).filter(a => a.title);
-        const seen = new Set();
-        const deduped = raw.filter(a => { if (seen.has(a.url)) return false; seen.add(a.url); return true; });
-        setArticles(deduped.slice(0, 8));
-      })
-      .catch(() => setArticles([]))
-      .finally(() => setLoading(false));
-  }, [topic]);
-
-  return { articles, loading };
-}
-
-/* ── Story leads hook ────────────────────────────────────────────────────── */
-function useStoryLeads() {
-  const [leads, setLeads]   = useState([]);
-  const [noKey, setNoKey]   = useState(false);
-
-  useEffect(() => {
-    const NEWSAPI_KEY = process.env.REACT_APP_NEWSAPI_KEY;
-
-    // Source A: derived from past investigations that produced contradictions
-    let derived = [];
-    try {
-      const history = JSON.parse(localStorage.getItem(INVESTIGATION_HISTORY_KEY) || '[]');
-      derived = history
-        .filter(h => h.contradictions?.length > 0)
-        .slice(0, 2)
-        .map(h => ({
-          type: 'derived',
-          title: `You investigated "${h.query}" — ${h.contradictions.length} source conflict${h.contradictions.length !== 1 ? 's' : ''} found`,
-          query: h.query,
-          sources: h.contradictions.length,
-          sessionRef: h.timestamp,
-        }));
-    } catch {}
-
-    setLeads(derived);
-
-    // Source B: live NewsAPI leads from active beats
-    if (!NEWSAPI_KEY) { setNoKey(true); return; }
-
-    const beats = getBeats().filter(b => b.keywords?.length > 0);
-    if (!beats.length) return;
-
-    let apiBuffer = [];
-    let pending = beats.length;
-
-    beats.forEach(beat => {
-      const q = beat.keywords.join(' OR ');
-      fetch(`https://newsapi.org/v2/everything?q=${encodeURIComponent(q)}&sortBy=publishedAt&pageSize=2&apiKey=${NEWSAPI_KEY}`)
-        .then(r => r.ok ? r.json() : Promise.reject())
-        .then(data => {
-          (data.articles || [])
-            .filter(a => a.title)
-            .forEach(a => apiBuffer.push({ type: 'api', title: a.title, beatName: beat.name, sourceCount: 1, url: a.url }));
-        })
-        .catch(() => {})
-        .finally(() => {
-          pending--;
-          if (pending === 0) setLeads(prev => [...prev, ...apiBuffer.slice(0, 3)]);
-        });
-    });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return { leads, noKey };
-}
-
-/* ── Globe pins hook — live GDELT data, falls back to WORLD_PINS ─────────── */
-function useGlobePins() {
-  const [pins, setPins] = useState(WORLD_PINS);
-
-  useEffect(() => {
-    fetch(`${API}/explore/globe-pins`)
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then(data => {
-        const live = (data.pins || []).filter(p => p.lat != null && p.lng != null);
-        if (live.length >= 3) setPins(live);
-      })
-      .catch(() => {}); // keep WORLD_PINS on any error
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return pins;
-}
-
-/* ── localStorage helpers ────────────────────────────────────────────────── */
-function loadArtifacts() {
-  try {
-    const docs = JSON.parse(localStorage.getItem('quarry_documents') || '[]');
-    const seen = new Map();
-    for (const doc of docs) {
-      const key = (doc.title || doc.query || 'Untitled').trim().toLowerCase();
-      if (!seen.has(key) || (doc.updatedAt || 0) > (seen.get(key).updatedAt || 0)) {
-        seen.set(key, doc);
-      }
-    }
-    return [...seen.values()].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-  } catch { return []; }
-}
-
 function ago(ts) {
   const s = Math.floor((Date.now() - ts) / 1000);
-  if (s < 60)    return 'just now';
-  if (s < 3600)  return `${Math.floor(s / 60)}m ago`;
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   return `${Math.floor(s / 86400)}d ago`;
 }
 
-/* ── Time-of-day greeting ────────────────────────────────────────────────── */
-function getGreeting() {
-  const h = new Date().getHours();
-  if (h >= 5  && h < 12) return 'Good morning';
-  if (h >= 12 && h < 17) return 'Good afternoon';
-  return 'Good evening';
-}
-
-/* ── Topbar ──────────────────────────────────────────────────────────────── */
-function TopbarWithData() {
-  const navigate  = useNavigate();
-  const location  = useLocation();
-  const [dark]    = useDarkMode();
-  const [artifacts, setArtifacts] = useState([]);
-  const artifactsLoaded = useRef(false);
-  const { user }  = useAuth();
-
-  const onArtifactsOpen = () => {
-    if (!artifactsLoaded.current) { setArtifacts(loadArtifacts()); artifactsLoaded.current = true; }
-  };
-
-  const handleArtifactSelect = useCallback((doc) => {
-    sessionStorage.setItem('quarry_write_session', JSON.stringify({
-      query: doc.query || doc.title || '', content: doc.content || '', docId: doc.id,
-    }));
-    navigate('/write');
-  }, [navigate]);
-
-  const SIMPLE_NAV = [
-    { label: 'Write',    path: '/write',    Icon: PenLine },
-    { label: 'Sources',  path: '/sources',  Icon: null    },
-    { label: 'Settings', path: '/settings', Icon: null    },
-  ];
-
-  const initial  = user?.username?.[0]?.toUpperCase() || '?';
-  const onProfile = location.pathname === '/profile';
-
-  return (
-    <header style={{
-      position: 'sticky', top: 0, zIndex: 100, height: 44,
-      background: dark ? 'rgba(26,22,20,0.88)' : 'rgba(237,232,223,0.88)',
-      backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
-      borderBottom: `1px solid ${T.border}`,
-      display: 'flex', alignItems: 'center', padding: '0 24px', gap: 12,
-    }}>
-      <span style={{ fontFamily: T.serif, fontSize: '1rem', fontWeight: 400, letterSpacing: '0.16em',
-        textTransform: 'uppercase', color: T.accent, flex: '0 0 auto' }}>Quarry</span>
-      <div style={{ flex: 1 }} />
-
-      <LazyNavDropdown label="Artifacts" icon={FileText} items={artifacts} onOpen={onArtifactsOpen}
-        emptyMsg="No saved artifacts yet"
-        onSelect={handleArtifactSelect}
-        renderItem={doc => (
-          <div>
-            <div style={{ fontFamily: T.sans, fontSize: '0.78rem', fontWeight: 500, color: T.fg, marginBottom: 2,
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 280 }}>
-              {doc.title || doc.query || 'Untitled'}
-            </div>
-            <div style={{ fontFamily: T.mono, fontSize: '0.62rem', color: T.fgDim }}>
-              {doc.updatedAt ? ago(doc.updatedAt) : ''}{doc.sources?.length ? ` · ${doc.sources.length} sources` : ''}
-            </div>
-          </div>
-        )} />
-
-      {SIMPLE_NAV.map(({ label, path, Icon }) => {
-        const isActive = location.pathname === path;
-        return (
-          <button key={path} onClick={() => navigate(path)} style={{
-            background: isActive ? T.accentDim : 'none',
-            border: isActive ? `1px solid rgba(249,115,22,0.22)` : 'none',
-            borderRadius: 6, cursor: 'pointer',
-            fontFamily: T.sans, fontSize: '0.78rem', fontWeight: isActive ? 600 : 500,
-            color: isActive ? T.accent : T.fgSec,
-            letterSpacing: '0.01em', padding: '4px 8px',
-            transition: 'color 0.15s', display: 'inline-flex', alignItems: 'center', gap: 4,
-          }}
-          onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = T.fg; }}
-          onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = T.fgSec; }}>
-            {Icon && <Icon size={11} />}{label}
-          </button>
-        );
-      })}
-
-      <button
-        onClick={() => navigate('/profile')}
-        title={user?.username || 'My Profile'}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 7,
-          background: onProfile ? T.accentDim : dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)',
-          border: onProfile ? `1px solid rgba(249,115,22,0.35)` : '1px solid transparent',
-          borderRadius: 20, cursor: 'pointer', padding: '3px 10px 3px 4px',
-          transition: 'all 0.15s',
-        }}
-        onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(249,115,22,0.35)'; }}
-        onMouseLeave={e => { if (!onProfile) e.currentTarget.style.borderColor = 'transparent'; }}
-      >
-        <div style={{
-          width: 24, height: 24, borderRadius: '50%',
-          background: onProfile ? T.accent : dark ? 'rgba(249,115,22,0.5)' : 'rgba(249,115,22,0.7)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontFamily: T.sans, fontSize: '0.68rem', fontWeight: 700, color: '#fff',
-          flexShrink: 0,
-        }}>
-          {initial}
-        </div>
-        <span style={{
-          fontFamily: T.sans, fontSize: '0.75rem', fontWeight: 500,
-          color: onProfile ? T.accent : T.fgSec,
-          maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {user?.username || 'Profile'}
-        </span>
-      </button>
-    </header>
-  );
-}
-
-function LazyNavDropdown({ label, icon: Icon, items, onOpen, emptyMsg, onSelect, renderItem }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
+/* ── Globe pins hook — live GDELT data, falls back to WORLD_PINS ─────────── */
+function useGlobePins(topicHint = '') {
+  const [pins, setPins] = useState(WORLD_PINS);
 
   useEffect(() => {
-    function handler(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
+    const q = (topicHint || '').trim();
+    const url = q
+      ? `${API}/explore/globe-pins?topic=${encodeURIComponent(q)}`
+      : `${API}/explore/globe-pins`;
+    const authToken = localStorage.getItem('quarry_auth_token') || sessionStorage.getItem('quarry_auth_token') || '';
+    fetch(url, {
+      headers: {
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
+    })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(data => {
+        const live = (data.pins || []).filter(p => p.lat != null && p.lng != null);
+        if (live.length > 0) setPins(live);
+      })
+      .catch(() => {}); // keep WORLD_PINS on any error
+  }, [topicHint]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const toggle = () => { if (!open) onOpen?.(); setOpen(v => !v); };
-
-  return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <button onClick={toggle} style={{
-        background: open ? T.accentDim : 'none',
-        border: open ? `1px solid rgba(249,115,22,0.22)` : 'none',
-        borderRadius: 6, cursor: 'pointer',
-        fontFamily: T.sans, fontSize: '0.78rem', fontWeight: 500,
-        color: open ? T.accent : T.fgSec,
-        letterSpacing: '0.01em', padding: '4px 8px',
-        display: 'inline-flex', alignItems: 'center', gap: 4, transition: 'color 0.15s',
-      }}
-      onMouseEnter={e => { if (!open) e.currentTarget.style.color = T.fg; }}
-      onMouseLeave={e => { if (!open) e.currentTarget.style.color = T.fgSec; }}>
-        {Icon && <Icon size={11} />}
-        {label}
-        <ChevronDown size={10} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
-      </button>
-
-      {open && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 6px)', right: 0,
-          minWidth: 260, maxWidth: 340, maxHeight: 340, overflowY: 'auto',
-          background: 'rgba(26,22,20,0.97)',
-          backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-          border: `1px solid rgba(255,255,255,0.08)`,
-          boxShadow: '0 12px 40px rgba(0,0,0,0.4)',
-          borderRadius: 12, zIndex: 200,
-        }}>
-          {items.length === 0
-            ? <div style={{ padding: '20px 18px', fontFamily: T.sans, fontSize: '0.78rem',
-                color: T.fgDim, textAlign: 'center' }}>{emptyMsg}</div>
-            : items.map((item, i) => (
-              <div key={i} onClick={() => { onSelect(item); setOpen(false); }}
-                style={{
-                  padding: '11px 16px',
-                  borderBottom: i < items.length - 1 ? `1px solid ${T.border}` : 'none',
-                  cursor: 'pointer', transition: 'background 0.12s',
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(249,115,22,0.07)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                {renderItem(item)}
-              </div>
-            ))
-          }
-        </div>
-      )}
-    </div>
-  );
+  return pins;
 }
 
 /* ── SearchSurface (shared between logged-in and logged-out) ─────────────── */
-function SearchSurface({ query, setQuery, isDeep, setIsDeep, onSubmit, onDailyTopics, flat = false }) {
+function SearchSurface({ query, setQuery, isDeep, setIsDeep, selectedProfileId, setSelectedProfileId, onSubmit, flat = false }) {
+  const [dark] = useDarkMode();
   const handleKey = useCallback((e) => {
     if (e.key === 'Enter' && query.trim()) onSubmit();
   }, [query, onSubmit]);
 
   const inner = (
-    <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+      {/* ── Search pill ── */}
       <div style={{
-        flex: 1, display: 'flex', alignItems: 'center',
+        display: 'flex', alignItems: 'center',
         background: 'var(--gbtn-bg)', border: `1px solid ${T.border}`,
-        borderRadius: 12, padding: '0 18px', gap: 12,
+        borderRadius: 14, padding: '0 6px 0 18px', gap: 10,
       }}>
-        <Search size={17} color={T.fgDim} />
+        <Search size={17} color={T.fgDim} style={{ flexShrink: 0 }} />
         <input
           autoFocus
           value={query}
           onChange={e => setQuery(e.target.value)}
           onKeyDown={handleKey}
-          placeholder="Investigate a crisis, claim, or source…"
+          placeholder="Search news, topic, or source..."
           style={{
             flex: 1, border: 'none', background: 'transparent', outline: 'none',
-            fontFamily: T.sans, fontSize: '1.05rem', fontWeight: 400,
-            color: T.fg, padding: '14px 0',
+            fontFamily: T.sans, fontSize: '1rem', fontWeight: 400,
+            color: T.fg, padding: '15px 0', minWidth: 0,
           }}
         />
-      </div>
-      <button
-        onClick={() => query.trim() && onSubmit()}
-        disabled={!query.trim()}
-        style={{
-          background: query.trim() ? T.accent : 'rgba(249,115,22,0.30)', color: '#fff',
-          border: 'none', borderRadius: 12, cursor: query.trim() ? 'pointer' : 'not-allowed',
-          padding: '14px 28px', fontFamily: T.sans, fontSize: '0.96rem', fontWeight: 500,
-          boxShadow: query.trim() ? '0 2px 12px rgba(249,115,22,0.28)' : 'none',
-          transition: 'background 0.15s, transform 0.15s',
-          display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
-        }}
-        onMouseEnter={e => { if (query.trim()) e.currentTarget.style.transform = 'translateY(-1px)'; }}
-        onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
-      >
-        <Search size={16} /> Investigate
-      </button>
-      <button
-        onClick={() => setIsDeep(!isDeep)}
-        style={{
-          background: isDeep ? 'rgba(249,115,22,0.12)' : 'rgba(255,255,255,0.03)',
-          border: isDeep ? '1px solid rgba(249,115,22,0.5)' : `1px solid ${T.border}`,
-          color: isDeep ? T.accent : T.fgSec,
-          borderRadius: 12, cursor: 'pointer', padding: '14px 18px',
-          fontFamily: T.sans, fontSize: '0.96rem', fontWeight: 500,
-          transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 8,
-        }}
-      >
-        <Zap size={16} fill={isDeep ? T.accent : 'none'} /> Deep
-      </button>
-      {onDailyTopics && (
         <button
-          onClick={onDailyTopics}
+          onClick={() => query.trim() && onSubmit()}
+          disabled={!query.trim()}
           style={{
-            background: 'rgba(249,115,22,0.08)',
-            border: '1px solid rgba(249,115,22,0.30)',
-            color: T.accent,
-            borderRadius: 12, cursor: 'pointer', padding: '14px 18px',
-            fontFamily: T.sans, fontSize: '0.96rem', fontWeight: 500,
-            transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 8,
+            flexShrink: 0,
+            background: query.trim() ? T.accent : T.accentDim,
+            color: '#fff',
+            border: 'none', borderRadius: 10,
+            cursor: query.trim() ? 'pointer' : 'default',
+            padding: '9px 20px',
+            fontFamily: T.sans, fontSize: '0.88rem', fontWeight: 600,
+            boxShadow: query.trim() ? `0 2px 10px ${T.accentGlow}` : 'none',
+            transition: 'background 0.15s, box-shadow 0.15s',
             whiteSpace: 'nowrap',
           }}
-          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(249,115,22,0.15)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(249,115,22,0.08)'; e.currentTarget.style.transform = 'translateY(0)'; }}
         >
-          <Zap size={15} fill={T.accent} /> Find Daily Topics
+          Search
         </button>
-      )}
+      </div>
+
+      {/* ── Mode row ── */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+      }}>
+
+        {/* Deep toggle */}
+        <button
+          onClick={() => setIsDeep(!isDeep)}
+          title="Deep mode: multi-pass retrieval and claim extraction"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+            padding: '5px 12px',
+            borderRadius: 8,
+            border: isDeep ? `1px solid ${T.accentBorder}` : `1px solid ${T.border}`,
+            background: isDeep ? T.accentDim : 'transparent',
+            color: isDeep ? T.accent : T.fgSec,
+            fontFamily: T.sans, fontSize: '0.76rem', fontWeight: isDeep ? 600 : 500,
+            cursor: 'pointer', transition: 'all 0.14s', whiteSpace: 'nowrap',
+          }}
+          onMouseEnter={e => { if (!isDeep) { e.currentTarget.style.borderColor = T.accentBorder; e.currentTarget.style.color = T.fg; } }}
+          onMouseLeave={e => { if (!isDeep) { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.fgSec; } }}
+        >
+          <Zap size={12} fill={isDeep ? T.accent : 'none'} strokeWidth={2} />
+          Deep
+        </button>
+
+        {/* Divider */}
+        <div style={{ width: 1, height: 18, background: T.border, flexShrink: 0 }} />
+
+        {/* Profile chips — inline, no dropdown */}
+        {ANALYSIS_PROFILES.map((opt) => {
+          const active = opt.id === selectedProfileId;
+          return (
+            <button
+              key={opt.id}
+              onClick={() => {
+                setSelectedProfileId(opt.id);
+                if (opt.id === 'deep_mapping') setIsDeep(true);
+              }}
+              title={opt.modelHint}
+              style={{
+                display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start',
+                gap: 1,
+                padding: '5px 11px',
+                borderRadius: 8,
+                border: active
+                  ? `1px solid ${T.accentBorder}`
+                  : `1px solid ${T.border}`,
+                background: active ? T.accentDim : 'transparent',
+                cursor: 'pointer', transition: 'all 0.14s',
+                whiteSpace: 'nowrap',
+              }}
+              onMouseEnter={e => { if (!active) { e.currentTarget.style.borderColor = T.accentBorder; e.currentTarget.style.background = dark ? 'rgba(249,115,22,0.06)' : 'rgba(249,115,22,0.05)'; } }}
+              onMouseLeave={e => { if (!active) { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.background = 'transparent'; } }}
+            >
+              <span style={{
+                fontFamily: T.sans, fontSize: '0.75rem',
+                fontWeight: active ? 600 : 500,
+                color: active ? T.accent : T.fgSec,
+                lineHeight: 1,
+              }}>
+                {opt.label}
+              </span>
+              <span style={{
+                fontFamily: T.mono, fontSize: '0.55rem',
+                color: active ? T.accent : T.fgDim,
+                opacity: active ? 0.8 : 0.7,
+                lineHeight: 1,
+              }}>
+                {opt.modelHint}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 
@@ -492,216 +273,6 @@ function SearchSurface({ query, setQuery, isDeep, setIsDeep, onSubmit, onDailyTo
   );
 }
 
-/* ── Image with error fallback ───────────────────────────────────────────── */
-function NewsImage({ src, height = 116, borderRadius = 0 }) {
-  const [failed, setFailed] = useState(false);
-  if (!src || failed) {
-    return (
-      <div style={{ width: '100%', height, background: 'rgba(175,150,105,0.09)', borderRadius,
-        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.6rem' }}>
-        📰
-      </div>
-    );
-  }
-  const proxied = `${API}/explore/img-proxy?url=${encodeURIComponent(src)}`;
-  return (
-    <img src={proxied} alt=""
-      style={{ width: '100%', height, objectFit: 'cover', display: 'block', borderRadius }}
-      onError={() => setFailed(true)} />
-  );
-}
-
-/* ── Recently Contested feed ─────────────────────────────────────────────── */
-function RecentlyContestedSection({ onChip }) {
-  const [items, setItems] = useState([]);
-
-  useEffect(() => { setItems(loadContestedClaims().slice(0, 3)); }, []);
-
-  const PLACEHOLDER = [
-    { claim: 'Gaza ceasefire deal rejected by one faction, accepted by another', query: 'Gaza ceasefire negotiations', sourceCount: 4 },
-    { claim: 'Death toll figures differ between government and NGO reports', query: 'Sudan conflict casualties', sourceCount: 3 },
-    { claim: 'Reconstruction costs estimated at $40bn vs $80bn depending on source', query: 'Gaza reconstruction funding', sourceCount: 2 },
-  ];
-
-  const display = items.length > 0 ? items : PLACEHOLDER;
-  const isLive  = items.length > 0;
-
-  return (
-    <div style={{ maxWidth: 820, margin: '0 auto', marginTop: 28 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-        <AlertTriangle size={13} color="#ef4444" />
-        <span style={{ fontFamily: T.mono, fontSize: '0.70rem', fontWeight: 600,
-          color: 'var(--fg-dim)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-          Recently Contested
-        </span>
-        {!isLive && (
-          <span style={{ fontFamily: T.mono, fontSize: '0.60rem', color: 'var(--fg-dim)',
-            background: 'var(--gbtn-bg)', border: '1px solid var(--border)',
-            borderRadius: 99, padding: '1px 7px' }}>
-            example
-          </span>
-        )}
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {display.map((item, i) => (
-          <div key={i} onClick={() => item.query && onChip(item.query)}
-            style={{
-              background: 'var(--glass-bg)', backdropFilter: 'var(--glass-blur)',
-              WebkitBackdropFilter: 'var(--glass-blur)',
-              border: '1px solid rgba(239,68,68,0.18)', borderRadius: 12,
-              padding: '12px 16px', cursor: item.query ? 'pointer' : 'default',
-              transition: 'transform 0.15s, box-shadow 0.15s',
-              display: 'flex', alignItems: 'flex-start', gap: 12,
-            }}
-            onMouseEnter={e => { if (item.query) { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.10)'; } }}
-            onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
-          >
-            <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', flexShrink: 0, marginTop: 5 }} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontFamily: T.sans, fontSize: '0.85rem', fontWeight: 500, color: T.fg, lineHeight: 1.45,
-                display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                {item.claim}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 5 }}>
-                {item.query && (
-                  <span style={{ fontFamily: T.mono, fontSize: '0.62rem', color: T.fgDim }}>
-                    from: {item.query.slice(0, 42)}{item.query.length > 42 ? '…' : ''}
-                  </span>
-                )}
-                {item.sourceCount > 0 && (
-                  <span style={{ fontFamily: T.mono, fontSize: '0.60rem', color: '#ef4444',
-                    background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.20)',
-                    borderRadius: 99, padding: '1px 7px' }}>
-                    {item.sourceCount} source{item.sourceCount !== 1 ? 's' : ''} disagreed
-                  </span>
-                )}
-              </div>
-            </div>
-            {item.query && <ExternalLink size={13} color="var(--fg-dim)" style={{ flexShrink: 0, marginTop: 3 }} />}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ── News card ───────────────────────────────────────────────────────────── */
-function NewsCard({ article, onChip }) {
-  const handleClick = () => {
-    if (article.url) window.open(article.url, '_blank', 'noopener,noreferrer');
-    else onChip(article.title);
-  };
-  return (
-    <GlassCard onClick={handleClick}
-      style={{
-        width: 248, flexShrink: 0, borderRadius: 16, overflow: 'hidden',
-        cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s',
-        display: 'flex', flexDirection: 'column',
-      }}
-      onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'}
-      onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
-    >
-      <NewsImage src={article.image || article.urlToImage} height={136} />
-      <div style={{ padding: '14px 16px 16px', flex: 1, display: 'flex', flexDirection: 'column', gap: 7 }}>
-        <div style={{ fontFamily: T.sans, fontSize: '0.87rem', fontWeight: 500, color: T.fg, lineHeight: 1.4,
-          display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-          {article.title}
-        </div>
-        {article.source?.name && (
-          <div style={{ fontFamily: T.mono, fontSize: '0.66rem', color: T.accent, letterSpacing: '0.07em' }}>
-            {article.source.name}
-          </div>
-        )}
-        {article.description && (
-          <div style={{ fontFamily: T.sans, fontSize: '0.76rem', fontWeight: 300, color: T.fgSec, lineHeight: 1.5,
-            display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-            {article.description}
-          </div>
-        )}
-      </div>
-    </GlassCard>
-  );
-}
-
-/* ── News cards strip ────────────────────────────────────────────────────── */
-function NewsCardsStrip({ onChip, defaultArticles }) {
-  const [activeTopic, setActiveTopic] = useState('world');
-  const { articles: topicArticles, loading } = useTopicNews(activeTopic);
-
-  const dedup = (arr) => {
-    const seen = new Set();
-    return arr.filter(a => { if (seen.has(a.url)) return false; seen.add(a.url); return true; });
-  };
-
-  const displayArticles = activeTopic === 'world'
-    ? dedup(defaultArticles.length >= 3 ? defaultArticles : [])
-    : dedup(topicArticles);
-
-  return (
-    <div style={{ maxWidth: 820, margin: '0 auto' }}>
-      <style>{`
-        .news-scroll::-webkit-scrollbar { display: none; }
-        @keyframes shimmer { 0%,100%{opacity:0.5} 50%{opacity:1} }
-      `}</style>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
-        {TOPICS.map(t => {
-          const active = activeTopic === t.id;
-          return (
-            <button key={t.id} onClick={() => setActiveTopic(t.id)} style={{
-              padding: '7px 18px', borderRadius: 20,
-              border: active ? `1px solid ${T.accent}` : `1px solid ${T.border}`,
-              background: active ? T.accentDim : 'var(--gbtn-bg)',
-              color: active ? T.accent : T.fgSec,
-              fontFamily: T.sans, fontSize: '0.86rem', fontWeight: 500,
-              cursor: 'pointer', transition: 'all 0.14s', letterSpacing: '0.01em',
-            }}
-            onMouseEnter={e => { if (!active) e.currentTarget.style.color = T.fg; }}
-            onMouseLeave={e => { if (!active) e.currentTarget.style.color = T.fgSec; }}
-            >
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
-      {/* Carousel wrapper with right-edge fade */}
-      <div style={{ position: 'relative' }}>
-        <div className="news-scroll" style={{
-          display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 8,
-          scrollbarWidth: 'none', msOverflowStyle: 'none',
-        }}>
-        {loading ? (
-          Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} style={{ width: 248, height: 320, flexShrink: 0,
-              background: 'rgba(175,150,105,0.09)', borderRadius: 16,
-              animation: 'shimmer 1.4s ease-in-out infinite' }} />
-          ))
-        ) : displayArticles.length > 0 ? (
-          displayArticles.map((a, i) => <NewsCard key={i} article={a} onChip={onChip} />)
-        ) : (
-          FALLBACK_SUGGESTIONS.map((s, i) => (
-            <div key={i} onClick={() => onChip(s)} style={{
-              width: 248, flexShrink: 0, minHeight: 130,
-              background: T.glass, border: T.glassBorder, borderRadius: 16,
-              padding: '22px 18px', cursor: 'pointer',
-              display: 'flex', alignItems: 'center',
-              fontFamily: T.sans, fontSize: '0.88rem', color: T.fg, lineHeight: 1.45,
-            }}>
-              {s}
-            </div>
-          ))
-        )}
-        </div>
-        {/* Right-edge fade gradient scroll affordance */}
-        <div style={{
-          position: 'absolute', top: 0, right: 0, bottom: 8,
-          width: 64, pointerEvents: 'none',
-          background: 'linear-gradient(to right, transparent, var(--bg-primary))',
-          borderRadius: '0 16px 16px 0',
-        }} />
-      </div>
-    </div>
-  );
-}
 
 /* ── Global Incident Heatmap (visual placeholder) ────────────────────────── */
 const HEATMAP_FILTERS = ['All', 'Conflict', 'Famine', 'Politics'];
@@ -727,485 +298,87 @@ const WORLD_PINS = [
   { label: 'Somalia',        desc: 'Al-Shabaab advance; famine risk elevated',                lat:   6.0, lng:  46.0, top: '52%', left: '58%',   color: '#e24b4a', type: 'Conflict'  },
 ];
 
-const TYPE_COLORS = { Conflict: '#e24b4a', Famine: '#facc15', Politics: '#7f77dd', All: '#F97316' };
+const TYPE_COLORS = { Conflict: '#e24b4a', Famine: '#facc15', Politics: '#7f77dd', Sports: '#22c55e', All: '#F97316' };
 
-/* ── miniature.earth shared script URL ──────────────────────────────────── */
-const EARTH_SCRIPT_URL = 'https://miniature.earth/miniature.earth.js';
+const INCIDENT_REGION_MAP = {
+  Gaza: { city: 'Gaza', country: 'Palestine' },
+  'Sudan / Darfur': { city: 'Darfur', country: 'Sudan' },
+  Ukraine: { city: 'Donetsk', country: 'Ukraine' },
+  Myanmar: { city: 'Yangon', country: 'Myanmar' },
+  Haiti: { city: 'Port-au-Prince', country: 'Haiti' },
+  Sahel: { city: 'Sahel', country: 'West Africa' },
+  Ethiopia: { city: 'Mekelle', country: 'Ethiopia' },
+  Venezuela: { city: 'Caracas', country: 'Venezuela' },
+  Georgia: { city: 'Tbilisi', country: 'Georgia' },
+  Bangladesh: { city: 'Dhaka', country: 'Bangladesh' },
+  Somalia: { city: 'Mogadishu', country: 'Somalia' },
+};
 
-/* ── Mini Globe preview (non-interactive, auto-rotating) ────────────────── */
-function MiniGlobe({ height = 120, label = 'Filtered to your beats', pins = WORLD_PINS }) {
-  const [dark] = useDarkMode();
-  const containerRef = useRef(null);
-  const earthRef     = useRef(null);
-  const pinsRef      = useRef(pins);
-  const [ready, setReady] = useState(false);
-
-  // Keep ref current so the ready handler always uses latest pins
-  pinsRef.current = pins;
-
-  useEffect(() => {
-    setReady(false);
-    const seaColor    = dark ? 'rgba(8,14,24,0)' : 'rgba(190,210,228,0)';
-    const landColor   = dark ? '#1e2a38' : '#c4aa84';
-    const borderColor = dark ? '#3a4a58' : '#9a8060';
-
-    const initGlobe = () => {
-      if (!containerRef.current || !window.Earth) return;
-      if (earthRef.current) { try { earthRef.current.destroy(); } catch {} }
-
-      let earth;
-      try {
-        earth = new window.Earth(containerRef.current, {
-          location: { lat: 18, lng: 18 },
-          zoom: 0.92,
-          light: 'none',
-          transparent: true,
-          mapSeaColor: seaColor,
-          mapLandColor: landColor,
-          mapBorderColor: borderColor,
-          mapBorderWidth: 0.25,
-          autoRotate: true,
-          autoRotateSpeed: 0.8,
-          autoRotateDelay: 0,
-        });
-      } catch { return; }
-
-      earthRef.current = earth;
-
-      earth.addEventListener('ready', function () {
-        try { this.startAutoRotate(); } catch {}
-        setReady(true);
-        pinsRef.current.forEach(pin => {
-          try {
-            this.addMarker({
-              location: { lat: pin.lat, lng: pin.lng },
-              mesh: 'Pin3',
-              color: pin.color,
-              scale: 0.4,
-              hotspot: false,
-            });
-          } catch {}
-        });
-      });
-    };
-
-    if (window.Earth) {
-      initGlobe();
-    } else {
-      const existing = document.querySelector(`script[src="${EARTH_SCRIPT_URL}"]`);
-      if (!existing) {
-        const script = document.createElement('script');
-        script.src = EARTH_SCRIPT_URL;
-        document.head.appendChild(script);
-      }
-      const handler = () => initGlobe();
-      window.addEventListener('earthjsload', handler, { once: true });
-      return () => window.removeEventListener('earthjsload', handler);
-    }
-
-    return () => {
-      if (earthRef.current) { try { earthRef.current.destroy(); } catch {} earthRef.current = null; }
-    };
-  }, [dark, pins]); // re-init when dark mode or live pins change
-
-  return (
-    <div style={{ borderRadius: 12, overflow: 'hidden', position: 'relative' }}>
-      {/* Globe container */}
-      <div
-        ref={containerRef}
-        style={{
-          width: '100%', height,
-          borderRadius: 12,
-          background: dark ? 'rgba(8,12,20,0.85)' : 'rgba(190,210,228,0.25)',
-          border: '1px solid var(--border)',
-          overflow: 'hidden',
-          pointerEvents: 'none',
-          opacity: ready ? 1 : 0,
-          transition: 'opacity 0.4s ease',
-        }}
-      />
-      {/* Loading skeleton */}
-      {!ready && (
-        <div style={{
-          position: 'absolute', inset: 0, borderRadius: 12,
-          background: dark ? 'rgba(8,12,20,0.85)' : 'rgba(190,210,228,0.25)',
-          border: '1px solid var(--border)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <div style={{
-            width: Math.round(height * 0.55), height: Math.round(height * 0.55),
-            borderRadius: '50%',
-            background: dark ? 'rgba(30,42,56,0.6)' : 'rgba(196,170,132,0.3)',
-            border: `1px solid ${dark ? '#3a4a58' : '#9a8060'}40`,
-          }} />
-        </div>
-      )}
-      {/* Label overlay */}
-      <div style={{
-        position: 'absolute', bottom: 0, left: 0, right: 0,
-        padding: '14px 10px 8px',
-        background: dark
-          ? 'linear-gradient(to top, rgba(8,12,20,0.90) 0%, transparent 100%)'
-          : 'linear-gradient(to top, rgba(60,42,18,0.55) 0%, transparent 100%)',
-        borderRadius: '0 0 12px 12px',
-      }}>
-        <div style={{
-          fontFamily: T.mono, fontSize: '0.57rem', fontWeight: 600,
-          color: dark ? 'rgba(200,195,185,0.80)' : 'rgba(245,238,226,0.90)',
-          letterSpacing: '0.12em', textTransform: 'uppercase',
-        }}>
-          {label}
-        </div>
-      </div>
-    </div>
-  );
+function toLiveMarkers(pins = WORLD_PINS) {
+  return pins
+    .filter(p => p.lat != null && p.lng != null)
+    .map((pin, i) => {
+      const mapped = INCIDENT_REGION_MAP[pin.label];
+      const [countryFromLabel, cityFromLabel] = pin.label.includes('/') ? pin.label.split('/').map(v => v.trim()) : [pin.label, pin.label];
+      return {
+        id: pin.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `marker-${i}`,
+        location: [pin.lat, pin.lng],
+        city: mapped?.city || cityFromLabel || pin.label,
+        country: mapped?.country || countryFromLabel || pin.type || 'Global',
+        headline: pin.desc || `Top live development in ${pin.label}.`,
+      };
+    });
 }
 
-/* ── World Map Modal — miniature.earth globe ────────────────────────────── */
-
-function WorldMapModal({ onClose, pins = WORLD_PINS }) {
-  const [dark] = useDarkMode();
-  const [filter, setFilter] = useState('All');
-  const [activePin, setActivePin] = useState(null); // index into pins array
-  const [earthReady, setEarthReady] = useState(false);
-  const overlayRef  = useRef(null);
-  const containerRef = useRef(null);
-  const earthRef    = useRef(null);
-  const markersRef  = useRef([]);
-
-  const borderC = dark ? 'rgba(255,255,255,0.10)' : 'rgba(120,100,70,0.20)';
-  const fgDim   = dark ? 'rgba(200,195,185,0.55)' : 'rgba(90,70,40,0.55)';
-  const bgPage  = dark ? '#0d0f14' : '#EDE8DF';
-
-  // Close on Escape
-  useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [onClose]);
-
-  // Load miniature.earth and initialise the globe
-  useEffect(() => {
-    const seaColor  = dark ? 'rgba(8,14,24,0)' : 'rgba(190,210,228,0)';
-    const landColor = dark ? '#1e2a38' : '#c4aa84';
-    const borderColor = dark ? '#3a4a58' : '#9a8060';
-
-    const initGlobe = () => {
-      if (!containerRef.current || !window.Earth) return;
-
-      const earth = new window.Earth(containerRef.current, {
-        location: { lat: 18, lng: 30 },
-        zoom: 1.0,
-        light: 'none',
-        transparent: true,
-        mapSeaColor: seaColor,
-        mapLandColor: landColor,
-        mapBorderColor: borderColor,
-        mapBorderWidth: 0.3,
-        autoRotate: true,
-        autoRotateSpeed: 0.55,
-        autoRotateDelay: 2500,
-      });
-
-      earthRef.current = earth;
-
-      earth.addEventListener('ready', function () {
-        this.startAutoRotate();
-        setEarthReady(true);
-
-        // Add all pins as 3D markers
-        pins.forEach((pin, i) => {
-          const marker = this.addMarker({
-            location: { lat: pin.lat, lng: pin.lng },
-            mesh: 'Pin3',
-            color: pin.color,
-            scale: 0.55,
-            hotspot: true,
-          });
-          markersRef.current[i] = marker;
-
-          // HTML overlay label that floats above the pin
-          const overlay = this.addOverlay({
-            location: { lat: pin.lat, lng: pin.lng },
-            offset: 0.38,
-            depthScale: 0.3,
-            occlude: false,
-          });
-          overlay.element.innerHTML = `
-            <div style="
-              background:${dark ? 'rgba(10,14,22,0.92)' : 'rgba(245,238,226,0.92)'};
-              border:1px solid ${pin.color}88;
-              border-radius:5px;
-              padding:2px 7px;
-              font-family:IBM Plex Mono,monospace;
-              font-size:9px;
-              font-weight:600;
-              color:${pin.color};
-              white-space:nowrap;
-              cursor:pointer;
-              pointer-events:auto;
-              box-shadow:0 2px 8px rgba(0,0,0,0.35);
-            ">${pin.label}</div>`;
-
-          overlay.element.firstChild.addEventListener('click', (e) => {
-            e.stopPropagation();
-            setActivePin(i);
-            earth.goTo({ lat: pin.lat, lng: pin.lng }, { duration: 300, relativeDuration: 60 });
-            earth.stopAutoRotate();
-            setTimeout(() => earth.startAutoRotate(), 4000);
-          });
-        });
-      });
-    };
-
-    if (window.Earth) {
-      initGlobe();
-    } else {
-      const existing = document.querySelector(`script[src="${EARTH_SCRIPT_URL}"]`);
-      if (!existing) {
-        const script = document.createElement('script');
-        script.src = EARTH_SCRIPT_URL;
-        document.head.appendChild(script);
-      }
-      const handler = () => initGlobe();
-      window.addEventListener('earthjsload', handler, { once: true });
-      return () => window.removeEventListener('earthjsload', handler);
-    }
-
-    return () => {
-      if (earthRef.current) {
-        try { earthRef.current.destroy(); } catch {}
-        earthRef.current = null;
-      }
-      markersRef.current = [];
-      setActivePin(null);
-    };
-  }, [dark, pins]); // re-init when dark mode or live pins change
-
-  const visiblePins = filter === 'All' ? pins : pins.filter(p => p.type === filter);
-  const selected = activePin !== null ? pins[activePin] : null;
-
-  return (
-    <div
-      ref={overlayRef}
-      onClick={e => { if (e.target === overlayRef.current) onClose(); }}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1000,
-        background: dark ? 'rgba(0,0,0,0.82)' : 'rgba(60,40,20,0.50)',
-        backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 24,
-      }}
-    >
-      <div style={{
-        width: '100%', maxWidth: 1040, borderRadius: 18,
-        background: bgPage,
-        border: `1px solid ${borderC}`,
-        boxShadow: dark ? '0 40px 100px rgba(0,0,0,0.85)' : '0 24px 60px rgba(60,40,20,0.28)',
-        overflow: 'hidden',
-        display: 'flex', flexDirection: 'column',
-        maxHeight: '92vh',
-      }}>
-
-        {/* Header */}
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '13px 20px', borderBottom: `1px solid ${borderC}`,
-          flexShrink: 0,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <span style={{ fontFamily: T.serif, fontSize: '1.05rem', fontWeight: 400, color: T.accent, letterSpacing: '0.06em' }}>
-              Global Incident Map
-            </span>
-            <span style={{ fontFamily: T.mono, fontSize: '0.63rem', color: fgDim }}>
-              {visiblePins.length} active incidents
-            </span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-            {['All', 'Conflict', 'Famine', 'Politics'].map(f => (
-              <button key={f} onClick={() => setFilter(f)} style={{
-                padding: '3px 11px', borderRadius: 99, cursor: 'pointer',
-                fontFamily: T.sans, fontSize: '0.70rem', fontWeight: 500,
-                border: filter === f ? `1px solid ${TYPE_COLORS[f] || T.accent}` : `1px solid ${borderC}`,
-                background: filter === f ? `${TYPE_COLORS[f] || T.accent}18` : 'transparent',
-                color: filter === f ? (TYPE_COLORS[f] || T.accent) : fgDim,
-                transition: 'all 0.13s',
-              }}>{f}</button>
-            ))}
-            <button onClick={onClose} style={{
-              width: 28, height: 28, borderRadius: 8,
-              border: `1px solid ${borderC}`, background: 'transparent',
-              color: fgDim, cursor: 'pointer', fontFamily: T.sans,
-              fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>×</button>
-          </div>
-        </div>
-
-        {/* Body: globe (left) + incident list (right) */}
-        <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 440 }}>
-
-          {/* Globe */}
-          <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-            {/* Loading state */}
-            {!earthReady && (
-              <div style={{
-                position: 'absolute', inset: 0, display: 'flex',
-                alignItems: 'center', justifyContent: 'center', zIndex: 2,
-              }}>
-                <div style={{
-                  fontFamily: T.mono, fontSize: '0.70rem', color: fgDim,
-                  display: 'flex', alignItems: 'center', gap: 8,
-                }}>
-                  <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: T.accent, animation: 'pinPulse 1.2s ease-in-out infinite' }} />
-                  Loading globe…
-                </div>
-              </div>
-            )}
-
-            {/* miniature.earth container */}
-            <div
-              ref={containerRef}
-              style={{ width: '100%', height: '100%', minHeight: 440 }}
-            />
-
-            {/* Legend */}
-            <div style={{
-              position: 'absolute', bottom: 10, left: 12,
-              display: 'flex', gap: 10, alignItems: 'center',
-              background: dark ? 'rgba(0,0,0,0.60)' : 'rgba(255,252,242,0.80)',
-              backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
-              border: `1px solid ${borderC}`, borderRadius: 8,
-              padding: '4px 10px',
-            }}>
-              {Object.entries(TYPE_COLORS).filter(([k]) => k !== 'All').map(([type, color]) => (
-                <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: color }} />
-                  <span style={{ fontFamily: T.mono, fontSize: '0.58rem', color: fgDim }}>{type}</span>
-                </div>
-              ))}
-            </div>
-
-            <style>{`
-              .earth-overlay { pointer-events: none; }
-              .earth-overlay > * { pointer-events: auto; }
-            `}</style>
-          </div>
-
-          {/* Incident list sidebar */}
-          <div style={{
-            width: 280, flexShrink: 0,
-            borderLeft: `1px solid ${borderC}`,
-            overflowY: 'auto',
-            display: 'flex', flexDirection: 'column',
-          }}>
-            {/* Selected pin detail */}
-            {selected && (
-              <div style={{
-                padding: '12px 14px',
-                borderBottom: `1px solid ${borderC}`,
-                background: dark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.025)',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 5 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: selected.color, flexShrink: 0, display: 'inline-block' }} />
-                  <span style={{ fontFamily: T.sans, fontSize: '0.82rem', fontWeight: 600, color: dark ? '#e8e2d8' : '#2a1a08' }}>
-                    {selected.label}
-                  </span>
-                  <span style={{
-                    marginLeft: 'auto', fontFamily: T.mono, fontSize: '0.58rem',
-                    color: selected.color, background: `${selected.color}18`,
-                    padding: '1px 6px', borderRadius: 4,
-                  }}>{selected.type}</span>
-                </div>
-                <div style={{ fontFamily: T.sans, fontSize: '0.75rem', fontWeight: 300, color: fgDim, lineHeight: 1.5 }}>
-                  {selected.desc}
-                </div>
-                <button
-                  onClick={() => setActivePin(null)}
-                  style={{
-                    marginTop: 8, padding: '2px 8px', borderRadius: 5,
-                    border: `1px solid ${borderC}`, background: 'transparent',
-                    fontFamily: T.mono, fontSize: '0.58rem', color: fgDim,
-                    cursor: 'pointer',
-                  }}
-                >
-                  clear ×
-                </button>
-              </div>
-            )}
-
-            {/* All incidents list */}
-            <div style={{ padding: '8px 0', flex: 1 }}>
-              <div style={{ padding: '4px 14px 8px', fontFamily: T.mono, fontSize: '0.58rem', fontWeight: 600, color: fgDim, letterSpacing: '0.10em', textTransform: 'uppercase' }}>
-                {filter === 'All' ? 'All incidents' : filter}
-              </div>
-              {visiblePins.map((pin, i) => {
-                const globalIdx = pins.indexOf(pin);
-                const isActive = activePin === globalIdx;
-                return (
-                  <div
-                    key={i}
-                    onClick={() => {
-                      setActivePin(globalIdx);
-                      if (earthRef.current) {
-                        earthRef.current.goTo({ lat: pin.lat, lng: pin.lng }, { duration: 300, relativeDuration: 60 });
-                        earthRef.current.stopAutoRotate();
-                        setTimeout(() => earthRef.current?.startAutoRotate(), 4000);
-                      }
-                    }}
-                    style={{
-                      padding: '9px 14px',
-                      borderBottom: `1px solid ${dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)'}`,
-                      cursor: 'pointer',
-                      background: isActive ? (dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)') : 'transparent',
-                      transition: 'background 0.12s',
-                      borderLeft: isActive ? `2px solid ${pin.color}` : '2px solid transparent',
-                    }}
-                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = dark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)'; }}
-                    onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3 }}>
-                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: pin.color, flexShrink: 0, display: 'inline-block' }} />
-                      <span style={{ fontFamily: T.sans, fontSize: '0.77rem', fontWeight: 500, color: dark ? '#e0d8ce' : '#2a1a08', flex: 1 }}>
-                        {pin.label}
-                      </span>
-                      <span style={{
-                        fontFamily: T.mono, fontSize: '0.55rem',
-                        color: pin.color, background: `${pin.color}18`,
-                        padding: '1px 5px', borderRadius: 4, flexShrink: 0,
-                      }}>{pin.type}</span>
-                    </div>
-                    <div style={{ fontFamily: T.sans, fontSize: '0.70rem', fontWeight: 300, color: fgDim, lineHeight: 1.45, paddingLeft: 13,
-                      display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                      {pin.desc}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div style={{
-          padding: '8px 20px', borderTop: `1px solid ${borderC}`,
-          display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap', flexShrink: 0,
-        }}>
-          {[['Conflict','#e24b4a','active conflicts'],['Famine','#facc15','famine/food crises'],['Politics','#7f77dd','political crises']].map(([type, color, label]) => {
-            const count = pins.filter(p => p.type === type).length;
-            return count > 0 ? (
-              <span key={type} style={{ fontFamily: T.mono, fontSize: '0.63rem', color: fgDim }}>
-                <span style={{ color, fontWeight: 600 }}>{count}</span> {label}
-              </span>
-            ) : null;
-          })}
-          <span style={{ marginLeft: 'auto', fontFamily: T.mono, fontSize: '0.58rem', color: fgDim }}>
-            Click a label or list item to navigate · Esc to close
-          </span>
-        </div>
-      </div>
-    </div>
-  );
+function normalizeTopicTokens(raw = '') {
+  return String(raw)
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .map(t => t.trim())
+    .filter(t => t.length >= 3);
 }
+
+function pickActiveIncident({ pins = WORLD_PINS, profile = {}, trackedTopics = [] }) {
+  const markers = toLiveMarkers(pins);
+  if (!markers.length) return { marker: null, matched: false, score: 0 };
+
+  const preferenceTerms = [
+    profile?.focus_area,
+    profile?.beat,
+    ...(profile?.topics_of_focus || []),
+    ...(trackedTopics || []),
+  ]
+    .filter(Boolean)
+    .flatMap(normalizeTopicTokens);
+
+  if (!preferenceTerms.length) {
+    return { marker: markers[0], matched: false, score: 0 };
+  }
+
+  const scored = markers.map((marker, idx) => {
+    const haystack = `${marker.city} ${marker.country} ${marker.headline}`.toLowerCase();
+    const score = preferenceTerms.reduce((sum, term) => {
+      if (!term) return sum;
+      // Headline/topic term matches matter most, then city/country.
+      if (haystack.includes(term)) return sum + (marker.headline.toLowerCase().includes(term) ? 3 : 1);
+      return sum;
+    }, 0);
+    return { marker, idx, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score || a.idx - b.idx);
+  const best = scored[0];
+  const minConfidence = 2;
+  if (!best) return { marker: markers[0], matched: false, score: 0 };
+  return {
+    marker: best.marker,
+    matched: best.score >= minConfidence,
+    score: best.score,
+  };
+}
+
+
+
 
 function GlobalIncidentHeatmap({ height = 220, label = 'Global Incident Overview', labelSize = 11 }) {
   const mini = labelSize <= 9;
@@ -1249,10 +422,10 @@ function GlobalIncidentHeatmap({ height = 220, label = 'Global Incident Overview
         {HEATMAP_FILTERS.map(f => (
           <button key={f} onClick={() => setActiveFilter(f)} style={{
             padding: '2px 9px', borderRadius: 99, cursor: 'pointer',
-            fontFamily: "'DM Sans',system-ui,sans-serif", fontSize: '0.62rem', fontWeight: 500,
-            border: activeFilter === f ? '1px solid #F97316' : '1px solid var(--border)',
-            background: activeFilter === f ? 'rgba(249,115,22,0.15)' : 'var(--gbtn-bg)',
-            color: activeFilter === f ? '#F97316' : 'var(--fg-dim)',
+            fontFamily: "'IBM Plex Sans',system-ui,sans-serif", fontSize: '0.62rem', fontWeight: 500,
+            border: activeFilter === f ? `1px solid ${T.accentBorder}` : '1px solid var(--border)',
+            background: activeFilter === f ? T.accentDim : 'var(--gbtn-bg)',
+            color: activeFilter === f ? T.accent : 'var(--fg-dim)',
             transition: 'all 0.13s',
           }}>
             {f}
@@ -1307,7 +480,7 @@ function GlobalIncidentHeatmap({ height = 220, label = 'Global Incident Overview
 }
 
 /* ── Logged-out homepage ─────────────────────────────────────────────────── */
-function LoggedOutHome({ query, setQuery, isDeep, setIsDeep, onSubmit }) {
+function LoggedOutHome({ query, setQuery, isDeep, setIsDeep, selectedProfileId, setSelectedProfileId, onSubmit }) {
   const navigate = useNavigate();
 
   return (
@@ -1326,20 +499,21 @@ function LoggedOutHome({ query, setQuery, isDeep, setIsDeep, onSubmit }) {
           fontWeight: 400, color: T.accent, lineHeight: 1.12,
           letterSpacing: '-0.025em', marginBottom: 24,
         }}>
-          Research. Verify.<br />Write with confidence.
+          Research. Verify.<br />Understand with confidence.
         </h1>
         <p style={{
           fontFamily: T.sans, fontSize: '1.15rem', fontWeight: 300,
           color: T.fgSec, lineHeight: 1.7, maxWidth: 540, margin: '0 auto 48px',
         }}>
           Search the web, see where sources contradict
-          each other, and write your story — all in one place.
+          each other, and build clear, source-grounded analysis in one place.
         </p>
       </div>
 
       <SearchSurface
         query={query} setQuery={setQuery}
         isDeep={isDeep} setIsDeep={setIsDeep}
+        selectedProfileId={selectedProfileId} setSelectedProfileId={setSelectedProfileId}
         onSubmit={onSubmit}
       />
 
@@ -1359,14 +533,14 @@ function LoggedOutHome({ query, setQuery, isDeep, setIsDeep, onSubmit }) {
         border: '1px solid var(--border)', borderRadius: 14,
       }}>
         <span style={{ fontFamily: T.sans, fontSize: '0.88rem', color: T.fgDim, lineHeight: 1.5 }}>
-          Sign up to track your beats and get story leads
+          Sign up to track topics and surface relevant updates
         </span>
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={() => navigate('/signup')} style={{
             padding: '9px 22px', borderRadius: 10, cursor: 'pointer',
             background: T.accent, border: 'none', color: '#fff',
             fontFamily: T.sans, fontSize: '0.86rem', fontWeight: 600,
-            boxShadow: '0 2px 10px rgba(249,115,22,0.25)',
+            boxShadow: `0 2px 10px ${T.accentGlow}`,
             transition: 'transform 0.14s',
           }}
           onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-1px)'}
@@ -1391,533 +565,781 @@ function LoggedOutHome({ query, setQuery, isDeep, setIsDeep, onSubmit }) {
   );
 }
 
-function IntelligenceGrid({ onChip }) {
-  const navigate = useNavigate();
-  const [mapOpen, setMapOpen] = useState(false);
-  const [beats, setBeats] = useState([]);
-  const { leads: storyLeads, noKey: newsNoKey } = useStoryLeads();
-  const globePins = useGlobePins();
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newKeywords, setNewKeywords] = useState('');
+/* ── Daily Topics Card ───────────────────────────────────────────────────── */
+const CATEGORY_COLOR = {
+  Conflict:     '#e24b4a',
+  Humanitarian: '#f59e0b',
+  Economics:    '#7f77dd',
+  Politics:     '#3b82f6',
+  Climate:      '#22c55e',
+  Focus:        '#22c55e',
+};
 
-  useEffect(() => { setBeats(getBeats()); }, []);
+function DailyTopicsCard({ onOpen, profile, userId }) {
+  const [dark] = useDarkMode();
+  const [hovered, setHovered] = useState(false);
+  const [digest, setDigest] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-  const handleSaveBeat = () => {
-    const name = newName.trim();
-    if (!name) return;
-    const keywords = newKeywords.split(',').map(k => k.trim()).filter(Boolean);
-    saveBeat({ id: Date.now().toString(), name, keywords, createdAt: Date.now(), investigationCount: 0, lastActiveAt: null });
-    setBeats(getBeats());
-    setNewName('');
-    setNewKeywords('');
-    setShowAddForm(false);
-  };
+  useEffect(() => {
+    let cancelled = false;
+    const beatNames = getBeats().map(b => b.name);
+    const signature = buildDailyDigestSignature(profile || {}, beatNames);
+    const cached = getCachedDailyDigest(userId, signature);
+    if (cached) {
+      setDigest(cached);
+      return;
+    }
 
-  const handleDeleteBeat = (id) => { deleteBeat(id); setBeats(getBeats()); };
+    const authToken = localStorage.getItem('quarry_auth_token') || sessionStorage.getItem('quarry_auth_token') || '';
+    setLoading(true);
+    fetch(`${API}/explore/daily-digest`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
+      body: JSON.stringify({ beats: beatNames, profile: profile || {} }),
+    })
+      .then(r => { if (!r.ok) throw new Error('daily brief failed'); return r.json(); })
+      .then(data => {
+        if (cancelled) return;
+        setDigest(data);
+        setCachedDailyDigest(userId, signature, data);
+      })
+      .catch(() => {
+        // Keep card quiet if fetch fails; modal can still retry.
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
 
-  const SECTION_LABEL = (text) => (
-    <div style={{
-      fontFamily: T.mono, fontSize: '0.62rem', fontWeight: 600,
-      color: T.fgDim, letterSpacing: '0.12em',
-      textTransform: 'uppercase', marginBottom: 10,
-    }}>
-      {text}
+    return () => { cancelled = true; };
+  }, [profile, userId]);
+
+  const bg        = dark ? 'rgba(20,14,8,0.72)' : 'rgba(255,255,255,0.52)';
+  const border    = dark ? 'rgba(249,115,22,0.22)' : 'rgba(249,115,22,0.18)';
+  const shimmerBg = dark ? 'rgba(249,115,22,0.07)' : 'rgba(249,115,22,0.05)';
+  const topics = (digest?.topics || []).slice(0, 5);
+  const fallbackTopics = (profile?.topics_of_focus || []).slice(0, 5).map(label => ({ label, category: 'Focus' }));
+  const displayTopics = topics.length > 0
+    ? topics.map(t => ({ label: t.headline || t.summary || 'Untitled topic', category: t.beat || t.urgency || 'Topic' }))
+    : fallbackTopics;
+  const scopedCategory = String(profile?.focus_area || profile?.beat || '').trim().toLowerCase();
+
+  return (
+    <div
+      onClick={onOpen}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        borderRadius: 14, overflow: 'hidden',
+        display: 'flex', flexDirection: 'column',
+        height: '100%',
+        minHeight: 0,
+        cursor: 'pointer',
+        background: bg,
+        backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
+        border: `1px solid ${hovered ? 'rgba(249,115,22,0.45)' : border}`,
+        boxShadow: hovered
+          ? '0 8px 32px rgba(249,115,22,0.14), 0 2px 8px rgba(0,0,0,0.08)'
+          : '0 2px 8px rgba(0,0,0,0.05)',
+        transition: 'box-shadow 0.22s ease, border-color 0.22s ease, transform 0.22s ease',
+        transform: hovered ? 'translateY(-2px)' : 'translateY(0)',
+      }}
+    >
+      {/* Header — accent-tinted stripe */}
+      <div style={{
+        padding: '10px 14px 9px',
+        borderBottom: `1px solid ${border}`,
+        background: shimmerBg,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <div style={{ fontFamily: T.serif, fontSize: '0.92rem', fontWeight: 600, color: T.fg }}>
+          Today's topics
+        </div>
+        {/* Live chip */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{
+            width: 4, height: 4, borderRadius: '50%', background: dark ? 'rgba(249,115,22,0.65)' : 'rgba(180,83,9,0.6)',
+            display: 'inline-block', flexShrink: 0,
+            animation: 'pinPulse 2s ease-in-out infinite',
+          }} />
+          <span style={{ fontFamily: T.mono, fontSize: '0.52rem', color: T.fgDim, letterSpacing: '0.04em', textTransform: 'uppercase' }}>live</span>
+        </div>
+      </div>
+
+      {/* Topic list */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+        {displayTopics.length === 0 && !loading && (
+          <div style={{ padding: '12px 14px', fontFamily: T.sans, fontSize: '0.76rem', color: T.fgDim }}>
+            No personalized topics yet. Add focus areas in your profile to tailor this digest.
+          </div>
+        )}
+        {loading && displayTopics.length === 0 && (
+          <div style={{ padding: '12px 14px', fontFamily: T.sans, fontSize: '0.76rem', color: T.fgDim }}>
+            Loading your digest...
+          </div>
+        )}
+        {displayTopics.map((topic, i) => {
+          const color = CATEGORY_COLOR[topic.category] || T.accent;
+          const topicCategory = String(topic.category || '').trim().toLowerCase();
+          const showCategoryBadge = topicCategory && topicCategory !== 'focus' && topicCategory !== scopedCategory;
+          return (
+            <div
+              key={i}
+              style={{
+                padding: '8px 14px',
+                borderBottom: i < displayTopics.length - 1
+                  ? `1px solid ${dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)'}` : 'none',
+                display: 'flex', alignItems: 'center', gap: 10,
+                transition: 'background 0.12s',
+                background: hovered ? (dark ? 'rgba(255,255,255,0.015)' : 'rgba(249,115,22,0.02)') : 'transparent',
+              }}
+            >
+              {/* Category dot */}
+              <span style={{
+                width: 5, height: 5, borderRadius: '50%',
+                background: color, flexShrink: 0,
+                opacity: 0.85,
+              }} />
+              {/* Topic text */}
+              <span style={{
+                fontFamily: T.sans, fontSize: '0.76rem', fontWeight: 500,
+                color: T.fg, lineHeight: 1.35, flex: 1,
+              }}>
+                {topic.label}
+              </span>
+              {showCategoryBadge && (
+                <span style={{
+                  fontFamily: T.mono, fontSize: '0.50rem', fontWeight: 600,
+                  color: color, background: `${color}12`,
+                  border: `1px solid ${color}24`,
+                  padding: '1px 6px', borderRadius: 4, flexShrink: 0,
+                }}>
+                  {topic.category}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Footer CTA */}
+      <div style={{
+        padding: '10px 14px',
+        borderTop: `1px solid ${border}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        background: shimmerBg,
+      }}>
+        <span style={{ fontFamily: T.mono, fontSize: '0.57rem', color: T.fgDim }}>
+          Personalized to your tracked topics
+        </span>
+        <span style={{
+          fontFamily: T.sans, fontSize: '0.72rem', fontWeight: 600,
+          color: T.accent,
+          display: 'flex', alignItems: 'center', gap: 4,
+          opacity: hovered ? 1 : 0.75,
+          transition: 'opacity 0.15s',
+        }}>
+          Open full brief →
+        </span>
+      </div>
     </div>
   );
+}
 
-  // Pre-compute whether right column has data
-  const hasCollisions = loadContestedClaims().length > 0;
+function formatAgoFromISO(iso) {
+  const ts = Date.parse(iso || '');
+  if (!ts) return 'just now';
+  return ago(ts);
+}
 
-  // Pre-compute narrative velocity rows
-  const velocityRows = (() => {
-    const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
-    try {
-      const history = JSON.parse(localStorage.getItem('quarry_investigation_history') || '[]');
-      const recent  = history.filter(h => (Date.now() - h.timestamp) <= SEVEN_DAYS);
-      const bs = getBeats().filter(b => b.keywords?.length > 0);
-      return bs
-        .map(beat => ({
-          name: beat.name,
-          count: recent.filter(h =>
-            beat.keywords.some(kw => h.query?.toLowerCase().includes(kw.toLowerCase()))
-          ).length,
-        }))
-        .filter(r => r.count > 0)
-        .sort((a, b) => b.count - a.count);
-    } catch { return []; }
-  })();
+function HomeNotesCard({ notes = [], onOpen, onNewNote }) {
+  const [hovered, setHovered] = useState(false);
+  const sorted = [...notes].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+  const recent = sorted.slice(0, 2);
+  const lastUpdated = sorted[0]?.updatedAt ? formatAgoFromISO(sorted[0].updatedAt) : 'just now';
+
+  return (
+    <GlassCard
+      onClick={onOpen}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        borderRadius: 14,
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        minHeight: 0,
+        cursor: 'pointer',
+        border: `1px solid ${hovered ? 'rgba(249,115,22,0.45)' : 'var(--glass-border)'}`,
+        boxShadow: hovered
+          ? '0 8px 32px rgba(249,115,22,0.14), 0 2px 8px rgba(0,0,0,0.08)'
+          : '0 2px 8px rgba(0,0,0,0.05)',
+        transition: 'box-shadow 0.22s ease, border-color 0.22s ease, transform 0.22s ease',
+        transform: hovered ? 'translateY(-2px)' : 'translateY(0)',
+      }}
+    >
+      <div style={{ padding: '10px 14px 8px', borderBottom: `1px solid var(--border)`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ fontFamily: T.serif, fontSize: '0.92rem', fontWeight: 600, color: T.fg }}>
+          Your notes
+        </div>
+        <button
+          onClick={(e) => { e.stopPropagation(); onNewNote?.(); }}
+          style={{
+            border: 'none', background: 'none', color: T.accent, cursor: 'pointer',
+            fontFamily: T.sans, fontSize: '0.72rem', fontWeight: 600, padding: 0,
+          }}
+        >
+          + New note
+        </button>
+      </div>
+
+      {recent.length === 0 ? (
+        <div style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minHeight: 0, overflowY: 'auto' }}>
+          <div style={{ fontFamily: T.serif, fontSize: '0.94rem', color: T.fg, lineHeight: 1.4 }}>
+            Start a note. We&apos;ll keep it close to your research.
+          </div>
+          <div style={{ fontFamily: T.sans, fontSize: '0.74rem', color: T.fgDim, lineHeight: 1.55 }}>
+            Draft outlines, timelines, and leads — Quarry keeps them tied to your topics.
+          </div>
+          <button
+            onClick={(e) => { e.stopPropagation(); onNewNote?.(); }}
+            style={{
+              marginTop: 4, alignSelf: 'flex-start', border: 'none', borderRadius: 8,
+              background: T.accent, color: '#fff', fontFamily: T.sans, fontSize: '0.70rem',
+              fontWeight: 600, padding: '7px 12px', cursor: 'pointer',
+            }}
+          >
+            New note
+          </button>
+        </div>
+      ) : (
+        <div style={{ padding: '10px 14px 12px', display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minHeight: 0, overflowY: 'auto' }}>
+          <div style={{ fontFamily: T.mono, fontSize: '0.59rem', color: T.fgDim, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            {notes.length} notes · last updated {lastUpdated}
+          </div>
+
+          {recent.map((note) => (
+            <div key={note.id} style={{ borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', padding: '8px 10px' }}>
+              <div style={{ fontFamily: T.sans, fontSize: '0.76rem', color: T.fg, fontWeight: 600, marginBottom: 4 }}>
+                {note.title || 'Untitled note'}
+              </div>
+              <div style={{ fontFamily: T.mono, fontSize: '0.58rem', color: T.fgDim }}>
+                {note.topic?.[0] || 'General'} · updated {formatAgoFromISO(note.updatedAt)}
+              </div>
+            </div>
+          ))}
+
+          <button
+            onClick={(e) => { e.stopPropagation(); onOpen?.(); }}
+            style={{
+              alignSelf: 'flex-start', border: 'none', background: 'none', padding: 0,
+              color: T.accent, cursor: 'pointer', fontFamily: T.sans, fontSize: '0.72rem', fontWeight: 600,
+            }}
+          >
+            View all notes →
+          </button>
+        </div>
+      )}
+    </GlassCard>
+  );
+}
+
+function IntelligenceGrid({ onOpenDailyTopics, onOpenNotes, onCreateNote, notes, profile, userId, onSearch }) {
+  const [beats, setBeats] = useState([]);
+  const [showGlobeModal, setShowGlobeModal] = useState(false);
+  const [globeCardHeight, setGlobeCardHeight] = useState(332);
+  const globeCardRef = useRef(null);
+  const globeTopicHint = profile?.focus_area || profile?.beat || profile?.topics_of_focus?.[0] || beats[0]?.name || '';
+  const globePins = useGlobePins(globeTopicHint);
+
+  useEffect(() => { setBeats(getBeats()); }, []);
+  useEffect(() => {
+    if (!globeCardRef.current) return;
+    const updateHeight = () => {
+      const h = globeCardRef.current?.offsetHeight || 332;
+      if (h > 0) setGlobeCardHeight(h);
+    };
+    updateHeight();
+    const ro = new ResizeObserver(() => updateHeight());
+    ro.observe(globeCardRef.current);
+    window.addEventListener('resize', updateHeight, { passive: true });
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', updateHeight);
+    };
+  }, [globePins.length]);
 
   return (
     <div style={{
-      display: 'grid',
-      gridTemplateColumns: hasCollisions ? '180px 1fr 1fr' : '180px 1fr',
-      gap: 16,
-      padding: '20px 24px',
-      maxWidth: 1100,
-      margin: '0 auto',
-      alignItems: 'flex-start',
+      width: '100%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 'calc(100vh - 56px)',
+      padding: '12px 24px',
+      boxSizing: 'border-box',
     }}>
-
-      {/* ── Left: Your beats ── */}
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-          <div style={{ fontFamily: T.mono, fontSize: '0.62rem', fontWeight: 600,
-            color: T.fgDim, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-            Your beats
+      <div style={{
+        width: '100%',
+        maxWidth: 1120,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+        margin: '0 auto',
+      }}>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+          gap: 12,
+          alignItems: 'stretch',
+          width: '100%',
+        }}>
+          <div ref={globeCardRef} style={{ minWidth: 0 }}>
+            <InlineGlobeMap pins={globePins} onOpenMap={() => setShowGlobeModal(true)} />
           </div>
-          <button
-            onClick={() => setShowAddForm(f => !f)}
-            title="Add a beat"
+          <div
             style={{
-              display: 'flex', alignItems: 'center', gap: 3,
-              background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px',
-              fontFamily: T.mono, fontSize: '0.60rem', color: T.accent,
-              transition: 'opacity 0.13s',
+              display: 'grid',
+              gridTemplateRows: `${Math.floor((globeCardHeight - 12) / 2)}px ${Math.ceil((globeCardHeight - 12) / 2)}px`,
+              gap: 12,
+              minHeight: 0,
+              height: globeCardHeight,
             }}
-            onMouseEnter={e => e.currentTarget.style.opacity = '0.7'}
-            onMouseLeave={e => e.currentTarget.style.opacity = '1'}
           >
-            <Plus size={11} /> Add
+            <div style={{ minHeight: 0 }}>
+              <DailyTopicsCard onOpen={onOpenDailyTopics} profile={profile} userId={userId} />
+            </div>
+            <div style={{ minHeight: 0 }}>
+              <HomeNotesCard
+                notes={notes}
+                onOpen={onOpenNotes}
+                onNewNote={onCreateNote}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div style={{ paddingTop: 4, width: '100%' }}>
+          <HomePromptBar onSearch={onSearch} />
+        </div>
+      </div>
+      <GlobeMapModal open={showGlobeModal} onClose={() => setShowGlobeModal(false)} pins={globePins} />
+    </div>
+  );
+}
+
+/* ── Inline globe map (cobe) ────────────────────────────────────────────── */
+function InlineGlobeMap({ pins = WORLD_PINS, onOpenMap, showSignalsList = false }) {
+  const [dark] = useDarkMode();
+  const [activePinIndex, setActivePinIndex] = useState(0);
+  const canvasRef = useRef(null);
+  const phiRef = useRef(0);
+  const pointerRef = useRef(null);
+  const phiOffsetRef = useRef(0);
+  const dragRef = useRef(0);
+  const isPausedRef = useRef(false);
+
+  useEffect(() => {
+    const onMove = (e) => {
+      if (pointerRef.current !== null)
+        dragRef.current = (e.clientX - pointerRef.current) / 300;
+    };
+    const onUp = () => {
+      if (pointerRef.current !== null) {
+        phiOffsetRef.current += dragRef.current;
+        dragRef.current = 0;
+      }
+      pointerRef.current = null;
+      isPausedRef.current = false;
+      if (canvasRef.current) canvasRef.current.style.cursor = 'grab';
+    };
+    window.addEventListener('pointermove', onMove, { passive: true });
+    window.addEventListener('pointerup', onUp, { passive: true });
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!pins.length || showSignalsList) return;
+    const t = setInterval(() => setActivePinIndex((i) => (i + 1) % pins.length), 2800);
+    return () => clearInterval(t);
+  }, [pins, showSignalsList]);
+
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    const canvas = canvasRef.current;
+    let globe, animId;
+    let ro = null;
+    let cancelled = false;
+
+    const init = () => {
+      if (cancelled) return;
+      const w = canvas.offsetWidth;
+      if (!w) return;
+      globe = createGlobe(canvas, {
+        devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+        width: w, height: w,
+        phi: 0, theta: 0.25,
+        dark: dark ? 1 : 0,
+        diffuse: dark ? 1.05 : 1.35,
+        mapSamples: 16000,
+        mapBrightness: dark ? 4 : 6,
+        baseColor: dark ? [0.10, 0.12, 0.15] : [0.90, 0.88, 0.84],
+        markerColor: [0.98, 0.45, 0.09],
+        glowColor: dark ? [0.05, 0.06, 0.09] : [0.88, 0.84, 0.78],
+        markers: pins.filter(p => p.lat != null && p.lng != null)
+          .map(p => ({ location: [p.lat, p.lng], size: 0.042 })),
+      });
+      const animate = () => {
+        if (!isPausedRef.current) phiRef.current += 0.003;
+        globe.update({ phi: phiRef.current + phiOffsetRef.current + dragRef.current, theta: 0.25 });
+        animId = requestAnimationFrame(animate);
+      };
+      animate();
+      setTimeout(() => { canvas.style.opacity = '1'; });
+    };
+
+    if (canvas.offsetWidth > 0) {
+      init();
+    } else {
+      ro = new ResizeObserver(entries => {
+        if (entries[0]?.contentRect.width > 0) { ro.disconnect(); init(); }
+      });
+      ro.observe(canvas);
+    }
+
+    return () => {
+      cancelled = true;
+      if (ro) ro.disconnect();
+      if (animId) cancelAnimationFrame(animId);
+      if (globe) globe.destroy();
+    };
+  }, [dark, pins]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const borderC = dark ? 'rgba(255,255,255,0.08)' : 'rgba(120,100,70,0.16)';
+  const fgDim   = dark ? 'rgba(200,195,185,0.55)' : 'rgba(90,70,40,0.55)';
+  const activePin = pins[Math.max(0, Math.min(activePinIndex, pins.length - 1))];
+
+  return (
+    <GlassCard
+      onClick={onOpenMap}
+      style={{
+        borderRadius: 14,
+        overflow: 'hidden',
+        display: 'flex',
+        minHeight: showSignalsList ? 520 : 332,
+        cursor: onOpenMap ? 'pointer' : 'default',
+      }}
+    >
+
+      {/* Globe */}
+      <div style={{ flex: showSignalsList ? 0.95 : 1, position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: showSignalsList ? '14px 12px' : '10px 8px' }}>
+        <div style={{ width: '100%', maxWidth: showSignalsList ? 560 : 360, aspectRatio: '1 / 1', position: 'relative' }}>
+          <canvas
+            ref={canvasRef}
+            onPointerDown={e => {
+              pointerRef.current = e.clientX;
+              isPausedRef.current = true;
+              e.currentTarget.style.cursor = 'grabbing';
+            }}
+            style={{
+              width: '100%',
+              height: '100%',
+              cursor: 'grab',
+              opacity: 0,
+              transition: 'opacity 1.2s ease',
+              filter: dark ? 'saturate(0.86) contrast(0.92)' : 'saturate(0.88) contrast(0.9)',
+              touchAction: 'none',
+            }}
+          />
+        </div>
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            background: dark
+              ? 'linear-gradient(to right, rgba(18,14,10,0.10) 0%, rgba(18,14,10,0.02) 40%, rgba(18,14,10,0.08) 100%)'
+              : 'linear-gradient(to right, rgba(237,232,223,0.20) 0%, rgba(237,232,223,0.04) 38%, rgba(237,232,223,0.16) 100%)',
+          }}
+        />
+        {!showSignalsList && (
+          <div style={{
+            position: 'absolute',
+            left: 12,
+            right: 12,
+            bottom: 10,
+            borderRadius: 9,
+            border: `1px solid ${dark ? 'rgba(249,115,22,0.28)' : 'rgba(249,115,22,0.24)'}`,
+            background: dark ? 'rgba(12,12,14,0.72)' : 'rgba(255,255,255,0.80)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+            padding: '8px 10px',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <span style={{ fontFamily: T.serif, fontSize: '0.86rem', fontWeight: 600, color: 'var(--fg-primary)' }}>
+                {activePin?.label || 'Global signal'}
+              </span>
+              <span style={{ fontFamily: T.mono, fontSize: '0.56rem', color: 'var(--fg-dim)', textTransform: 'uppercase' }}>
+                {activePin?.type || 'Signal'}
+              </span>
+            </div>
+            <div style={{
+              marginTop: 3,
+              fontFamily: T.sans,
+              fontSize: '0.67rem',
+              color: fgDim,
+              lineHeight: 1.4,
+              display: '-webkit-box',
+              WebkitLineClamp: 1,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            }}>
+              {activePin?.desc || 'Click to open full globe map'}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Signal list (modal-only) */}
+      {showSignalsList && (
+      <div style={{ width: 286, flexShrink: 0, borderLeft: `1px solid ${borderC}`, overflowY: 'auto' }}>
+        <div style={{
+          padding: '8px 12px',
+          borderBottom: `1px solid ${dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          background: dark ? 'rgba(255,255,255,0.015)' : 'rgba(0,0,0,0.01)',
+        }}>
+          <span style={{ fontFamily: T.mono, fontSize: '0.56rem', color: T.fgDim, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            On-globe signals
+          </span>
+          <span style={{ fontFamily: T.mono, fontSize: '0.53rem', color: T.fgDim }}>
+            {pins.length}
+          </span>
+        </div>
+        {pins.map((pin, i) => (
+          <div
+            key={i}
+            onMouseEnter={() => setActivePinIndex(i)}
+            onMouseLeave={() => setActivePinIndex(-1)}
+            style={{
+              padding: '10px 14px',
+              borderBottom: `1px solid ${dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.045)'}`,
+              background: activePinIndex === i
+                ? (dark ? 'rgba(249,115,22,0.08)' : 'rgba(249,115,22,0.06)')
+                : 'transparent',
+              transition: 'background 0.12s ease',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 2 }}>
+              <span style={{
+                width: 16, height: 16, borderRadius: 999,
+                background: activePinIndex === i ? 'rgba(249,115,22,0.22)' : 'rgba(249,115,22,0.14)',
+                border: '1px solid rgba(249,115,22,0.35)',
+                flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                fontFamily: T.mono, fontSize: '0.52rem', color: dark ? '#f3ded2' : '#9a3412',
+              }}>
+                {i + 1}
+              </span>
+              <span style={{ fontFamily: T.sans, fontSize: '0.80rem', fontWeight: 600, color: dark ? '#ece2d6' : '#1f1408', flex: 1 }}>
+                {pin.label.replace(new RegExp(`\\s*${pin.type}$`, 'i'), '')}
+              </span>
+            </div>
+            <div style={{
+              fontFamily: T.sans, fontSize: '0.68rem', color: fgDim,
+              paddingLeft: 23, lineHeight: 1.42,
+              display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+            }}>
+              {pin.desc}
+            </div>
+          </div>
+        ))}
+      </div>
+      )}
+
+    </GlassCard>
+  );
+}
+
+function GlobeMapModal({ open, onClose, pins }) {
+  if (!open) return null;
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 1200,
+        background: 'rgba(0,0,0,0.62)',
+        backdropFilter: 'blur(3px)',
+        WebkitBackdropFilter: 'blur(3px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 16,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ width: 'min(1080px, 96vw)' }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+          <button
+            onClick={onClose}
+            style={{
+              border: '1px solid var(--border)',
+              borderRadius: 999,
+              background: 'var(--bg-secondary)',
+              color: 'var(--fg-secondary)',
+              fontFamily: T.sans,
+              fontSize: '0.72rem',
+              padding: '5px 11px',
+              cursor: 'pointer',
+            }}
+          >
+            Close
           </button>
         </div>
-
-        {/* Inline add form */}
-        {showAddForm && (
-          <GlassCard style={{ padding: '10px 12px', marginBottom: 8, borderRadius: 10 }}>
-            <input
-              autoFocus
-              placeholder="Beat name (e.g. Sudan Crisis)"
-              value={newName}
-              onChange={e => setNewName(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSaveBeat()}
-              style={{
-                width: '100%', boxSizing: 'border-box',
-                background: 'transparent', border: 'none', outline: 'none',
-                borderBottom: '1px solid var(--border)',
-                fontFamily: T.sans, fontSize: '0.78rem', color: T.fg,
-                paddingBottom: 5, marginBottom: 7,
-              }}
-            />
-            <input
-              placeholder="Keywords, comma-separated"
-              value={newKeywords}
-              onChange={e => setNewKeywords(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSaveBeat()}
-              style={{
-                width: '100%', boxSizing: 'border-box',
-                background: 'transparent', border: 'none', outline: 'none',
-                borderBottom: '1px solid var(--border)',
-                fontFamily: T.mono, fontSize: '0.70rem', color: T.fgSec,
-                paddingBottom: 5, marginBottom: 9,
-              }}
-            />
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button
-                onClick={handleSaveBeat}
-                style={{
-                  flex: 1, padding: '5px 0', borderRadius: 7, cursor: 'pointer',
-                  background: T.accent, border: 'none', color: '#fff',
-                  fontFamily: T.sans, fontSize: '0.74rem', fontWeight: 600,
-                }}
-              >
-                Save
-              </button>
-              <button
-                onClick={() => { setShowAddForm(false); setNewName(''); setNewKeywords(''); }}
-                style={{
-                  padding: '5px 10px', borderRadius: 7, cursor: 'pointer',
-                  background: 'none', border: '1px solid var(--border)',
-                  color: T.fgDim, fontFamily: T.sans, fontSize: '0.74rem',
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          </GlassCard>
-        )}
-
-        {/* Beat cards */}
-        {beats.length === 0 && !showAddForm && (
-          <div style={{
-            border: '1.5px dashed var(--border)', borderRadius: 10,
-            padding: '16px 12px', textAlign: 'center', marginBottom: 8,
-          }}>
-            <div style={{ fontFamily: T.sans, fontSize: '0.74rem', color: T.fgDim, lineHeight: 1.5 }}>
-              No beats yet.<br />Add topics you cover regularly.
-            </div>
-          </div>
-        )}
-
-        {beats.map(beat => {
-          const isLive = beat.lastActiveAt && (Date.now() - beat.lastActiveAt) < 86400000;
-          const daysSince = beat.lastActiveAt
-            ? Math.max(0, Math.floor((Date.now() - beat.lastActiveAt) / 86400000))
-            : null;
-          return (
-            <GlassCard key={beat.id} style={{
-              padding: '8px 10px', marginBottom: 6, borderRadius: 10,
-              transition: 'transform 0.13s',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 4 }}>
-                <span
-                  onClick={() => onChip(beat.name)}
-                  style={{ fontFamily: T.sans, fontSize: '0.76rem', fontWeight: 500, color: T.fg,
-                    cursor: 'pointer', flex: 1, lineHeight: 1.3 }}
-                >
-                  {beat.name}
-                </span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                  {isLive && (
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 3,
-                      fontFamily: T.mono, fontSize: '0.56rem', color: T.accent }}>
-                      <span style={{ width: 5, height: 5, borderRadius: '50%', background: T.accent, display: 'inline-block' }} />
-                      Live
-                    </span>
-                  )}
-                  <button
-                    onClick={() => handleDeleteBeat(beat.id)}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                      color: 'var(--fg-dim)', display: 'flex', alignItems: 'center', opacity: 0.5,
-                      transition: 'opacity 0.13s' }}
-                    onMouseEnter={e => e.currentTarget.style.opacity = '1'}
-                    onMouseLeave={e => e.currentTarget.style.opacity = '0.5'}
-                  >
-                    <X size={11} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Keywords as pills */}
-              {beat.keywords?.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5 }}>
-                  {beat.keywords.map((kw, i) => (
-                    <span key={i} style={{
-                      fontFamily: T.mono, fontSize: '0.58rem', color: T.fgDim,
-                      background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-                      padding: '1px 6px', borderRadius: 999,
-                    }}>
-                      {kw}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Activity line */}
-              <div style={{ fontFamily: T.mono, fontSize: '0.58rem', color: T.fgDim, marginTop: 5 }}>
-                {beat.investigationCount > 0
-                  ? `${beat.investigationCount} investigation${beat.investigationCount !== 1 ? 's' : ''} · last ${daysSince === 0 ? 'today' : `${daysSince}d ago`}`
-                  : 'No investigations yet'}
-              </div>
-            </GlassCard>
-          );
-        })}
-
-        <div
-          style={{ marginTop: 14, cursor: 'pointer', borderRadius: 12,
-            outline: 'none', transition: 'transform 0.15s, box-shadow 0.15s' }}
-          onClick={() => setMapOpen(true)}
-          title="Click to open full world map"
-          onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(249,115,22,0.15)'; }}
-          onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = ''; }}
-        >
-          {!mapOpen && <MiniGlobe height={120} label="Filtered to your beats" pins={globePins} />}
-          <div style={{
-            textAlign: 'center', marginTop: 4,
-            fontFamily: T.mono, fontSize: '0.60rem', color: T.fgDim,
-            letterSpacing: '0.06em',
-          }}>
-            click to expand →
-          </div>
-        </div>
+        <InlineGlobeMap pins={pins} showSignalsList />
       </div>
+    </div>
+  );
+}
 
-      {mapOpen && <WorldMapModal onClose={() => setMapOpen(false)} pins={globePins} />}
+/* ── Home prompt bar ─────────────────────────────────────────────────────── */
+function HomePromptBar({ onSearch }) {
+  const navigate = useNavigate();
+  const readCurrentAnalysisProfile = () => {
+    try {
+      const profileId = localStorage.getItem('quarry_analysis_profile') || 'careful_analysis';
+      const profile = ANALYSIS_PROFILES.find((p) => p.id === profileId) || ANALYSIS_PROFILES[1];
+      return { id: profile.id, model: profile.model };
+    } catch {
+      return { id: 'careful_analysis', model: 'openai/gpt-4o' };
+    }
+  };
 
-      {/* ── Centre: Story leads + Narrative velocity ── */}
-      <div>
-        {SECTION_LABEL('Story leads')}
+  const parsePromptIntent = (rawMessage) => {
+    const text = (rawMessage || '').trim();
+    const searchMatch = text.match(/^\[Search:\s*([\s\S]+)\]$/i);
+    if (searchMatch) return { mode: 'search', text: searchMatch[1].trim() };
+    const thinkMatch = text.match(/^\[Think:\s*([\s\S]+)\]$/i);
+    if (thinkMatch) return { mode: 'think', text: thinkMatch[1].trim() };
+    const canvasMatch = text.match(/^\[Canvas:\s*([\s\S]+)\]$/i);
+    if (canvasMatch) return { mode: 'canvas', text: canvasMatch[1].trim() };
+    return { mode: 'search', text };
+  };
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
-          {storyLeads.length === 0 && !newsNoKey && (
-            <div style={{
-              border: '1.5px dashed var(--border)', borderRadius: 10,
-              padding: '16px 12px', textAlign: 'center',
-            }}>
-              <div style={{ fontFamily: T.sans, fontSize: '0.74rem', color: T.fgDim, lineHeight: 1.5 }}>
-                Run an investigation to generate your first lead.
-              </div>
-            </div>
-          )}
+  const handleSend = (message, files = []) => {
+    const parsed = parsePromptIntent(message);
+    const cleaned = parsed.text || '';
+    const fallback = files.length > 0 ? `analyze image context: ${files[0]?.name || 'attachment'}` : '';
+    const text = (cleaned || fallback).trim();
+    if (!text) return;
 
-          {storyLeads.length === 0 && newsNoKey && (
-            <div style={{
-              border: '1.5px dashed var(--border)', borderRadius: 10,
-              padding: '14px 12px',
-            }}>
-              <div style={{ fontFamily: T.sans, fontSize: '0.74rem', color: T.fgDim, lineHeight: 1.5 }}>
-                Run an investigation to generate your first lead.
-              </div>
-              <div style={{
-                fontFamily: T.mono, fontSize: '0.64rem', color: T.fgDim,
-                marginTop: 8, opacity: 0.7,
-              }}>
-                Connect a news source in Settings to see live leads.
-              </div>
-            </div>
-          )}
+    const profile = readCurrentAnalysisProfile();
+    const nextParams = new URLSearchParams({
+      q: text,
+      model: profile.model,
+      ap: profile.id,
+    });
 
-          {storyLeads.map((lead, i) => {
-            const isDerived = lead.type === 'derived';
-            const tagLabel  = isDerived ? 'From your investigations' : `NewsAPI · ${lead.beatName}`;
-            const tagColor  = isDerived ? '#f59e0b' : '#3b82f6';
-            const tagBg     = isDerived ? 'rgba(245,158,11,0.10)' : 'rgba(59,130,246,0.10)';
-            const action    = isDerived
-              ? () => navigate(`/search?q=${encodeURIComponent(lead.query)}`)
-              : lead.url
-                ? () => window.open(lead.url, '_blank', 'noopener,noreferrer')
-                : () => navigate(`/search?q=${encodeURIComponent(lead.title)}`);
+    if (parsed.mode === 'think') {
+      nextParams.set('d', 'true');
+      navigate(`/search?${nextParams.toString()}`);
+      return;
+    }
 
-            return (
-              <GlassCard key={i} style={{ padding: '12px 14px', borderRadius: 12 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{
-                    display: 'inline-block', marginBottom: 6,
-                    fontSize: '0.60rem', fontWeight: 700, fontFamily: T.mono,
-                    color: tagColor, background: tagBg,
-                    padding: '2px 7px', borderRadius: 4,
-                    border: `0.5px solid ${tagColor}40`,
-                  }}>
-                    {tagLabel}
-                  </span>
-                  <div style={{ fontFamily: T.sans, fontSize: '0.82rem', fontWeight: 500,
-                    color: T.fg, lineHeight: 1.4, marginBottom: 8 }}>
-                    {lead.title}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontFamily: T.mono, fontSize: '0.60rem', color: T.fgDim }}>
-                      {isDerived ? `${lead.sources} conflict${lead.sources !== 1 ? 's' : ''}` : '1 source'}
-                    </span>
-                    <button
-                      onClick={action}
-                      style={{
-                        background: 'none', border: 'none', cursor: 'pointer',
-                        fontFamily: T.sans, fontSize: '0.72rem', fontWeight: 600,
-                        color: T.accent, padding: 0, transition: 'opacity 0.13s',
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.opacity = '0.7'}
-                      onMouseLeave={e => e.currentTarget.style.opacity = '1'}
-                    >
-                      {isDerived ? 'Research this →' : 'Read →'}
-                    </button>
-                  </div>
-                </div>
-              </GlassCard>
-            );
-          })}
+    if (parsed.mode === 'canvas') {
+      sessionStorage.setItem('quarry_write_session', JSON.stringify({
+        query: text,
+        content: `# ${text}\n\n`,
+        mode: 'canvas_prompt',
+      }));
+      navigate('/notes');
+      return;
+    }
 
-          {storyLeads.length > 0 && newsNoKey && (
-            <div style={{
-              fontFamily: T.mono, fontSize: '0.62rem', color: T.fgDim,
-              padding: '6px 10px', opacity: 0.7,
-            }}>
-              Connect a news source in Settings to see live leads.
-            </div>
-          )}
-        </div>
+    if (onSearch) {
+      onSearch(text, { deep: false, model: profile.model, profileId: profile.id });
+    } else {
+      navigate(`/search?${nextParams.toString()}`);
+    }
+  };
 
-        {/* Narrative velocity — only shown when there is actual data */}
-        {velocityRows.length > 0 && (() => {
-          const maxCount = velocityRows[0].count || 1;
-          return (
-            <>
-              <div style={{ marginBottom: 4, marginTop: 20 }}>
-                <div style={{ fontFamily: T.mono, fontSize: '0.62rem', fontWeight: 600,
-                  color: T.fgDim, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 3 }}>
-                  Narrative velocity
-                </div>
-                <div style={{ fontFamily: T.mono, fontSize: '0.60rem', color: T.fgDim, opacity: 0.7, marginBottom: 10 }}>
-                  Based on your investigations this week
-                </div>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {velocityRows.map((row, i) => {
-                  const color = row.count >= 7 ? '#e24b4a' : row.count >= 3 ? '#f59e0b' : '#22c55e';
-                  return (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
-                      <span style={{ fontFamily: T.mono, fontSize: '0.68rem', color: T.fgSec,
-                        width: 110, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {row.name}
-                      </span>
-                      <div style={{ flex: 1, height: 4, background: 'var(--bg-tertiary)', borderRadius: 999, overflow: 'hidden' }}>
-                        <div style={{
-                          height: '100%', borderRadius: 999, background: color,
-                          width: `${Math.round((row.count / maxCount) * 100)}%`,
-                          transition: 'width 0.6s ease',
-                        }} />
-                      </div>
-                      <span style={{ fontFamily: T.mono, fontSize: '0.64rem', color: T.fgDim,
-                        flexShrink: 0, width: 52, textAlign: 'right' }}>
-                        {row.count} search{row.count !== 1 ? 'es' : ''}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          );
-        })()}
+  return (
+    <div style={{ width: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, padding: '0 2px' }}>
+        <span style={{ fontFamily: T.mono, fontSize: '0.58rem', color: T.fgDim, letterSpacing: '0.07em', textTransform: 'uppercase' }}>
+          Investigation prompt
+        </span>
+        <span style={{ fontFamily: T.sans, fontSize: '0.66rem', color: T.fgDim }}>
+          Search updates, deep dive, or open notes
+        </span>
       </div>
-
-      {/* ── Right: Narrative collisions — only rendered when data exists ── */}
-      {hasCollisions && <div>
-        {SECTION_LABEL('Narrative collisions detected')}
-
-        {(() => {
-          // Group raw entries by query, sort groups by most recent savedAt, take top 3
-          const raw = loadContestedClaims();
-          const groupMap = new Map();
-          for (const entry of raw) {
-            const key = entry.query || '';
-            if (!groupMap.has(key)) groupMap.set(key, []);
-            groupMap.get(key).push(entry);
-          }
-          const groups = [...groupMap.entries()]
-            .map(([query, entries]) => ({
-              query,
-              claims: entries,
-              maxSourceCount: Math.max(...entries.map(e => e.sourceCount || 0)),
-              latestAt: Math.max(...entries.map(e => e.savedAt || 0)),
-            }))
-            .sort((a, b) => b.latestAt - a.latestAt)
-            .slice(0, 3);
-
-          if (groups.length === 0) {
-            return (
-              <div style={{
-                border: '1.5px dashed var(--border)', borderRadius: 10,
-                padding: '16px 12px',
-              }}>
-                <div style={{ fontFamily: T.sans, fontSize: '0.74rem', color: T.fgDim, lineHeight: 1.55 }}>
-                  No collisions yet. Run an investigation — Quarry flags source contradictions automatically.
-                </div>
-              </div>
-            );
-          }
-
-          return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {groups.map((col, i) => (
-                <GlassCard key={i} style={{ padding: '8px 10px', borderRadius: 12 }}>
-                  <div style={{ fontFamily: T.sans, fontSize: '0.75rem', fontWeight: 700,
-                    color: T.fg, marginBottom: 6, lineHeight: 1.35,
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {col.query}
-                  </div>
-
-                  {col.claims.slice(0, 2).map((c, j) => (
-                    <React.Fragment key={j}>
-                      <div style={{ padding: '3px 0' }}>
-                        <div style={{ fontFamily: T.mono, fontSize: '0.60rem', color: T.fgDim, marginBottom: 2 }}>
-                          Contested claim
-                        </div>
-                        <div style={{ fontFamily: T.sans, fontSize: '0.72rem', color: T.fgSec,
-                          lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2,
-                          WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                          "{c.claim}"
-                        </div>
-                      </div>
-                      {j === 0 && col.claims.length > 1 && (
-                        <div style={{ textAlign: 'center', margin: '2px 0' }}>
-                          <span style={{
-                            fontFamily: T.mono, fontSize: '0.60rem', fontWeight: 700,
-                            color: 'var(--error)', background: 'rgba(220,38,38,0.10)',
-                            padding: '2px 8px', borderRadius: 4,
-                          }}>
-                            contested
-                          </span>
-                        </div>
-                      )}
-                    </React.Fragment>
-                  ))}
-
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
-                    <span style={{ fontFamily: T.mono, fontSize: '0.60rem', color: T.fgDim }}>
-                      Found in your session · {col.maxSourceCount > 0 ? `${col.maxSourceCount} source${col.maxSourceCount !== 1 ? 's' : ''} disagree` : 'sources disagree'}
-                    </span>
-                    <button
-                      onClick={() => onChip(col.query)}
-                      style={{
-                        background: 'none', border: 'none', cursor: 'pointer',
-                        fontFamily: T.sans, fontSize: '0.70rem', fontWeight: 600,
-                        color: T.accent, padding: 0, transition: 'opacity 0.13s',
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.opacity = '0.7'}
-                      onMouseLeave={e => e.currentTarget.style.opacity = '1'}
-                    >
-                      Investigate →
-                    </button>
-                  </div>
-                </GlassCard>
-              ))}
-            </div>
-          );
-        })()}
-      </div>}
-
+      <PromptInputBox
+        onSend={handleSend}
+        placeholder="Ask to drill into a signal or start a new investigation…"
+      />
     </div>
   );
 }
 
 /* ── Logged-in homepage ──────────────────────────────────────────────────── */
-function LoggedInHome({ user, query, setQuery, isDeep, setIsDeep, onSubmit, onChip, trendingArticles }) {
-  const firstName = user?.username?.split(' ')[0] || user?.username || 'there';
+function LoggedInHome({ user }) {
+  const navigate = useNavigate();
   const [showDailyTopics, setShowDailyTopics] = useState(false);
+  const [showNotesModal, setShowNotesModal] = useState(false);
+  const { notes, createNote, fetchSuggestions } = useNotes();
+
+  const handleCreateNote = useCallback(async () => {
+    return createNote({
+      title: 'Untitled note',
+      body: '',
+      topic: user?.profile?.focus_area || user?.profile?.beat || user?.profile?.topics_of_focus?.[0] || 'General',
+    });
+  }, [createNote, user]);
+
+  const handleSearch = useCallback((text, opts = {}) => {
+    const params = new URLSearchParams();
+    params.set('q', text);
+    if (opts.model) params.set('model', opts.model);
+    if (opts.profileId) params.set('ap', opts.profileId);
+    if (opts.deep) params.set('d', 'true');
+    navigate(`/search?${params.toString()}`);
+  }, [navigate]);
 
   return (
     <>
       {showDailyTopics && (
         <DailyTopicsModal onClose={() => setShowDailyTopics(false)} />
       )}
-
-      {/* Greeting + centered search bar */}
-      <div style={{
-        background: 'var(--bg-primary)',
-        borderBottom: '1px solid var(--border)',
-        padding: '18px 24px 16px',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
-      }}>
-        <span style={{
-          fontFamily: T.sans, fontSize: '0.96rem', fontWeight: 400,
-          color: T.fgSec, alignSelf: 'center',
-        }}>
-          {getGreeting()}, <strong style={{ fontWeight: 600, color: T.fg }}>{firstName}</strong>
-          {user?.profile?.beat ? (
-            <span style={{ marginLeft: 8, fontFamily: T.mono, fontSize: '0.72rem', color: T.accent, opacity: 0.85 }}>
-              · {user.profile.beat}
-            </span>
-          ) : null}
-        </span>
-        <div style={{ width: '100%', maxWidth: 820 }}>
-          <SearchSurface
-            flat
-            query={query} setQuery={setQuery}
-            isDeep={isDeep} setIsDeep={setIsDeep}
-            onSubmit={onSubmit}
-            onDailyTopics={() => setShowDailyTopics(true)}
-          />
-        </div>
-      </div>
+      <NotesModal
+        open={showNotesModal}
+        onClose={() => setShowNotesModal(false)}
+        notes={notes}
+        workspaceLabel={user?.profile?.focus_area || user?.profile?.beat || user?.profile?.topics_of_focus?.[0] || ''}
+        onCreateNote={handleCreateNote}
+        onAskSuggestions={fetchSuggestions}
+      />
 
       {/* Intelligence grid */}
-      <IntelligenceGrid onChip={onChip} />
-
-      {/* News strip */}
-      <div style={{ padding: '0 24px 12px', maxWidth: 1100, margin: '0 auto' }}>
-        <NewsCardsStrip onChip={onChip} defaultArticles={trendingArticles} />
-        <RecentlyContestedSection onChip={onChip} />
-      </div>
+      <IntelligenceGrid
+        onOpenDailyTopics={() => setShowDailyTopics(true)}
+        onOpenNotes={() => setShowNotesModal(true)}
+        onCreateNote={handleCreateNote}
+        notes={notes}
+        profile={user?.profile || {}}
+        userId={user?.id || user?.email || 'anon'}
+        onSearch={handleSearch}
+      />
     </>
   );
 }
@@ -1926,9 +1348,26 @@ function LoggedInHome({ user, query, setQuery, isDeep, setIsDeep, onSubmit, onCh
 export default function HomePage({ onSearch }) {
   const [query,  setQuery]  = useState('');
   const [isDeep, setIsDeep] = useState(false);
-  const { articles: trendingArticles } = useTrendingNews();
+  const [selectedProfileId, setSelectedProfileId] = useState(() => {
+    try {
+      const savedProfile = localStorage.getItem('quarry_analysis_profile');
+      if (savedProfile) return savedProfile;
+      const legacyModel = localStorage.getItem('quarry_selected_model') || 'openai/gpt-4o';
+      return profileIdFromModel(legacyModel);
+    } catch {
+      return 'careful_analysis';
+    }
+  });
   const { user, loading } = useAuth();
   const [showOnboarding, setShowOnboarding] = useState(false);
+
+  useEffect(() => {
+    try {
+      const profile = ANALYSIS_PROFILES.find((p) => p.id === selectedProfileId) || ANALYSIS_PROFILES[1];
+      localStorage.setItem('quarry_analysis_profile', profile.id);
+      localStorage.setItem('quarry_selected_model', profile.model);
+    } catch {}
+  }, [selectedProfileId]);
 
   useEffect(() => {
     if (user && user.profile && user.profile.onboarded === false) {
@@ -1939,37 +1378,27 @@ export default function HomePage({ onSearch }) {
   const handleSubmit = useCallback(() => {
     if (!query.trim()) return;
     incrementBeatActivity(query.trim());
-    if (onSearch) onSearch(query.trim(), isDeep);
-  }, [query, isDeep, onSearch]);
-
-  const handleChip = useCallback((text) => {
-    setQuery(text);
-    incrementBeatActivity(text);
-    if (onSearch) onSearch(text, isDeep);
-  }, [isDeep, onSearch]);
+    const profile = ANALYSIS_PROFILES.find((p) => p.id === selectedProfileId) || ANALYSIS_PROFILES[1];
+    if (onSearch) onSearch(query.trim(), isDeep, profile.model, profile.id);
+  }, [query, isDeep, selectedProfileId, onSearch]);
 
   // While auth is resolving, show nothing to avoid flash
   if (loading) return <div style={{ minHeight: '100vh', background: T.bg }} />;
 
   return (
-    <div style={{ minHeight: '100vh', fontFamily: T.sans, background: T.bg }}>
+    <div style={{
+      minHeight: '100vh', fontFamily: T.sans, background: T.bg,
+      backgroundImage: 'radial-gradient(ellipse 80% 40% at 50% 0%, rgba(249,115,22,0.055) 0%, transparent 70%)',
+    }}>
       {showOnboarding && <OnboardingModal onDone={() => setShowOnboarding(false)} />}
-      <TopbarWithData />
 
       {user ? (
-        <LoggedInHome
-          user={user}
-          query={query} setQuery={setQuery}
-          isDeep={isDeep} setIsDeep={setIsDeep}
-          onSubmit={handleSubmit}
-          onChip={handleChip}
-          trendingArticles={trendingArticles}
-        />
+        <LoggedInHome user={user} />
       ) : (
         <LoggedOutHome
           query={query} setQuery={setQuery}
           isDeep={isDeep} setIsDeep={setIsDeep}
-          onSubmit={handleSubmit}
+          selectedProfileId={selectedProfileId} setSelectedProfileId={setSelectedProfileId}          onSubmit={handleSubmit}
         />
       )}
     </div>

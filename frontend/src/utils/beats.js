@@ -1,3 +1,4 @@
+// Keep storage key for backward compatibility with existing local data.
 const BEATS_KEY = 'quarry_beats';
 
 export function getBeats() {
@@ -14,14 +15,20 @@ export function saveBeat(beat) {
   catch {}
 }
 
+// Topic-oriented aliases (preferred in new UI code).
+export const getTopics = getBeats;
+export const saveTopic = saveBeat;
+export const deleteTopic = deleteBeat;
+export const incrementTopicActivity = incrementBeatActivity;
+
 export function deleteBeat(id) {
   try {
     localStorage.setItem(BEATS_KEY, JSON.stringify(getBeats().filter(b => b.id !== id)));
   } catch {}
 }
 
-// Called on every search query. Matches query text against each beat's keywords.
-// Increments investigationCount and updates lastActiveAt for any matching beats.
+// Called on every search query. Matches query text against each topic's keywords.
+// Increments investigationCount and updates lastActiveAt for any matching topics.
 export function incrementBeatActivity(query) {
   if (!query) return;
   const q = query.toLowerCase();

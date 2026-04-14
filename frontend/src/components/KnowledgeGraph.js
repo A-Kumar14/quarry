@@ -471,7 +471,7 @@ export default function KnowledgeGraph({ nodes = [], links = [], onNodeClick, cl
     // Canvas label truncated; full title in DOM tooltip
     const fontSize = Math.min(12 / globalScale, 5);
     if (globalScale > 0.5 || node.type === 'query') {
-      ctx.font         = `600 ${fontSize}px 'DM Sans', system-ui, sans-serif`;
+      ctx.font         = `600 ${fontSize}px 'IBM Plex Sans', system-ui, sans-serif`;
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle    = dark ? '#E6EDF3' : '#111827';

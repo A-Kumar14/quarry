@@ -1,8 +1,14 @@
 import { createContext, useContext, useState } from 'react';
 
 const DEFAULTS = {
-  showCalendar:      true,
-  financeAutoDetect: true,
+  showCalendar:           true,
+  financeAutoDetect:      true,
+  deepModeDefault:        false,
+  deepResearchDefault:    false,
+  deepResearchDepth:      'standard',   // 'quick' | 'standard' | 'thorough'
+  showResearchProgress:   true,
+  defaultModel:           'openai/gpt-4o',
+  resumeLastStory:        false,
 };
 
 function load() {
