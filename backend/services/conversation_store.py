@@ -28,11 +28,15 @@ Structure of conversations.json:
 """
 
 import json
+import logging
+import os
 import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 DATA_FILE = Path(__file__).parent.parent / "data" / "conversations.json"
 
@@ -53,7 +57,8 @@ def _load() -> dict:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
                 _data_cache = json.load(f)
                 return _data_cache
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("conversation_store.load_failed: %s — starting fresh", exc)
             pass
     _data_cache = {"sessions": {}}
     return _data_cache
@@ -62,8 +67,10 @@ def _load() -> dict:
 def _save(data: dict) -> None:
     global _data_cache
     DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
+    tmp = DATA_FILE.with_suffix(".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, DATA_FILE)
     _data_cache = data
 
 
@@ -92,22 +99,22 @@ def get_sessions() -> list[dict]:
     """Return all sessions sorted by created_at descending."""
     with _lock:
         data = _load()
-    sessions = []
-    for sid, s in data["sessions"].items():
-        branches = []
-        for bid, b in s.get("branches", {}).items():
-            branches.append({
-                "id": bid,
-                "label": b.get("label", "main"),
-                "message_count": len(b.get("messages", [])),
-                "created_at": b.get("created_at", ""),
+        sessions = []
+        for sid, s in data["sessions"].items():
+            branches = []
+            for bid, b in s.get("branches", {}).items():
+                branches.append({
+                    "id": bid,
+                    "label": b.get("label", "main"),
+                    "message_count": len(b.get("messages", [])),
+                    "created_at": b.get("created_at", ""),
+                })
+            sessions.append({
+                "id": sid,
+                "title": s.get("title", "New conversation"),
+                "created_at": s.get("created_at", ""),
+                "branches": branches,
             })
-        sessions.append({
-            "id": sid,
-            "title": s.get("title", "New conversation"),
-            "created_at": s.get("created_at", ""),
-            "branches": branches,
-        })
     sessions.sort(key=lambda x: x["created_at"], reverse=True)
     return sessions
 
@@ -116,13 +123,13 @@ def get_branch_messages(session_id: str, branch_id: str) -> list[dict]:
     """Return messages for a specific branch."""
     with _lock:
         data = _load()
-    session = data["sessions"].get(session_id)
-    if not session:
-        return []
-    branch = session["branches"].get(branch_id)
-    if not branch:
-        return []
-    return list(branch.get("messages", []))
+        session = data["sessions"].get(session_id)
+        if not session:
+            return []
+        branch = session["branches"].get(branch_id)
+        if not branch:
+            return []
+        return list(branch.get("messages", []))
 
 
 def add_message(session_id: str, branch_id: str, message: dict) -> None:
@@ -131,9 +138,11 @@ def add_message(session_id: str, branch_id: str, message: dict) -> None:
         data = _load()
         session = data["sessions"].get(session_id)
         if not session:
+            logger.warning("add_message: session %s not found", session_id)
             return
         branch = session["branches"].get(branch_id)
         if not branch:
+            logger.warning("add_message: branch %s not found in session %s", branch_id, session_id)
             return
         branch.setdefault("messages", []).append(message)
         _save(data)
