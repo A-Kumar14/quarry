@@ -386,6 +386,11 @@ export const PromptInputBox = React.forwardRef((props, ref) => {
   const [showSearch, setShowSearch] = React.useState(false);
   const [showThink, setShowThink] = React.useState(false);
   const [showNotes, setShowNotes] = React.useState(false);
+  const [notesPicker, setNotesPicker] = React.useState(false);
+  const [selectedNote, setSelectedNote] = React.useState(null);
+  const [pickerIndex, setPickerIndex] = React.useState(0);
+  const [pickerNotes, setPickerNotes] = React.useState([]);
+  const pickerRef = React.useRef(null);
   const uploadInputRef = React.useRef(null);
   const promptBoxRef = React.useRef(null);
 
@@ -399,7 +404,36 @@ export const PromptInputBox = React.forwardRef((props, ref) => {
     }
   };
 
-  const handleNotesToggle = () => setShowNotes((prev) => !prev);
+  const handleNotesToggle = () => {
+    if (!showNotes) {
+      try {
+        const raw = JSON.parse(localStorage.getItem('quarry_documents') || '[]');
+        const sorted = raw
+          .map(d => ({
+            id: String(d.id || ''),
+            title: String(d.title || 'Untitled note'),
+            body: String(d.content || d.body || ''),
+            updatedAt: d.updatedAt || d.createdAt || Date.now(),
+          }))
+          .sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0));
+        setPickerNotes(sorted);
+      } catch {
+        setPickerNotes([]);
+      }
+      setPickerIndex(0);
+      setNotesPicker(true);
+      setShowNotes(true);
+    } else {
+      setShowNotes(false);
+      setNotesPicker(false);
+      setSelectedNote(null);
+    }
+  };
+
+  const selectNote = (note) => {
+    setSelectedNote(note);
+    setNotesPicker(false);
+  };
 
   const isImageFile = (file) => file.type.startsWith("image/");
 
@@ -464,17 +498,47 @@ export const PromptInputBox = React.forwardRef((props, ref) => {
     return () => document.removeEventListener("paste", handlePaste);
   }, [handlePaste]);
 
+  React.useEffect(() => {
+    if (!notesPicker) return;
+    const onKey = (e) => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setPickerIndex(i => Math.min(i + 1, pickerNotes.length - 1)); }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setPickerIndex(i => Math.max(i - 1, 0)); }
+      if (e.key === 'Enter') { e.preventDefault(); if (pickerNotes[pickerIndex]) selectNote(pickerNotes[pickerIndex]); }
+      if (e.key === 'Escape') { setNotesPicker(false); setShowNotes(false); setSelectedNote(null); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [notesPicker, pickerIndex, pickerNotes]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  React.useEffect(() => {
+    if (!notesPicker) return;
+    const onOutside = (e) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target)) {
+        setNotesPicker(false);
+      }
+    };
+    document.addEventListener('mousedown', onOutside);
+    return () => document.removeEventListener('mousedown', onOutside);
+  }, [notesPicker]);
+
   const handleSubmit = () => {
     if (input.trim() || files.length > 0) {
+      let baseInput = input;
+      if (selectedNote && showNotes) {
+        baseInput = `[Note: ${selectedNote.title}]\n${selectedNote.body}\n\n---\n\n${input}`;
+      }
       let messagePrefix = "";
       if (showSearch) messagePrefix = "[Search: ";
       else if (showThink) messagePrefix = "[Think: ";
       else if (showNotes) messagePrefix = "[Notes: ";
-      const formattedInput = messagePrefix ? `${messagePrefix}${input}]` : input;
+      const formattedInput = messagePrefix ? `${messagePrefix}${baseInput}]` : baseInput;
       onSend(formattedInput, files);
       setInput("");
       setFiles([]);
       setFilePreviews({});
+      setSelectedNote(null);
+      setShowNotes(false);
+      setNotesPicker(false);
     }
   };
 
@@ -490,7 +554,104 @@ export const PromptInputBox = React.forwardRef((props, ref) => {
 
   return (
     <>
-      <PromptInput
+      <div style={{ position: 'relative', width: '100%' }}>
+        {/* Notes picker */}
+        {notesPicker && (
+          <div
+            ref={pickerRef}
+            style={{
+              position: 'absolute',
+              bottom: 'calc(100% + 8px)',
+              left: 0, right: 0,
+              background: '#1A1410',
+              border: '1px solid rgba(249,115,22,0.22)',
+              borderRadius: 14,
+              zIndex: 50,
+              overflow: 'hidden',
+              boxShadow: '0 8px 30px rgba(0,0,0,0.40)',
+            }}
+          >
+            <div style={{
+              padding: '8px 12px 6px',
+              borderBottom: '1px solid rgba(249,115,22,0.12)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: '0.60rem', color: 'rgba(240,230,216,0.45)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                Your notes
+              </span>
+              <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: '0.58rem', color: 'rgba(240,230,216,0.28)' }}>
+                ↑↓ navigate · ↵ insert
+              </span>
+            </div>
+            {pickerNotes.length === 0 ? (
+              <div style={{ padding: '12px', fontFamily: "'IBM Plex Sans',sans-serif", fontSize: '0.76rem', color: 'rgba(240,230,216,0.38)' }}>
+                No notes yet
+              </div>
+            ) : (
+              pickerNotes.slice(0, 8).map((note, i) => {
+                const ago = (() => {
+                  const ms = Date.now() - (Number(note.updatedAt) || Date.now());
+                  const mins = Math.floor(ms / 60000);
+                  if (mins < 1) return 'just now';
+                  if (mins < 60) return `${mins}m ago`;
+                  const hrs = Math.floor(mins / 60);
+                  if (hrs < 24) return `${hrs}h ago`;
+                  return `${Math.floor(hrs / 24)}d ago`;
+                })();
+                return (
+                  <div
+                    key={note.id}
+                    onClick={() => selectNote(note)}
+                    onMouseEnter={() => setPickerIndex(i)}
+                    style={{
+                      padding: '9px 12px',
+                      borderBottom: '1px solid rgba(249,115,22,0.06)',
+                      background: pickerIndex === i ? 'rgba(249,115,22,0.08)' : 'transparent',
+                      cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                      transition: 'background 0.1s',
+                    }}
+                  >
+                    <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: '0.82rem', color: '#F97316' }}>
+                      <span style={{ opacity: 0.55 }}>/</span>{note.title}
+                    </span>
+                    <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: '0.60rem', color: 'rgba(240,230,216,0.28)', flexShrink: 0 }}>
+                      {ago}
+                    </span>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+
+        {/* Selected note pill chip */}
+        {selectedNote && (
+          <div style={{ padding: '4px 6px 0' }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              background: 'rgba(249,115,22,0.15)',
+              border: '1px solid rgba(249,115,22,0.35)',
+              borderRadius: 5,
+              padding: '0 8px', height: 22,
+              fontFamily: "'IBM Plex Mono',monospace",
+              fontSize: '0.76rem', color: '#F97316',
+            }}>
+              <span style={{ opacity: 0.55 }}>/</span>{selectedNote.title}
+              <button
+                onClick={() => { setSelectedNote(null); setShowNotes(false); setNotesPicker(false); }}
+                style={{
+                  background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                  color: 'rgba(249,115,22,0.6)', fontSize: '0.8rem', lineHeight: 1, marginLeft: 2,
+                }}
+              >
+                ×
+              </button>
+            </span>
+          </div>
+        )}
+
+        <PromptInput
         value={input}
         onValueChange={setInput}
         isLoading={isLoading}
@@ -742,6 +903,7 @@ export const PromptInputBox = React.forwardRef((props, ref) => {
           </PromptInputAction>
         </PromptInputActions>
       </PromptInput>
+      </div>
 
       <ImageViewDialog imageUrl={selectedImage} onClose={() => setSelectedImage(null)} />
     </>
