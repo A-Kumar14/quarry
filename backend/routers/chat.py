@@ -149,7 +149,10 @@ async def _agentic_stream(body: ChatMessageRequest):
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "research_data": None,
     }
-    store.add_message(session_id, branch_id, user_msg)
+    try:
+        store.add_message(session_id, branch_id, user_msg)
+    except Exception as exc:
+        logger.warning("chat.store_user_msg_failed: %s", exc)
 
     # ── 3. Build message list for LLM ─────────────────────────────────────
     llm_messages = [{"role": "system", "content": _SYSTEM_PROMPT}]
@@ -163,7 +166,8 @@ async def _agentic_stream(body: ChatMessageRequest):
     search_query: Optional[str] = None
 
     try:
-        _, tool_calls = llm_service.chat_sync_with_tools(
+        _, tool_calls = await asyncio.to_thread(
+            llm_service.chat_sync_with_tools,
             messages=llm_messages,
             tools=_SEARCH_TOOL,
         )
@@ -214,7 +218,7 @@ async def _agentic_stream(body: ChatMessageRequest):
                     "type": "function",
                     "function": {
                         "name": "search_web",
-                        "arguments": tc.function.arguments if tc else "{}",
+                        "arguments": tc.function.arguments,
                     },
                 }
             ],
@@ -228,7 +232,11 @@ async def _agentic_stream(body: ChatMessageRequest):
     # ── 5. Stream final answer ────────────────────────────────────────────
     full_response = ""
     try:
-        for token in llm_service.stream_sync(llm_messages):
+        def _collect_stream(messages):
+            return list(llm_service.stream_sync(messages))
+
+        tokens = await asyncio.to_thread(_collect_stream, llm_messages)
+        for token in tokens:
             full_response += token
             yield _sse({"type": "chunk", "text": token})
     except Exception as exc:
@@ -253,7 +261,10 @@ async def _agentic_stream(body: ChatMessageRequest):
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "research_data": research_data,
     }
-    store.add_message(session_id, branch_id, asst_msg)
+    try:
+        store.add_message(session_id, branch_id, asst_msg)
+    except Exception as exc:
+        logger.warning("chat.store_asst_msg_failed: %s", exc)
 
     # Store in Chroma for semantic search
     if full_response:
@@ -262,22 +273,27 @@ async def _agentic_stream(body: ChatMessageRequest):
             (s["title"] for s in session_list if s["id"] == session_id),
             "Untitled",
         )
-        chroma.store_message(
-            asst_msg_id,
-            full_response,
-            {
-                "session_id": session_id,
-                "branch_id": branch_id,
-                "role": "assistant",
-                "timestamp": asst_msg["timestamp"],
-                "session_title": session_title,
-            },
-        )
+        try:
+            await asyncio.to_thread(
+                chroma.store_message,
+                asst_msg_id,
+                full_response,
+                {
+                    "session_id": session_id,
+                    "branch_id": branch_id,
+                    "role": "assistant",
+                    "timestamp": asst_msg["timestamp"],
+                    "session_title": session_title,
+                },
+            )
+        except Exception as exc:
+            logger.warning("chat.chroma_store_failed: %s", exc)
 
     # ── 7. Auto-title on first message ────────────────────────────────────
     if is_first and full_response:
         try:
-            title = llm_service.chat_sync(
+            title = await asyncio.to_thread(
+                llm_service.chat_sync,
                 messages=[
                     {
                         "role": "user",
