@@ -18,3 +18,4 @@ frontend/.env
 .DS_Store
 *.swp
 *.swo
+.worktrees/
