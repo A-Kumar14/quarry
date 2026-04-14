@@ -69,3 +69,34 @@ def test_update_session_title(tmp_store):
     tmp_store.update_session_title(sid, "New title")
     sessions = tmp_store.get_sessions()
     assert sessions[0]["title"] == "New title"
+
+
+# ── chroma_service tests ──────────────────────────────────────────────────────
+
+@pytest.fixture
+def tmp_chroma(monkeypatch, tmp_path):
+    """Redirect chroma_service to a temp directory."""
+    import services.chroma_service as cs
+    monkeypatch.setattr(cs, "CHROMA_DIR", str(tmp_path / "chroma"))
+    cs._client = None
+    cs._collection = None
+    yield cs
+    cs._client = None
+    cs._collection = None
+
+
+def test_store_and_search(tmp_chroma):
+    tmp_chroma.store_message(
+        message_id="m1",
+        content="The RSF grew out of the Janjaweed militias in Sudan",
+        metadata={"session_id": "s1", "branch_id": "b1", "role": "assistant",
+                  "timestamp": "2026-01-01T00:00:00", "session_title": "Sudan"},
+    )
+    results = tmp_chroma.semantic_search("Sudan militia history")
+    assert len(results) >= 1
+    assert any("RSF" in r["excerpt"] for r in results)
+
+
+def test_search_empty_collection(tmp_chroma):
+    results = tmp_chroma.semantic_search("anything")
+    assert results == []
