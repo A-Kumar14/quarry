@@ -156,3 +156,73 @@ def test_chat_search(client, monkeypatch, tmp_path):
     resp = client.get("/chat/search?q=test")
     assert resp.status_code == 200
     assert "results" in resp.json()
+
+
+# ── /chat/message endpoint tests ─────────────────────────────────────────────
+
+def _stream_chat(client, payload):
+    return client.post("/chat/message", json=payload)
+
+
+def test_chat_message_returns_200(client, monkeypatch, tmp_path):
+    import services.conversation_store as cs
+    import services.chroma_service as cs_chroma
+    monkeypatch.setattr(cs, "DATA_FILE", tmp_path / "conversations.json")
+    cs._data_cache = None
+    monkeypatch.setattr(cs_chroma, "CHROMA_DIR", str(tmp_path / "chroma"))
+    cs_chroma._client = None
+    cs_chroma._collection = None
+
+    # Patch llm_service to avoid real API calls
+    from services.registry import llm_service
+    monkeypatch.setattr(llm_service, "chat_sync_with_tools", lambda **kw: ("", []))
+    monkeypatch.setattr(llm_service, "stream_sync", lambda messages, **kw: iter(["Hello", " world"]))
+    monkeypatch.setattr(llm_service, "chat_sync", lambda messages, **kw: "Test title")
+
+    sid, bid = cs.create_session()
+    resp = _stream_chat(client, {"session_id": sid, "branch_id": bid, "message": "hi", "history": []})
+    assert resp.status_code == 200
+    assert "text/event-stream" in resp.headers["content-type"]
+
+
+def test_chat_message_emits_session_event(client, monkeypatch, tmp_path, parse_sse):
+    import services.conversation_store as cs
+    import services.chroma_service as cs_chroma
+    monkeypatch.setattr(cs, "DATA_FILE", tmp_path / "conversations.json")
+    cs._data_cache = None
+    monkeypatch.setattr(cs_chroma, "CHROMA_DIR", str(tmp_path / "chroma"))
+    cs_chroma._client = None
+    cs_chroma._collection = None
+
+    from services.registry import llm_service
+    monkeypatch.setattr(llm_service, "chat_sync_with_tools", lambda **kw: ("", []))
+    monkeypatch.setattr(llm_service, "stream_sync", lambda messages, **kw: iter(["chunk"]))
+    monkeypatch.setattr(llm_service, "chat_sync", lambda messages, **kw: "Title")
+
+    sid, bid = cs.create_session()
+    resp = _stream_chat(client, {"session_id": sid, "branch_id": bid, "message": "hi", "history": []})
+    events = parse_sse(resp.text)
+
+    session_events = [e for e in events if isinstance(e, dict) and e.get("type") == "session"]
+    assert len(session_events) == 1
+    assert session_events[0]["session_id"] == sid
+
+
+def test_chat_message_emits_done(client, monkeypatch, tmp_path, parse_sse):
+    import services.conversation_store as cs
+    import services.chroma_service as cs_chroma
+    monkeypatch.setattr(cs, "DATA_FILE", tmp_path / "conversations.json")
+    cs._data_cache = None
+    monkeypatch.setattr(cs_chroma, "CHROMA_DIR", str(tmp_path / "chroma"))
+    cs_chroma._client = None
+    cs_chroma._collection = None
+
+    from services.registry import llm_service
+    monkeypatch.setattr(llm_service, "chat_sync_with_tools", lambda **kw: ("", []))
+    monkeypatch.setattr(llm_service, "stream_sync", lambda messages, **kw: iter(["chunk"]))
+    monkeypatch.setattr(llm_service, "chat_sync", lambda messages, **kw: "Title")
+
+    sid, bid = cs.create_session()
+    resp = _stream_chat(client, {"session_id": sid, "branch_id": bid, "message": "hi", "history": []})
+    events = parse_sse(resp.text)
+    assert "[DONE]" in events
