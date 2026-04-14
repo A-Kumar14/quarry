@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import {
-  ArrowLeft, Upload, PanelRight, Download,
+  Upload, PanelRight, Download,
   Copy, Check, X, Search, FileText, Maximize2,
   ChevronLeft, ChevronRight, FilePlus, Loader2, Sparkles
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useDarkMode } from '../DarkModeContext';
 import { TIER_COLOR, LEAN_LABEL } from '../utils/sourceProfile';
+import { Typewriter } from '../components/ui/typewriter';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 const DOCUMENTS_KEY = 'quarry_documents';
@@ -210,14 +211,6 @@ function getDomain(url) {
   try { return new URL(url).hostname.replace(/^www\./, ''); }
   catch { return url; }
 }
-
-/* ── Inverted pyramid steps ─────────────────────────────────────────────────── */
-const PYRAMID_STEPS = [
-  { id: 'lead',    label: 'Lead',     color: '#e24b4a', tip: 'Hook the reader in the first sentence. Answer: who, what, when, where.', minWords: 0   },
-  { id: 'nutgraf', label: 'Nut Graf', color: '#f59e0b', tip: 'The "why this matters" paragraph. State the central argument or significance.', minWords: 80  },
-  { id: 'body',    label: 'Body',     color: '#3b82f6', tip: 'Evidence, data, quotes. Most important facts first, lesser details later.', minWords: 250 },
-  { id: 'tail',    label: 'Tail',     color: '#22c55e', tip: 'Background context, related issues, future outlook. Safe to cut if space is tight.', minWords: 500 },
-];
 
 /* ── Weasel-word scanner ─────────────────────────────────────────────────────── */
 const WEASEL_WORDS = [
@@ -791,14 +784,15 @@ export default function WritePage() {
   const [dark] = useDarkMode();
   const [title,               setTitle]               = useState('');
   const [content,             setContent]             = useState('');
-  const [drawerOpen,          setDrawerOpen]          = useState(false);
+  const [drawerOpen,          setDrawerOpen]          = useState(
+    typeof window !== 'undefined' && window.innerWidth >= 1024
+  );
   const [sidebarOpen,         setSidebarOpen]         = useState(
     typeof window !== 'undefined' && window.innerWidth >= 1024
   );
   const [allNotes,            setAllNotes]            = useState([]);
   const [sessionSources,      setSessionSources]      = useState([]);
   const [sessionClaims,       setSessionClaims]       = useState([]);
-  const [pipelineTrace,       setPipelineTrace]       = useState(null);
   const [citationPickerOpen,  setCitationPickerOpen]  = useState(false);
   const [citationFilter,      setCitationFilter]      = useState('');
   const [copied,              setCopied]              = useState(false);
@@ -818,7 +812,6 @@ export default function WritePage() {
   const [citationStyle,       setCitationStyle]       = useState('apa'); // 'apa' | 'mla' | 'chicago'
   const [copiedCitation,      setCopiedCitation]      = useState(null); // url of copied citation
   const [aiFormatterOpen,     setAiFormatterOpen]     = useState(false);
-  const [pyramidTip,          setPyramidTip]          = useState(null); // step id
 
   const editorRef      = useRef(null);
   const titleRef       = useRef(null);
@@ -837,7 +830,6 @@ export default function WritePage() {
         const session = JSON.parse(raw);
         if (session.sources?.length)  setSessionSources(session.sources);
         if (session.claims?.length)   setSessionClaims(session.claims);
-        if (session.pipelineTrace)    setPipelineTrace(session.pipelineTrace);
         if (session.query)            setTitle(session.query);
         if (session.insertedClaim)    setContent(session.insertedClaim);
         else if (session.content)     setContent(session.content);
@@ -1377,18 +1369,23 @@ export default function WritePage() {
   }, []);
 
 
-  /* ── Confidence score ── */
-  const citedCount      = (content.match(/\[/g) || []).length;
-  const plainText       = content.replace(/<[^>]*>?/gm, '');
-  const totalSentences  = plainText.split(/[.!?]+/).filter(s => s.trim().length > 40).length || 1;
-  const confidenceScore = Math.min(100, Math.round((citedCount / totalSentences) * 100));
-
   /* ── Date string ── */
   const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
   /* ── Render ── */
   return (
-    <div className={focusMode ? 'focus-active' : ''} style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)', overflow: 'hidden' }}>
+    <div
+      className={focusMode ? 'focus-active' : ''}
+      style={{
+        height: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'var(--bg-primary)',
+        overflow: 'hidden',
+        paddingTop: focusMode ? 0 : 84,
+        boxSizing: 'border-box',
+      }}
+    >
       <style>{`
         @keyframes spin {
           from { transform: rotate(0deg); }
@@ -1405,69 +1402,64 @@ export default function WritePage() {
         .spin { animation: spin 1s linear infinite; }
       `}</style>
 
-      {/* ── TOPBAR ── */}
-      <div style={{
-        height: 44, flexShrink: 0,
-        background: dark ? 'rgba(26,22,20,0.88)' : 'rgba(237,232,223,0.88)',
-        backdropFilter: 'blur(10px)',
-        WebkitBackdropFilter: 'blur(10px)',
-        borderBottom: '1px solid var(--border)',
-        padding: '0 20px',
-        display: 'flex', alignItems: 'center', gap: 12,
-      }}>
-        {/* Back */}
-        <button onClick={() => navigate('/')} style={{ ...GLASS_BTN, gap: 5 }}>
-          <ArrowLeft size={14} /> Back
-        </button>
-
-        {!focusMode && (
-          <>
-            <div style={{ width: 1, height: 16, background: 'var(--border)' }} />
-            <button title="Your notes" onClick={() => navigate('/artifacts')} style={{ ...GLASS_BTN, padding: '5px 8px' }}>
-              <FileText size={14} />
-            </button>
-          </>
-        )}
-
-        {/* Title */}
-        <input
-          value={title}
-          onChange={e => setTitle(e.target.value)}
-          placeholder="Untitled note"
+      {/* ── Header row (non-sticky; aligned under mast/navbar) ── */}
+      {!focusMode && (
+        <div
           style={{
-            background: 'transparent', border: 'none', outline: 'none',
-            fontFamily: 'var(--font-family)', fontSize: '0.95rem',
-            color: 'var(--fg-primary)', minWidth: 200, maxWidth: 400,
+            flexShrink: 0,
+            padding: '10px 20px 12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
           }}
-        />
+        >
+          <button title="Your notes" onClick={() => navigate('/artifacts')} style={{ ...GLASS_BTN, padding: '9px 10px' }}>
+            <FileText size={14} />
+          </button>
 
-        {/* Right group */}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 7 }}>
-          {!focusMode && (
-            <>
-              <button style={GLASS_BTN} onClick={() => fileInputRef.current?.click()}>
-                <Upload size={13} /> Import
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".txt,.md,.docx"
-                style={{ display: 'none' }}
-                onChange={handleFileImport}
-              />
-              <button style={drawerOpen ? GLASS_BTN_ACTIVE : GLASS_BTN} onClick={() => setDrawerOpen(o => !o)}>
-                <PanelRight size={13} /> Sources
-              </button>
-              <button style={ORANGE_BTN} onClick={handleSave}>
-                {saveIndicator ? <><Check size={13} /> Saved</> : <><FilePlus size={13} /> Save</>}
-              </button>
-              <button style={GLASS_BTN} onClick={handleExportMarkdown}>
-                <Download size={13} /> Export
-              </button>
-            </>
-          )}
+          <input
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            placeholder="Untitled note"
+            style={{
+              flex: 1,
+              minWidth: 240,
+              background: dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.025)',
+              border: '1px solid var(--border)',
+              borderRadius: 12,
+              padding: '10px 12px',
+              fontFamily: 'var(--font-family)',
+              fontSize: '0.90rem',
+              color: 'var(--fg-primary)',
+              outline: 'none',
+              backdropFilter: 'blur(10px)',
+              WebkitBackdropFilter: 'blur(10px)',
+            }}
+          />
 
-          {/* Focus mode toggle */}
+          <button style={GLASS_BTN} onClick={() => fileInputRef.current?.click()}>
+            <Upload size={13} /> Import
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".txt,.md,.docx"
+            style={{ display: 'none' }}
+            onChange={handleFileImport}
+          />
+
+          <button style={drawerOpen ? GLASS_BTN_ACTIVE : GLASS_BTN} onClick={() => setDrawerOpen(o => !o)}>
+            <PanelRight size={13} /> Sources
+          </button>
+
+          <button style={ORANGE_BTN} onClick={handleSave}>
+            {saveIndicator ? <><Check size={13} /> Saved</> : <><FilePlus size={13} /> Save</>}
+          </button>
+
+          <button style={GLASS_BTN} onClick={handleExportMarkdown}>
+            <Download size={13} /> Export
+          </button>
+
           <button
             style={{
               ...(focusMode ? GLASS_BTN_ACTIVE : GLASS_BTN),
@@ -1482,9 +1474,34 @@ export default function WritePage() {
           >
             <Maximize2 size={14} />
           </button>
-
         </div>
-      </div>
+      )}
+
+      {!focusMode && !title.trim() && !content.trim() && (
+        <div
+          style={{
+            padding: '0 20px 10px',
+            marginTop: -6,
+            fontFamily: 'var(--font-mono)',
+            fontSize: '0.68rem',
+            color: 'var(--fg-dim)',
+            letterSpacing: '0.02em',
+          }}
+        >
+          <Typewriter
+            words={[
+              'Start with a clear lede — who/what/when/where.',
+              'Drag a source pill into the document to insert a citation.',
+              'Drop sources into the tray to generate AI summary cards.',
+              'Use Focus mode to write without distractions.',
+            ]}
+            speed={28}
+            delayBetweenWords={1800}
+            cursor={true}
+            cursorChar="|"
+          />
+        </div>
+      )}
 
       {/* ── BODY: sidebar | editor | drawer ── */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'row', overflow: 'hidden' }}>
@@ -1588,81 +1605,6 @@ export default function WritePage() {
             </div>
           )}
 
-          {/* ── Inverted Pyramid Helper ── */}
-          {!focusMode && (
-            <div style={{
-              flexShrink: 0,
-              background: 'var(--bg-primary)',
-              borderBottom: '0.5px solid var(--border)',
-              padding: '0 16px',
-              display: 'flex', alignItems: 'stretch', gap: 0,
-              position: 'relative', zIndex: 5,
-            }}>
-              {PYRAMID_STEPS.map((step, i) => {
-                const active = stats.words >= step.minWords;
-                const isLast = i === PYRAMID_STEPS.length - 1;
-                const isFirst = i === 0;
-                const showTip = pyramidTip === step.id;
-                return (
-                  <div
-                    key={step.id}
-                    style={{ position: 'relative', flex: 1 }}
-                    onMouseEnter={() => setPyramidTip(step.id)}
-                    onMouseLeave={() => setPyramidTip(null)}
-                  >
-                    <div style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                      padding: '4px 8px', cursor: 'default',
-                      borderRight: isLast ? 'none' : '0.5px solid var(--border)',
-                      borderLeft: isFirst ? 'none' : 'none',
-                      background: active ? `${step.color}10` : 'transparent',
-                      transition: 'background 0.15s',
-                    }}>
-                      <div style={{
-                        width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
-                        background: active ? step.color : 'var(--border)',
-                        transition: 'background 0.15s',
-                      }} />
-                      <span style={{
-                        fontFamily: 'var(--font-family)', fontSize: '0.60rem', fontWeight: 600,
-                        color: active ? step.color : 'var(--fg-dim)',
-                        letterSpacing: '0.06em', textTransform: 'uppercase',
-                        transition: 'color 0.15s',
-                      }}>
-                        {step.label}
-                      </span>
-                      {!active && (
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.52rem', color: 'var(--fg-dim)' }}>
-                          {step.minWords}w
-                        </span>
-                      )}
-                    </div>
-                    {showTip && (
-                      <div style={{
-                        position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
-                        zIndex: 100, width: 200,
-                        background: dark ? 'rgba(20,18,14,0.96)' : 'rgba(253,250,243,0.98)',
-                        border: `1px solid ${step.color}40`,
-                        borderRadius: 8, padding: '8px 10px',
-                        boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
-                        pointerEvents: 'none',
-                      }}>
-                        <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', color: 'var(--fg-primary)', lineHeight: 1.5 }}>
-                          {step.tip}
-                        </div>
-                        {!active && (
-                          <div style={{ marginTop: 4, fontFamily: 'var(--font-mono)', fontSize: '0.58rem', color: step.color }}>
-                            Unlocks at {step.minWords} words ({Math.max(0, step.minWords - stats.words)} to go)
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
           {/* Editor scroll area */}
           <div style={{ flex: 1, overflowY: 'auto', background: dark ? '#131313' : '#f5f5f5', position: 'relative', transition: 'background 0.3s ease' }}>
             <div style={{
@@ -1704,42 +1646,6 @@ export default function WritePage() {
                   marginBottom: 20,
                 }}>
                   {sessionSources.length} source{sessionSources.length !== 1 ? 's' : ''} · {dateStr}
-                </div>
-              )}
-
-              {/* Confidence bar */}
-              {sessionClaims.length > 0 && (
-                <div style={{
-                  display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10,
-                  background: dark ? 'rgba(255,255,255,0.04)' : '#f8f8f8',
-                  border: '1px solid var(--border)',
-                  borderRadius: 7, padding: '6px 10px',
-                  marginBottom: 24,
-                }}>
-                  <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.57rem', color: 'var(--doc-fg-dim)', fontWeight: 600 }}>
-                    CONFIDENCE:
-                  </span>
-                  {[
-                    { label: 'Verified',      color: '#22c55e' },
-                    { label: 'Corroborated',  color: '#eab308' },
-                    { label: 'Single source', color: '#f97316' },
-                    { label: 'Contested',     color: '#ef4444' },
-                  ].map(({ label, color }) => (
-                    <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: color, flexShrink: 0 }} />
-                      <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.62rem', color: 'var(--doc-fg)' }}>
-                        {label}
-                      </span>
-                    </div>
-                  ))}
-                  <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <div style={{ width: 60, height: 4, borderRadius: 2, background: 'var(--border)', overflow: 'hidden' }}>
-                      <div style={{ width: `${confidenceScore}%`, height: '100%', background: '#22c55e', borderRadius: 2, transition: 'width 0.3s ease' }} />
-                    </div>
-                    <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.62rem', color: 'var(--doc-fg-dim)' }}>
-                      {confidenceScore}% sourced
-                    </span>
-                  </div>
                 </div>
               )}
 
@@ -1943,35 +1849,6 @@ export default function WritePage() {
             background: 'var(--bg-secondary)',
           }}>
             <div style={{ width: 300, height: '100%', display: 'flex', flexDirection: 'column', overflowY: 'auto', padding: '14px 12px' }}>
-
-              {/* Section 1: Pipeline stats */}
-              {pipelineTrace && (
-                <div style={{ marginBottom: 16 }}>
-                  <span style={SECTION_LABEL}>Research pipeline</span>
-                  <div style={{
-                    background: 'var(--glass-bg)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 9, padding: '10px 12px',
-                    display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8,
-                  }}>
-                    {[
-                      { label: 'sources',   value: pipelineTrace.sources_retrieved ?? 0, color: null },
-                      { label: 'claims',    value: pipelineTrace.claims_extracted  ?? 0, color: null },
-                      { label: 'verified',  value: pipelineTrace.claims_verified   ?? 0, color: '#22c55e' },
-                      { label: 'contested', value: pipelineTrace.claims_contested  ?? 0, color: '#ef4444' },
-                    ].map(({ label, value, color }) => (
-                      <div key={label}>
-                        <div style={{ fontFamily: 'var(--font-family)', fontSize: '1rem', fontWeight: 600, color: color ?? 'var(--fg-primary)', lineHeight: 1 }}>
-                          {value}
-                        </div>
-                        <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.58rem', color: 'var(--fg-dim)', marginTop: 2 }}>
-                          {label}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {/* Section 2: Sources & Proactive Research */}
               <div style={{ marginBottom: 20 }}>

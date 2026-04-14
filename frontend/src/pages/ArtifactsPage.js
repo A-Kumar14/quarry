@@ -1,25 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Trash2, Clock, Search, ArrowLeft } from 'lucide-react';
+import { FileText, Trash2, Clock, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useDarkMode } from '../DarkModeContext';
+import PageShell from '../components/PageShell';
 
 const DOCUMENTS_KEY = 'quarry_documents';
-
-const GLASS_BTN = {
-  display: 'inline-flex', alignItems: 'center', gap: 5,
-  padding: '5px 11px', borderRadius: 7, cursor: 'pointer', border: 'none',
-  background: 'var(--gbtn-bg)',
-  backdropFilter: 'blur(20px)',
-  WebkitBackdropFilter: 'blur(20px)',
-  borderTop: '1px solid var(--gbtn-border-t)',
-  borderLeft: '1px solid var(--gbtn-border-l)',
-  borderRight: '1px solid var(--gbtn-border-r)',
-  borderBottom: '1px solid var(--gbtn-border-b)',
-  boxShadow: 'var(--gbtn-shadow)',
-  fontFamily: 'var(--font-family)', fontSize: '0.75rem', fontWeight: 400,
-  color: 'inherit', whiteSpace: 'nowrap',
-  transition: 'all 0.14s ease',
-};
 
 const ORANGE_BTN = {
   display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -74,43 +59,21 @@ export default function ArtifactsPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', fontFamily: 'var(--font-family)' }}>
-
-      {/* TOPBAR */}
-      <div style={{
-        height: 44, position: 'sticky', top: 0, zIndex: 30,
-        background: '#000',
-        backdropFilter: 'blur(10px)',
-        WebkitBackdropFilter: 'blur(10px)',
-        borderBottom: '1px solid rgba(255,255,255,0.1)',
-        padding: '0 20px',
-        display: 'flex', alignItems: 'center', gap: 12,
-        color: '#fff',
-      }}>
-        <button onClick={() => navigate('/')} style={{ ...GLASS_BTN, color: '#fff', background: 'rgba(255,255,255,0.05)' }}>
-          <ArrowLeft size={14} /> Back
-        </button>
-        <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.15)' }} />
-        <span style={{ fontFamily: 'var(--font-serif)', fontSize: '0.95rem', color: '#fff', fontWeight: 400 }}>
-          Artifacts
-        </span>
-        <div style={{ marginLeft: 'auto' }}>
-          <button onClick={() => navigate('/notes')} style={ORANGE_BTN}>
-            + New note
-          </button>
-        </div>
-      </div>
-
-      {/* PAGE BODY */}
-      <div style={{ maxWidth: 900, margin: '0 auto', padding: '24px' }}>
+      <PageShell maxWidth={900} paddingTop={92}>
 
         {/* Header row */}
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 16 }}>
           <span style={{ fontFamily: 'var(--font-serif)', fontSize: '1.4rem', color: 'var(--fg-primary)', fontWeight: 400 }}>
-            Your notes
+            Artifacts
           </span>
-          <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.75rem', color: 'var(--fg-dim)' }}>
-            {docs.length} document{docs.length !== 1 ? 's' : ''}
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.75rem', color: 'var(--fg-dim)' }}>
+              {docs.length} document{docs.length !== 1 ? 's' : ''}
+            </span>
+            <button onClick={() => navigate('/notes')} style={ORANGE_BTN}>
+              + New note
+            </button>
+          </div>
         </div>
 
         {/* Search bar */}
@@ -250,7 +213,7 @@ export default function ArtifactsPage() {
             })}
           </div>
         )}
-      </div>
+      </PageShell>
     </div>
   );
 }

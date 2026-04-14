@@ -30,7 +30,7 @@
   --doc-fg-dim:     #555555;
 
   /* Glass surface tokens (large hero panels, search surface) */
-  --glass-bg:       rgba(255,250,235,0.22);
+  --glass-bg:       rgba(255,250,235,0.18);
   --glass-border:   rgba(255,255,245,0.92);
   --glass-border-t: rgba(255,255,245,0.92);
   --glass-border-l: rgba(255,252,238,0.72);
@@ -40,7 +40,7 @@
   --glass-blur:     blur(16px) saturate(180%);
 
   /* Glass card tokens (content cards, info tiles — crisper & more opaque) */
-  --glass-card-bg:        rgba(255,252,242,0.68);
+  --glass-card-bg:        rgba(255,252,242,0.56);
   --glass-card-border-t:  rgba(255,255,248,0.95);
   --glass-card-border-l:  rgba(255,253,242,0.80);
   --glass-card-border-r:  rgba(180,158,118,0.14);
@@ -164,7 +164,7 @@ html.dark #root {
   --doc-fg-dim:     #8a8278;
 
   /* Glass surface — dark glass elevation */
-  --glass-bg:       rgba(255,255,255,0.06);
+  --glass-bg:       rgba(255,255,255,0.05);
   --glass-border:   rgba(255,255,255,0.14);
   --glass-border-t: rgba(255,255,255,0.16);
   --glass-border-l: rgba(255,255,255,0.12);
@@ -174,7 +174,7 @@ html.dark #root {
   --glass-blur:     blur(16px) saturate(180%);
 
   /* Dark glass card tokens */
-  --glass-card-bg:        rgba(255,255,255,0.07);
+  --glass-card-bg:        rgba(255,255,255,0.055);
   --glass-card-border-t:  rgba(255,255,255,0.15);
   --glass-card-border-l:  rgba(255,255,255,0.10);
   --glass-card-border-r:  rgba(0,0,0,0.28);

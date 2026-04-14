@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Briefcase, Building2, BookOpen, Star, Tags, Layers, LogOut, ArrowLeft, Check } from 'lucide-react';
+import { User, Briefcase, Building2, BookOpen, Star, Tags, Layers, LogOut, Check } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useDarkMode } from '../DarkModeContext';
 import GlassCard from '../components/GlassCard';
+import PageShell from '../components/PageShell';
 
 const ROLES = ['News Researcher', 'Policy Analyst', 'Academic Researcher', 'Student', 'Independent Analyst', 'Other'];
 const EXPERTISE = ['Beginner', 'Intermediate', 'Expert'];
@@ -126,40 +127,8 @@ export default function ProfilePage() {
       backgroundAttachment: 'fixed',
     }}>
 
-      {/* ── Topbar ── */}
-      <div style={{
-        position: 'sticky', top: 0, zIndex: 100,
-        display: 'flex', alignItems: 'center', gap: 12,
-        padding: '0 24px', height: 48,
-        background: dark ? 'rgba(13,17,23,0.88)' : 'rgba(237,232,223,0.88)',
-        backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-        borderBottom: '1px solid var(--border)',
-      }}>
-        <button
-          onClick={() => navigate(-1)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            background: 'none', border: 'none', cursor: 'pointer',
-            padding: '4px 8px', borderRadius: 8,
-            fontFamily: 'var(--font-family)', fontSize: '0.78rem',
-            color: 'var(--fg-secondary)', transition: 'color 0.14s',
-          }}
-          onMouseEnter={e => e.currentTarget.style.color = 'var(--fg-primary)'}
-          onMouseLeave={e => e.currentTarget.style.color = 'var(--fg-secondary)'}
-        >
-          <ArrowLeft size={14} /> Back
-        </button>
-        <div style={{ width: 1, height: 16, background: 'var(--border)' }} />
-        <span style={{
-          fontFamily: 'var(--font-family)', fontSize: '0.88rem', fontWeight: 600,
-          color: 'var(--fg-primary)', flex: 1,
-        }}>
-          Profile
-        </span>
-      </div>
-
       {/* ── Content ── */}
-      <div style={{ maxWidth: 680, margin: '0 auto', padding: '40px 24px 80px' }}>
+      <PageShell maxWidth={680} paddingTop={92} paddingBottom={80} paddingX={24}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
           {/* Account card */}
@@ -383,7 +352,7 @@ export default function ProfilePage() {
           </GlassCard>
 
         </div>
-      </div>
+      </PageShell>
     </div>
   );
 }

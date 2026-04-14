@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import {
-  ArrowLeft, Sun, Moon, Zap, Trash2, RotateCcw, Key, Eye, EyeOff,
+  Sun, Moon, Zap, Trash2, RotateCcw, Key, Eye, EyeOff,
   BookOpen, Search, FlaskConical, Cpu, History,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import { useSettings } from '../SettingsContext';
 import { useDarkMode } from '../DarkModeContext';
 import { clearSourceLibrary } from '../utils/sourceLibrary';
+import PageShell from '../components/PageShell';
 
 const DOCUMENTS_KEY = 'quarry_documents';
 
@@ -166,7 +166,6 @@ function PillSelect({ options, value, onChange }) {
 
 /* ── Main page ───────────────────────────────────────────────────────────── */
 export default function SettingsPage() {
-  const navigate = useNavigate();
   const { settings, set } = useSettings();
   const [dark, setDark] = useDarkMode();
   const [toast, setToast] = useState('');
@@ -220,39 +219,7 @@ export default function SettingsPage() {
         : 'linear-gradient(158deg, #EDE8DF 0%, #E5DDD0 40%, #DDD5C0 75%, #E8E2D5 100%)',
       backgroundAttachment: 'fixed',
     }}>
-      {/* Top bar */}
-      <div style={{
-        position: 'sticky', top: 0, zIndex: 100,
-        display: 'flex', alignItems: 'center', gap: 12,
-        padding: '0 24px', height: 48,
-        background: dark ? 'rgba(13,17,23,0.88)' : 'rgba(237,232,223,0.88)',
-        backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-        borderBottom: '1px solid var(--border)',
-      }}>
-        <button
-          onClick={() => navigate(-1)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6, background: 'none',
-            border: 'none', cursor: 'pointer', padding: '4px 8px', borderRadius: 8,
-            color: 'var(--fg-secondary)', fontFamily: 'var(--font-family)',
-            fontSize: '0.78rem', transition: 'color 0.14s',
-          }}
-          onMouseEnter={e => e.currentTarget.style.color = 'var(--fg-primary)'}
-          onMouseLeave={e => e.currentTarget.style.color = 'var(--fg-secondary)'}
-        >
-          <ArrowLeft size={14} /> Back
-        </button>
-        <div style={{ width: 1, height: 16, background: 'var(--border)' }} />
-        <span style={{
-          fontFamily: 'var(--font-family)', fontSize: '0.88rem',
-          fontWeight: 600, color: 'var(--fg-primary)', flex: 1,
-        }}>
-          Settings
-        </span>
-      </div>
-
-      {/* Content */}
-      <div style={{ maxWidth: 560, margin: '0 auto', padding: '32px 24px 64px', display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <PageShell maxWidth={560} paddingTop={112} paddingBottom={64} paddingX={24} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
         {/* ── Appearance ── */}
         <div>
@@ -472,7 +439,7 @@ export default function SettingsPage() {
             Quarry · AI Research Engine · v2.0
           </span>
         </div>
-      </div>
+      </PageShell>
     </div>
   );
 }

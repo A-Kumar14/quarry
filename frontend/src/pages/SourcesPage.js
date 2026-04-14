@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, BookMarked, Network, Search, X, Copy, Check, ExternalLink, SlidersHorizontal } from 'lucide-react';
+import { BookMarked, Network, Search, X, Copy, Check, ExternalLink, SlidersHorizontal } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ForceGraph2D from 'react-force-graph-2d';
 import { useDarkMode } from '../DarkModeContext';
 import { getSourceLibrary, removeSourceFromLibrary } from '../utils/sourceLibrary';
 import { getSourceQuality, QUALITY_COLOR } from '../utils/sourceQuality';
 import GlassCard, { glassCardStyle } from '../components/GlassCard';
+import PageShell from '../components/PageShell';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 const DOCUMENTS_KEY = 'quarry_documents';
@@ -1216,7 +1217,6 @@ function RecentSourcesPreview({ sources, onOpenLibrary }) {
 
 /* ── Page ────────────────────────────────────────────────────────────────── */
 export default function SourcesPage() {
-  const navigate = useNavigate();
   const [dark] = useDarkMode();
   const [modal, setModal] = useState(null); // 'library' | 'map'
   const sources     = useMemo(() => getSourceLibrary(), []);
@@ -1231,37 +1231,7 @@ export default function SourcesPage() {
         : 'linear-gradient(158deg, #EDE8DF 0%, #E5DDD0 40%, #DDD5C0 75%, #E8E2D5 100%)',
       backgroundAttachment: 'fixed',
     }}>
-      {/* Top bar */}
-      <div style={{
-        position: 'sticky', top: 0, zIndex: 100,
-        display: 'flex', alignItems: 'center', gap: 12,
-        padding: '0 24px', height: 48,
-        background: dark ? 'rgba(13,17,23,0.88)' : 'rgba(237,232,223,0.88)',
-        backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-        borderBottom: '1px solid var(--border)',
-      }}>
-        <button
-          onClick={() => navigate(-1)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            background: 'none', border: 'none', cursor: 'pointer',
-            padding: '4px 8px', borderRadius: 8,
-            color: 'var(--fg-secondary)', fontFamily: 'var(--font-family)', fontSize: '0.78rem',
-            transition: 'color 0.14s',
-          }}
-          onMouseEnter={e => e.currentTarget.style.color = 'var(--fg-primary)'}
-          onMouseLeave={e => e.currentTarget.style.color = 'var(--fg-secondary)'}
-        >
-          <ArrowLeft size={14} /> Back
-        </button>
-        <div style={{ width: 1, height: 16, background: 'var(--border)' }} />
-        <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.88rem', fontWeight: 600, color: 'var(--fg-primary)', flex: 1 }}>
-          Sources
-        </span>
-      </div>
-
-      {/* Main content */}
-      <div style={{ maxWidth: 880, margin: '0 auto', padding: '48px 24px 80px' }}>
+      <PageShell maxWidth={880} paddingTop={112} paddingBottom={80} paddingX={24}>
         <div style={{ marginBottom: 32 }}>
           <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '2rem', fontWeight: 600, color: 'var(--fg-primary)', marginBottom: 8 }}>
             Your Source Intelligence
@@ -1296,7 +1266,7 @@ export default function SourcesPage() {
             onClick={() => setModal('map')}
           />
         </div>
-      </div>
+      </PageShell>
 
       {modal === 'library' && <LibraryModal onClose={() => setModal(null)} />}
       {modal === 'map'     && <TopicMapModal onClose={() => setModal(null)} />}

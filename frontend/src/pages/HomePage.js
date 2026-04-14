@@ -12,6 +12,7 @@ import GlassCard from '../components/GlassCard';
 import { useNotes } from '../hooks/useNotes';
 import { buildDailyDigestSignature, getCachedDailyDigest, setCachedDailyDigest } from '../utils/dailyDigestCache';
 import { PromptInputBox } from '../components/ui/ai-prompt-box';
+import { Waves } from '../components/ui/wave-background';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -298,6 +299,7 @@ const WORLD_PINS = [
   { label: 'Somalia',        desc: 'Al-Shabaab advance; famine risk elevated',                lat:   6.0, lng:  46.0, top: '52%', left: '58%',   color: '#e24b4a', type: 'Conflict'  },
 ];
 
+// eslint-disable-next-line no-unused-vars
 const TYPE_COLORS = { Conflict: '#e24b4a', Famine: '#facc15', Politics: '#7f77dd', Sports: '#22c55e', All: '#F97316' };
 
 const INCIDENT_REGION_MAP = {
@@ -338,6 +340,7 @@ function normalizeTopicTokens(raw = '') {
     .filter(t => t.length >= 3);
 }
 
+// eslint-disable-next-line no-unused-vars
 function pickActiveIncident({ pins = WORLD_PINS, profile = {}, trackedTopics = [] }) {
   const markers = toLiveMarkers(pins);
   if (!markers.length) return { marker: null, matched: false, score: 0 };
@@ -1501,14 +1504,6 @@ function HomePromptBar({ onSearch }) {
 
   return (
     <div style={{ width: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, padding: '0 2px' }}>
-        <span style={{ fontFamily: T.mono, fontSize: '0.58rem', color: T.fgDim, letterSpacing: '0.07em', textTransform: 'uppercase' }}>
-          Investigation prompt
-        </span>
-        <span style={{ fontFamily: T.sans, fontSize: '0.66rem', color: T.fgDim }}>
-          Search updates, deep dive, or open notes
-        </span>
-      </div>
       <PromptInputBox
         onSend={handleSend}
         placeholder="Ask to drill into a signal or start a new investigation…"
@@ -1573,6 +1568,7 @@ function LoggedInHome({ user }) {
 export default function HomePage({ onSearch }) {
   const [query,  setQuery]  = useState('');
   const [isDeep, setIsDeep] = useState(false);
+  const [dark] = useDarkMode();
   const [selectedProfileId, setSelectedProfileId] = useState(() => {
     try {
       const savedProfile = localStorage.getItem('quarry_analysis_profile');
@@ -1614,18 +1610,48 @@ export default function HomePage({ onSearch }) {
     <div style={{
       minHeight: '100vh', fontFamily: T.sans, background: T.bg,
       backgroundImage: 'radial-gradient(ellipse 80% 40% at 50% 0%, rgba(249,115,22,0.055) 0%, transparent 70%)',
+      position: 'relative',
+      overflow: 'hidden',
     }}>
-      {showOnboarding && <OnboardingModal onDone={() => setShowOnboarding(false)} />}
-
-      {user ? (
-        <LoggedInHome user={user} />
-      ) : (
-        <LoggedOutHome
-          query={query} setQuery={setQuery}
-          isDeep={isDeep} setIsDeep={setIsDeep}
-          selectedProfileId={selectedProfileId} setSelectedProfileId={setSelectedProfileId}          onSubmit={handleSubmit}
+      {/* Background animation layer */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          inset: 0,
+          zIndex: 0,
+          pointerEvents: 'none',
+          opacity: dark ? 0.22 : 0.18,
+          mixBlendMode: dark ? 'screen' : 'soft-light',
+        }}
+      >
+        <Waves
+          className="h-full w-full"
+          backgroundColor="transparent"
+          strokeColor={dark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.12)'}
+          gradientColors={
+            dark
+              ? ['rgba(255,255,255,0.14)', 'rgba(249,115,22,0.16)']
+              : ['rgba(255,255,255,0.16)', 'rgba(249,115,22,0.14)']
+          }
+          pointerSize={0.22}
         />
-      )}
+      </div>
+
+      {/* Foreground content */}
+      <div style={{ position: 'relative', zIndex: 1 }}>
+        {showOnboarding && <OnboardingModal onDone={() => setShowOnboarding(false)} />}
+
+        {user ? (
+          <LoggedInHome user={user} />
+        ) : (
+          <LoggedOutHome
+            query={query} setQuery={setQuery}
+            isDeep={isDeep} setIsDeep={setIsDeep}
+            selectedProfileId={selectedProfileId} setSelectedProfileId={setSelectedProfileId}          onSubmit={handleSubmit}
+          />
+        )}
+      </div>
     </div>
   );
 }
