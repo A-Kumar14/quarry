@@ -79,7 +79,8 @@ This order must be preserved in the new pipeline.
 - Do NOT delete sourceLibrary.js (different feature from sourceQuality.js)
 - Do NOT rebuild detect_contradictions — it already works
 - Do NOT change the SSE event format from `data: JSON\n\n`
-- Do NOT add ChromaDB, auth, or a database (in-memory source profiles only)
+- Do NOT add ChromaDB to the research/explore pipeline (in-memory source profiles only)
+- ChromaDB IS used by the chat feature (backend/services/chroma_service.py) for semantic conversation search — this was a deliberate design decision
 - Do NOT install new npm packages without checking first
 - Do NOT change the sepia/newspaper design system
 - Do NOT mention any other collaborators on github, Do NOT mention claude

@@ -178,6 +178,7 @@ class LLMService:
         tools: List[dict],
         model: Optional[str] = None,
         timeout: int = 20,
+        max_tokens: int = 300,
     ) -> tuple:
         """Non-streaming completion with OpenAI-format tool definitions.
 
@@ -191,7 +192,7 @@ class LLMService:
             tools=tools,
             tool_choice="auto",
             stream=False,
-            max_tokens=300,
+            max_tokens=max_tokens,
             timeout=timeout,
         )
         msg = response.choices[0].message
