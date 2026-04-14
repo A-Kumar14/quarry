@@ -679,7 +679,7 @@ export default function DailyTopicsModal({ onClose }) {
                     animation: 'dailyFadeIn 0.25s ease',
                   }}>
                     <div style={{
-                      fontFamily: 'var(--font-family)', fontSize: '0.58rem', fontWeight: 600,
+                      fontFamily: "'IBM Plex Sans',system-ui,sans-serif", fontSize: '0.60rem', fontWeight: 600,
                       color: 'var(--fg-dim)', letterSpacing: '0.14em', textTransform: 'uppercase',
                       marginBottom: 6,
                     }}>

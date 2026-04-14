@@ -617,7 +617,7 @@ function DailyTopicsCard({ onOpen, profile, userId }) {
     return () => { cancelled = true; };
   }, [profile, userId]);
 
-  const bg        = dark ? 'rgba(20,14,8,0.72)' : 'rgba(255,255,255,0.52)';
+  const bg        = 'rgba(20,14,8,0.92)';
   const border    = dark ? 'rgba(249,115,22,0.22)' : 'rgba(249,115,22,0.18)';
   const shimmerBg = dark ? 'rgba(249,115,22,0.07)' : 'rgba(249,115,22,0.05)';
   const topics = (digest?.topics || []).slice(0, 5);
@@ -655,17 +655,8 @@ function DailyTopicsCard({ onOpen, profile, userId }) {
         background: shimmerBg,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <div style={{ fontFamily: T.serif, fontSize: '0.92rem', fontWeight: 600, color: T.fg }}>
+        <div style={{ fontFamily: T.sans, fontSize: '0.92rem', fontWeight: 600, color: 'rgba(240,230,216,0.90)' }}>
           Today's topics
-        </div>
-        {/* Live chip */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={{
-            width: 4, height: 4, borderRadius: '50%', background: dark ? 'rgba(249,115,22,0.65)' : 'rgba(180,83,9,0.6)',
-            display: 'inline-block', flexShrink: 0,
-            animation: 'pinPulse 2s ease-in-out infinite',
-          }} />
-          <span style={{ fontFamily: T.mono, fontSize: '0.52rem', color: T.fgDim, letterSpacing: '0.04em', textTransform: 'uppercase' }}>live</span>
         </div>
       </div>
 
@@ -781,18 +772,27 @@ function HomeNotesCard({ notes = [], onOpen, onNewNote }) {
         transform: hovered ? 'translateY(-2px)' : 'translateY(0)',
       }}
     >
-      <div style={{ padding: '10px 14px 8px', borderBottom: `1px solid var(--border)`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ fontFamily: T.serif, fontSize: '0.92rem', fontWeight: 600, color: T.fg }}>
-          Your notes
+      <div style={{ padding: '10px 14px 8px', borderBottom: `1px solid var(--border)`, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{
+          width: 28, height: 28, borderRadius: 7, flexShrink: 0,
+          background: 'rgba(249,115,22,0.12)', border: '1px solid rgba(249,115,22,0.20)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+          </svg>
+        </div>
+        <div style={{ fontFamily: T.sans, fontSize: '0.92rem', fontWeight: 600, color: T.fg, flex: 1 }}>
+          Notes
         </div>
         <button
-          onClick={(e) => { e.stopPropagation(); onNewNote?.(); }}
+          onClick={(e) => { e.stopPropagation(); onOpen?.(); }}
           style={{
             border: 'none', background: 'none', color: T.accent, cursor: 'pointer',
-            fontFamily: T.sans, fontSize: '0.72rem', fontWeight: 600, padding: 0,
+            fontFamily: T.sans, fontSize: '0.72rem', fontWeight: 500, padding: 0,
           }}
         >
-          + New note
+          View all →
         </button>
       </div>
 
@@ -833,13 +833,15 @@ function HomeNotesCard({ notes = [], onOpen, onNewNote }) {
           ))}
 
           <button
-            onClick={(e) => { e.stopPropagation(); onOpen?.(); }}
+            onClick={(e) => { e.stopPropagation(); onNewNote?.(); }}
             style={{
-              alignSelf: 'flex-start', border: 'none', background: 'none', padding: 0,
-              color: T.accent, cursor: 'pointer', fontFamily: T.sans, fontSize: '0.72rem', fontWeight: 600,
+              alignSelf: 'flex-start', border: 'none', borderRadius: 8,
+              background: T.accent, color: '#fff',
+              fontFamily: T.sans, fontSize: '0.70rem', fontWeight: 600,
+              padding: '6px 12px', cursor: 'pointer',
             }}
           >
-            View all notes →
+            + New note
           </button>
         </div>
       )}
@@ -1082,7 +1084,7 @@ function InlineGlobeMap({ pins = WORLD_PINS, onOpenMap, showSignalsList = false 
             padding: '8px 10px',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-              <span style={{ fontFamily: T.serif, fontSize: '0.86rem', fontWeight: 600, color: 'var(--fg-primary)' }}>
+              <span style={{ fontFamily: T.sans, fontSize: '0.86rem', fontWeight: 600, color: 'var(--fg-primary)' }}>
                 {activePin?.label || 'Global signal'}
               </span>
               <span style={{ fontFamily: T.mono, fontSize: '0.56rem', color: 'var(--fg-dim)', textTransform: 'uppercase' }}>
