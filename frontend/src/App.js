@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import ExplorePage from './pages/ExplorePage';
+import ConversePage from './pages/ConversePage';
 import HomePage from './pages/HomePage';
 import SettingsPage from './pages/SettingsPage';
 import SourcesPage from './pages/SourcesPage';
@@ -56,7 +56,7 @@ function AppContent() {
         
         {/* Protected Routes */}
         <Route path="/"                   element={<ProtectedRoute><HomePage onSearch={handleHomeSearch} /></ProtectedRoute>} />
-        <Route path="/search"             element={<ProtectedRoute><ExplorePage /></ProtectedRoute>} />
+        <Route path="/search"             element={<ProtectedRoute><ConversePage /></ProtectedRoute>} />
         <Route path="/write"              element={<ProtectedRoute><WritePage /></ProtectedRoute>} />
         <Route path="/notes"              element={<ProtectedRoute><WritePage /></ProtectedRoute>} />
         <Route path="/notes/:id"          element={<ProtectedRoute><WritePage /></ProtectedRoute>} />

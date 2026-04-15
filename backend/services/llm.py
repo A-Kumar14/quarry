@@ -171,3 +171,31 @@ class LLMService:
             timeout=timeout,
         )
         return response.choices[0].message.content or ""
+
+    def chat_sync_with_tools(
+        self,
+        messages: List[dict],
+        tools: List[dict],
+        model: Optional[str] = None,
+        timeout: int = 20,
+        max_tokens: int = 300,
+    ) -> tuple:
+        """Non-streaming completion with OpenAI-format tool definitions.
+
+        Returns (content: str, tool_calls: list).
+        tool_calls is [] if the model chose not to call any tool.
+        """
+        client = self._get_sync_client()
+        response = client.chat.completions.create(
+            model=self.resolve_model(model),
+            messages=messages,
+            tools=tools,
+            tool_choice="auto",
+            stream=False,
+            max_tokens=max_tokens,
+            timeout=timeout,
+        )
+        msg = response.choices[0].message
+        content = msg.content or ""
+        tool_calls = msg.tool_calls or []
+        return content, tool_calls
