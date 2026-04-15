@@ -138,6 +138,7 @@ export default function ConversePage() {
       let buffer = '';
       let fullContent = '';
       let researchData = null;
+      let thinkingSteps = [];
 
       while (true) {
         const { done, value } = await reader.read();
@@ -157,13 +158,34 @@ export default function ConversePage() {
               branchId = evt.branch_id;
               setActiveSessionId(sessionId);
               setActiveBranchId(branchId);
+            } else if (evt.type === 'searching') {
+              // Mark any previous active step done, add new searching step
+              thinkingSteps = thinkingSteps.map(s => ({ ...s, status: 'done' }));
+              thinkingSteps = [...thinkingSteps, {
+                label: 'Searching web',
+                detail: evt.query,
+                status: 'active',
+              }];
+              setMessages(prev => prev.map(m =>
+                m.id === streamId ? { ...m, thinking_steps: thinkingSteps } : m
+              ));
+            } else if (evt.type === 'sources') {
+              const n = (evt.sources || []).length;
+              thinkingSteps = thinkingSteps.map(s => ({ ...s, status: 'done' }));
+              thinkingSteps = [...thinkingSteps, {
+                label: `Found ${n} source${n !== 1 ? 's' : ''}`,
+                detail: (evt.sources || []).map(s => s.title || s.url).filter(Boolean).join('\n'),
+                status: 'done',
+              }];
+              researchData = { sources: evt.sources, contradictions: [], perspectives: [], query_used: null };
+              setMessages(prev => prev.map(m =>
+                m.id === streamId ? { ...m, thinking_steps: thinkingSteps } : m
+              ));
             } else if (evt.type === 'chunk') {
               fullContent += evt.text;
               setMessages(prev => prev.map(m =>
-                m.id === streamId ? { ...m, content: fullContent } : m
+                m.id === streamId ? { ...m, content: fullContent, thinking_steps: thinkingSteps } : m
               ));
-            } else if (evt.type === 'sources') {
-              researchData = { sources: evt.sources, contradictions: [], perspectives: [], query_used: null };
             } else if (evt.type === 'title') {
               setSessions(prev => prev.map(s =>
                 s.id === sessionId ? { ...s, title: evt.title } : s
@@ -176,7 +198,7 @@ export default function ConversePage() {
       // Finalise stream message
       setMessages(prev => prev.map(m =>
         m.id === streamId
-          ? { ...m, streaming: false, research_data: researchData }
+          ? { ...m, streaming: false, research_data: researchData, thinking_steps: thinkingSteps }
           : m
       ));
     } catch (_) {}

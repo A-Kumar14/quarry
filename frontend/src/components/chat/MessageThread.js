@@ -1,8 +1,40 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Box, Typography } from '@mui/material';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import ChainOfThought from './ChainOfThought';
+import StreamingMarkdown from './StreamingMarkdown';
 
+// ── Wave loader (replaces pulse dots) ────────────────────────────────────────
+function WaveLoader({ label }) {
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5 }}>
+      <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: '3px', height: 14 }}>
+        {[0, 0.1, 0.2, 0.3, 0.4].map((delay, i) => (
+          <Box key={i} sx={{
+            width: 3,
+            borderRadius: '2px',
+            background: '#F97316',
+            animation: 'wave 1s ease-in-out infinite',
+            animationDelay: `${delay}s`,
+            '@keyframes wave': {
+              '0%,100%': { height: '4px', opacity: 0.35 },
+              '50%':      { height: '13px', opacity: 1 },
+            },
+          }} />
+        ))}
+      </Box>
+      <Typography sx={{
+        fontFamily: "'IBM Plex Mono', monospace",
+        fontSize: '0.64rem',
+        color: '#444',
+        letterSpacing: '0.03em',
+      }}>
+        {label || 'thinking…'}
+      </Typography>
+    </Box>
+  );
+}
+
+// ── Action buttons ────────────────────────────────────────────────────────────
 function CopyButton({ text }) {
   const [copied, setCopied] = useState(false);
   function copy() {
@@ -11,9 +43,7 @@ function CopyButton({ text }) {
       setTimeout(() => setCopied(false), 1500);
     });
   }
-  return (
-    <ActionBtn onClick={copy}>{copied ? '✓' : '⎘ Copy'}</ActionBtn>
-  );
+  return <ActionBtn onClick={copy}>{copied ? '✓' : '⎘ Copy'}</ActionBtn>;
 }
 
 function ActionBtn({ onClick, children, orange }) {
@@ -44,17 +74,96 @@ function ActionBtn({ onClick, children, orange }) {
   );
 }
 
-const MD_STYLES = {
-  '& p':  { fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 300, fontSize: '0.78rem', lineHeight: 1.75, color: '#bbb', my: 0.5 },
-  '& h2': { fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: '0.85rem', color: '#ddd', mt: 1.5, mb: 0.5 },
-  '& h3': { fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 600, fontSize: '0.78rem', color: '#ddd', mt: 1, mb: 0.25 },
-  '& ul, & ol': { pl: 2, my: 0.5 },
-  '& li': { fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 300, fontSize: '0.78rem', color: '#bbb', lineHeight: 1.7 },
-  '& strong': { color: '#ddd', fontWeight: 500 },
-  '& blockquote': { borderLeft: '3px solid #F97316', pl: 1.5, ml: 0, color: '#888', fontStyle: 'italic' },
-  '& code': { fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.72rem', background: '#1a1713', px: '4px', py: '1px', borderRadius: '4px' },
-};
+// ── User bubble ───────────────────────────────────────────────────────────────
+function UserMessage({ msg }) {
+  return (
+    <Box sx={{ alignSelf: 'flex-end', maxWidth: '62%' }}>
+      <Box sx={{
+        background: '#1a1612',
+        border: '1px solid #2a2218',
+        borderRadius: '12px 12px 3px 12px',
+        px: 1.75,
+        py: 1.25,
+      }}>
+        <Typography sx={{
+          fontFamily: "'IBM Plex Sans', sans-serif",
+          fontSize: '0.78rem',
+          color: '#ccc',
+          lineHeight: 1.6,
+          whiteSpace: 'pre-wrap',
+        }}>
+          {msg.content}
+        </Typography>
+      </Box>
+    </Box>
+  );
+}
 
+// ── Assistant bubble ──────────────────────────────────────────────────────────
+function AssistantMessage({ msg, onResearch, onFork }) {
+  const isStreaming  = !!msg.streaming;
+  const hasContent   = !!msg.content;
+  const hasSteps     = msg.thinking_steps && msg.thinking_steps.length > 0;
+  const activeStep   = hasSteps
+    ? msg.thinking_steps.find(s => s.status === 'active')
+    : null;
+
+  return (
+    <Box sx={{ maxWidth: '76%' }}>
+      {/* Label */}
+      <Typography sx={{
+        fontFamily: "'IBM Plex Mono', monospace",
+        fontSize: '0.60rem',
+        color: '#F97316',
+        letterSpacing: '0.08em',
+        textTransform: 'uppercase',
+        mb: 0.625,
+        opacity: isStreaming ? 0.7 : 1,
+        transition: 'opacity 0.3s',
+      }}>
+        {isStreaming ? 'Quarry · working…' : 'Quarry'}
+      </Typography>
+
+      {/* Chain of thought steps */}
+      {hasSteps && (
+        <ChainOfThought steps={msg.thinking_steps} />
+      )}
+
+      {/* Loading state — before any content arrives */}
+      {isStreaming && !hasContent && (
+        <WaveLoader label={activeStep ? activeStep.label.toLowerCase() + '…' : 'thinking…'} />
+      )}
+
+      {/* Response content */}
+      {hasContent && (
+        <Box sx={{
+          background: '#151310',
+          border: '1px solid #1e1a14',
+          borderRadius: '3px 12px 12px 12px',
+          px: 1.75,
+          py: 1.5,
+        }}>
+          <StreamingMarkdown content={msg.content} messageId={msg.id} />
+        </Box>
+      )}
+
+      {/* Action row */}
+      {!isStreaming && hasContent && (
+        <Box sx={{ display: 'flex', gap: 0.75, mt: 0.875, flexWrap: 'wrap' }}>
+          {msg.research_data && (
+            <ActionBtn orange onClick={() => onResearch(msg.id)}>
+              ⊞ Research
+            </ActionBtn>
+          )}
+          <ActionBtn onClick={() => onFork(msg.id)}>⎋ Fork</ActionBtn>
+          <CopyButton text={msg.content} />
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+// ── Thread ────────────────────────────────────────────────────────────────────
 export default function MessageThread({
   messages,
   streaming,
@@ -69,21 +178,13 @@ export default function MessageThread({
   }, [messages]);
 
   return (
-    <Box sx={{
-      flex: 1,
-      overflowY: 'auto',
-      display: 'flex',
-      flexDirection: 'column',
-    }}>
-      {/* Branch label header */}
+    <Box sx={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+      {/* Branch label */}
       {activeBranchLabel && activeBranchLabel !== 'main' && (
         <Box sx={{
-          px: 2.5,
-          py: 0.875,
+          px: 2.5, py: 0.875,
           borderBottom: '1px solid #1c1813',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 0.75,
+          display: 'flex', alignItems: 'center', gap: 0.75,
           flexShrink: 0,
         }}>
           <Typography sx={{
@@ -92,8 +193,7 @@ export default function MessageThread({
             background: 'rgba(249,115,22,0.1)',
             border: '1px solid rgba(249,115,22,0.2)',
             borderRadius: '4px',
-            px: 0.75,
-            py: 0.25,
+            px: 0.75, py: 0.25,
             color: '#F97316',
           }}>
             ⎇ {activeBranchLabel}
@@ -105,16 +205,12 @@ export default function MessageThread({
       {messages.length === 0 && !streaming && (
         <Box sx={{
           flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 1,
-          opacity: 0.35,
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          gap: 1, opacity: 0.3,
         }}>
           <Typography sx={{
-            fontSize: '0.78rem',
-            color: '#888',
+            fontSize: '0.78rem', color: '#888',
             fontFamily: "'IBM Plex Sans', sans-serif",
           }}>
             Ask anything. Quarry researches when needed.
@@ -122,99 +218,13 @@ export default function MessageThread({
         </Box>
       )}
 
-      {/* Messages */}
-      <Box sx={{ px: 3, py: 2.5, display: 'flex', flexDirection: 'column', gap: 2.25 }}>
+      {/* Message list */}
+      <Box sx={{ px: 3, py: 2.5, display: 'flex', flexDirection: 'column', gap: 2.5 }}>
         {messages.map(msg => (
           <React.Fragment key={msg.id}>
-            {msg.role === 'user' && (
-              <Box sx={{ alignSelf: 'flex-end', maxWidth: '62%' }}>
-                <Box sx={{
-                  background: '#1a1612',
-                  border: '1px solid #2a2218',
-                  borderRadius: '12px 12px 3px 12px',
-                  px: 1.75,
-                  py: 1.25,
-                }}>
-                  <Typography sx={{
-                    fontFamily: "'IBM Plex Sans', sans-serif",
-                    fontSize: '0.78rem',
-                    color: '#ccc',
-                    lineHeight: 1.6,
-                    whiteSpace: 'pre-wrap',
-                  }}>
-                    {msg.content}
-                  </Typography>
-                </Box>
-              </Box>
-            )}
-
+            {msg.role === 'user' && <UserMessage msg={msg} />}
             {msg.role === 'assistant' && (
-              <Box sx={{ maxWidth: '76%' }}>
-                <Typography sx={{
-                  fontFamily: "'IBM Plex Mono', monospace",
-                  fontSize: '0.60rem',
-                  color: '#F97316',
-                  letterSpacing: '0.08em',
-                  textTransform: 'uppercase',
-                  mb: 0.625,
-                }}>
-                  {msg.streaming ? 'Quarry · thinking…' : 'Quarry'}
-                </Typography>
-
-                {msg.streaming && !msg.content ? (
-                  /* Searching / thinking dots */
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, py: 0.5 }}>
-                    {[0, 0.2, 0.4].map((delay, i) => (
-                      <Box key={i} sx={{
-                        width: 4,
-                        height: 4,
-                        borderRadius: '50%',
-                        background: '#F97316',
-                        animation: 'pulse 1.2s infinite',
-                        animationDelay: `${delay}s`,
-                        '@keyframes pulse': {
-                          '0%,100%': { opacity: 0.3 },
-                          '50%': { opacity: 1 },
-                        },
-                      }} />
-                    ))}
-                    <Typography sx={{
-                      fontSize: '0.68rem',
-                      color: '#555',
-                      fontFamily: "'IBM Plex Mono', monospace",
-                      ml: 0.25,
-                    }}>
-                      Searching web…
-                    </Typography>
-                  </Box>
-                ) : (
-                  <Box sx={{
-                    background: '#151310',
-                    border: '1px solid #1e1a14',
-                    borderRadius: '3px 12px 12px 12px',
-                    px: 1.75,
-                    py: 1.5,
-                    ...MD_STYLES,
-                  }}>
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {msg.content || ''}
-                    </ReactMarkdown>
-                  </Box>
-                )}
-
-                {/* Action row — only when not streaming */}
-                {!msg.streaming && msg.content && (
-                  <Box sx={{ display: 'flex', gap: 0.75, mt: 0.75, flexWrap: 'wrap' }}>
-                    {msg.research_data && (
-                      <ActionBtn orange onClick={() => onResearch(msg.id)}>
-                        ⊞ Research
-                      </ActionBtn>
-                    )}
-                    <ActionBtn onClick={() => onFork(msg.id)}>⎋ Fork</ActionBtn>
-                    <CopyButton text={msg.content} />
-                  </Box>
-                )}
-              </Box>
+              <AssistantMessage msg={msg} onResearch={onResearch} onFork={onFork} />
             )}
           </React.Fragment>
         ))}
