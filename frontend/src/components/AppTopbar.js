@@ -30,6 +30,7 @@ export default function AppTopbar() {
 
   return (
     <div
+      id="app-topbar"
       style={{
         position: 'fixed',
         top: 12,

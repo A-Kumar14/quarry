@@ -13,7 +13,7 @@ const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 export default function ConversePage() {
   const [dark] = useDarkMode();
   const topOffset = useTopOffset();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState(null);
@@ -23,16 +23,22 @@ export default function ConversePage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMessageId, setDrawerMessageId] = useState(null);
   const abortRef = useRef(null);
+  const sentRef = useRef(false); // guard against StrictMode double-fire
 
-  // Load sessions on mount
+  // Load sessions on mount; cancel any in-flight fetch on unmount
   useEffect(() => {
     fetchSessions();
+    return () => {
+      if (abortRef.current) abortRef.current.abort();
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Handle ?q= param from homepage search
+  // Handle ?q= param from homepage search — fire once only
   useEffect(() => {
     const q = searchParams.get('q');
-    if (q && !activeSessionId) {
+    if (q && !sentRef.current) {
+      sentRef.current = true;
+      setSearchParams({}, { replace: true }); // clean URL before send
       handleSend(q);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -81,6 +87,10 @@ export default function ConversePage() {
 
   async function handleSend(text) {
     if (!text.trim() || streaming) return;
+
+    // Cancel any previous in-flight request
+    if (abortRef.current) abortRef.current.abort();
+    abortRef.current = new AbortController();
 
     let sessionId = activeSessionId;
     let branchId = activeBranchId;

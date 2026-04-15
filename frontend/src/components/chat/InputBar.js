@@ -1,8 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { Box, Typography } from '@mui/material';
 
 export default function InputBar({ onSend, disabled }) {
   const [value, setValue] = useState('');
+  const [focused, setFocused] = useState(false);
   const textareaRef = useRef(null);
 
   function submit() {
@@ -40,10 +41,12 @@ export default function InputBar({ onSend, disabled }) {
         alignItems: 'flex-end',
         gap: 1,
         background: '#151310',
-        border: '1px solid #242018',
+        border: focused ? '1px solid rgba(249,115,22,0.45)' : '1px solid #242018',
         borderRadius: '12px',
         px: 1.5,
         py: 1.25,
+        boxShadow: focused ? '0 0 0 3px rgba(249,115,22,0.08)' : 'none',
+        transition: 'border-color 0.15s, box-shadow 0.15s',
       }}>
         <Box
           ref={textareaRef}
@@ -51,6 +54,8 @@ export default function InputBar({ onSend, disabled }) {
           value={value}
           onChange={handleInput}
           onKeyDown={handleKeyDown}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           placeholder="Ask a follow-up…"
           rows={1}
           disabled={disabled}
@@ -93,10 +98,10 @@ export default function InputBar({ onSend, disabled }) {
         </Box>
       </Box>
       <Box sx={{ display: 'flex', gap: 1.5, mt: 0.75, px: 0.25 }}>
-        {['↵ send', 'shift+↵ newline', '⎋ fork from message'].map(hint => (
+        {['↵ send', 'shift+↵ newline', '⎋ fork'].map(hint => (
           <Typography key={hint} sx={{
             fontSize: '0.58rem',
-            color: '#2a2520',
+            color: '#4a4540',
             fontFamily: "'IBM Plex Mono', monospace",
           }}>
             {hint}

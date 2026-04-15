@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 
 const DEFAULTS = {
   showCalendar:           true,
@@ -41,7 +41,16 @@ export function useSettings() {
   return useContext(Ctx);
 }
 
-/** Returns the total top offset (px). No fixed global bars remain. */
+/** Returns the topbar height in px, measured live via ResizeObserver. Falls back to 64. */
 export function useTopOffset() {
-  return 0;
+  const [h, setH] = useState(64);
+  useEffect(() => {
+    const el = document.getElementById('app-topbar');
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setH(e.contentRect.height));
+    ro.observe(el);
+    setH(el.getBoundingClientRect().height);
+    return () => ro.disconnect();
+  }, []);
+  return h;
 }
