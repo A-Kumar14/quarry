@@ -1,5 +1,5 @@
 import type { DeepResponse } from '../types/deep';
-import type { DiagramSpec } from '../types/diagram';
+import type { DiagramSpec, DiagramType } from '../types/diagram';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -105,12 +105,15 @@ export async function maybeRequestDiagram(
 
     if (!res.ok) return null;
 
-    const spec: DiagramSpec = await res.json();
+    const raw = await res.json();
+    const dtype =
+      (raw as DiagramSpec & { diagram_type?: string }).diagramType ??
+      (raw as DiagramSpec & { diagram_type?: string }).diagram_type;
 
-    // Backend returns { diagramType: null } when it decides no diagram is warranted
-    if (!spec.diagramType) return null;
+    // Backend may serialize Pydantic as diagram_type; TS type expects diagramType
+    if (!dtype) return null;
 
-    return spec;
+    return { ...(raw as DiagramSpec), diagramType: dtype as DiagramType };
   } catch {
     // Network error or abort — fail silently
     return null;

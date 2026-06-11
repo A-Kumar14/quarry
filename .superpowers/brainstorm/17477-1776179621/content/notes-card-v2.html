@@ -1,0 +1,141 @@
+<h2>Notes Card — Stripped</h2>
+<p class="subtitle">Title, count, add button, view all. Nothing else.</p>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Serif:wght@400;600;700&display=swap');
+
+  :root {
+    --card-bg: rgba(255,255,255,0.72);
+    --card-border: rgba(200,188,170,0.70);
+    --accent: #F97316;
+    --accent-dim: rgba(249,115,22,0.10);
+    --accent-border: rgba(249,115,22,0.38);
+    --fg: #1a0f05;
+    --fg-sec: #5a3e28;
+    --fg-dim: #9a8070;
+    --muted-bg: rgba(237,232,223,0.60);
+    --serif: 'IBM Plex Serif', Georgia, serif;
+    --sans: 'IBM Plex Sans', system-ui, sans-serif;
+    --mono: 'IBM Plex Mono', monospace;
+    --radius: 14px;
+  }
+
+  .qcard {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 4px 20px rgba(0,0,0,0.04);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-family: var(--sans);
+    width: 100%;
+    max-width: 320px;
+  }
+  .qcard-header {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    align-items: start;
+    gap: 2px 8px;
+    padding: 12px 16px 11px;
+    border-bottom: 1px solid var(--card-border);
+    background: var(--accent-dim);
+  }
+  .qcard-title {
+    font-family: var(--serif);
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--fg);
+    grid-column: 1; grid-row: 1;
+  }
+  .qcard-desc {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: var(--fg-dim);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    grid-column: 1; grid-row: 2;
+  }
+  .qcard-action {
+    grid-column: 2; grid-row: 1 / span 2;
+    align-self: center; justify-self: end;
+  }
+  .add-btn {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 10px; border-radius: 7px;
+    border: 1px solid var(--accent-border);
+    background: rgba(249,115,22,0.08);
+    color: var(--accent);
+    font-family: var(--sans); font-size: 11px; font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .qcard-footer {
+    padding: 10px 16px;
+    border-top: 1px solid var(--card-border);
+    background: var(--muted-bg);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+  }
+  .link-btn {
+    font-family: var(--sans); font-size: 11px; font-weight: 600;
+    color: var(--accent); background: none; border: none; cursor: pointer; padding: 0;
+  }
+  .empty-state {
+    padding: 20px 16px;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    flex: 1;
+  }
+  .empty-icon { font-size: 22px; opacity: 0.35; }
+  .empty-text {
+    font-family: var(--sans); font-size: 11.5px; color: var(--fg-dim);
+    text-align: center; line-height: 1.5;
+  }
+
+  .two-up { display: flex; gap: 32px; align-items: flex-start; justify-content: center; margin-top: 24px; flex-wrap: wrap; }
+  .variant-label { font-family: var(--mono); font-size: 10px; color: var(--fg-dim); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
+</style>
+
+<div class="two-up">
+
+  <!-- With notes -->
+  <div>
+    <div class="variant-label">Has notes</div>
+    <div class="qcard">
+      <div class="qcard-header">
+        <div class="qcard-title">Your notes</div>
+        <div class="qcard-desc">3 notes · updated 2h ago</div>
+        <div class="qcard-action">
+          <button class="add-btn">＋ New note</button>
+        </div>
+      </div>
+      <div class="qcard-footer">
+        <button class="link-btn">View all notes →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Empty state -->
+  <div>
+    <div class="variant-label">No notes yet</div>
+    <div class="qcard">
+      <div class="qcard-header">
+        <div class="qcard-title">Your notes</div>
+        <div class="qcard-desc">No notes yet</div>
+        <div class="qcard-action">
+          <button class="add-btn">＋ New note</button>
+        </div>
+      </div>
+      <div class="empty-state">
+        <div class="empty-icon">✏️</div>
+        <div class="empty-text">Start a note — kept close to your research.</div>
+      </div>
+      <div class="qcard-footer">
+        <button class="link-btn">View all notes →</button>
+      </div>
+    </div>
+  </div>
+
+</div>

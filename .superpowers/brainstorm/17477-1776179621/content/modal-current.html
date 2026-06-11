@@ -1,0 +1,255 @@
+<h2>Daily Briefing Modal — Current State</h2>
+<p class="subtitle">Static mockup of the existing modal layout</p>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Serif:wght@400;600&display=swap');
+
+  :root {
+    --fg: #F0E6D8;
+    --fg-sec: #C9A882;
+    --fg-dim: rgba(240,230,216,0.38);
+    --accent: #F97316;
+    --border: rgba(255,255,255,0.08);
+    --bg: #120D07;
+    --bg2: #1A1208;
+    --bg3: rgba(255,255,255,0.03);
+    --sans: 'IBM Plex Sans', system-ui, sans-serif;
+    --serif: 'IBM Plex Serif', Georgia, serif;
+    --mono: 'IBM Plex Mono', monospace;
+  }
+
+  .modal {
+    width: 100%;
+    max-width: 900px;
+    height: 560px;
+    border-radius: 18px;
+    background: var(--bg);
+    border: 1px solid rgba(255,255,255,0.09);
+    box-shadow: 0 32px 80px rgba(0,0,0,0.70);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-family: var(--sans);
+    margin: 0 auto;
+  }
+
+  /* Header */
+  .modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .modal-header-left { display: flex; align-items: center; gap: 10px; }
+  .zap-icon {
+    width: 30px; height: 30px; border-radius: 9px;
+    background: rgba(249,115,22,0.12);
+    border: 1px solid rgba(249,115,22,0.28);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+  }
+  .modal-title { font-family: var(--serif); font-size: 0.95rem; font-weight: 600; color: var(--fg); line-height: 1.1; }
+  .modal-sub { font-family: var(--mono); font-size: 0.58rem; color: var(--fg-dim); margin-top: 2px; }
+  .header-btn {
+    border: 1px solid var(--border); border-radius: 7px;
+    background: none; color: var(--fg-dim);
+    font-family: var(--sans); font-size: 0.68rem;
+    padding: 4px 9px; cursor: pointer;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .close-btn {
+    border: 1px solid var(--border); border-radius: 7px;
+    background: none; width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; color: var(--fg-dim); font-size: 13px;
+  }
+
+  /* Body */
+  .modal-body { flex: 1; display: flex; overflow: hidden; }
+  .modal-left { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* Summary */
+  .summary-block {
+    margin: 16px 20px 12px;
+    border-left: 3px solid var(--accent);
+    padding-left: 12px;
+    flex-shrink: 0;
+  }
+  .summary-label {
+    font-family: var(--sans); font-size: 0.56rem; font-weight: 600;
+    color: var(--fg-dim); letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 5px;
+  }
+  .summary-text { font-family: var(--sans); font-size: 0.82rem; font-weight: 300; color: var(--fg-sec); line-height: 1.65; }
+  .summary-meta { font-family: var(--mono); font-size: 0.56rem; color: var(--fg-dim); margin-top: 4px; }
+
+  /* Cards grid */
+  .cards-grid {
+    flex: 1; overflow-y: auto;
+    padding: 0 20px 16px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    align-content: start;
+  }
+
+  .topic-card {
+    border-radius: 12px; padding: 13px 14px;
+    background: var(--bg2);
+    border: 1px solid rgba(175,150,105,0.14);
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .card-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .urgency-badge {
+    font-family: var(--sans); font-size: 0.55rem; font-weight: 600;
+    border-radius: 4px; padding: 2px 6px; letter-spacing: 0.04em;
+  }
+  .track-btn {
+    border: 1px solid var(--border); border-radius: 5px;
+    background: none; padding: 2px 7px;
+    display: flex; align-items: center; gap: 3px;
+    font-family: var(--sans); font-size: 0.55rem; color: var(--fg-dim); cursor: pointer;
+  }
+  .card-headline {
+    font-family: var(--serif); font-size: 0.86rem; font-weight: 600;
+    color: var(--fg); line-height: 1.3;
+  }
+  .card-summary {
+    font-family: var(--sans); font-size: 0.72rem; font-weight: 300;
+    color: var(--fg-sec); line-height: 1.5;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .card-hook {
+    border-left: 2px solid var(--accent); padding-left: 7px;
+    font-family: var(--sans); font-size: 0.67rem; color: var(--accent);
+    font-style: italic; line-height: 1.4;
+  }
+  .card-footer-row {
+    display: flex; align-items: center; justify-content: space-between; margin-top: 2px;
+  }
+  .card-source { font-family: var(--mono); font-size: 0.56rem; color: var(--fg-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+  .explore-btn {
+    background: var(--accent); color: #fff; border: none; border-radius: 7px;
+    padding: 4px 10px; font-family: var(--sans); font-size: 0.68rem; font-weight: 500;
+    cursor: pointer; display: flex; align-items: center; gap: 4px;
+  }
+
+  /* Chat bar */
+  .chat-bar {
+    padding: 9px 14px;
+    border-top: 1px solid var(--border);
+    background: rgba(255,255,255,0.02);
+    flex-shrink: 0;
+  }
+  .chat-inner {
+    display: flex; align-items: center; gap: 8px;
+    border-radius: 9px; background: var(--bg3);
+    border: 1px solid var(--border); padding: 5px 10px;
+  }
+  .chat-input {
+    flex: 1; font-family: var(--sans); font-size: 0.75rem;
+    color: var(--fg-dim); background: transparent; border: none; outline: none;
+  }
+  .chat-send {
+    width: 24px; height: 24px; border-radius: 6px;
+    border: 1px solid var(--border); background: none;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; color: var(--fg-dim); font-size: 11px;
+  }
+</style>
+
+<div style="padding: 8px 0;">
+  <div class="modal">
+
+    <!-- Header -->
+    <div class="modal-header">
+      <div class="modal-header-left">
+        <div class="zap-icon">⚡</div>
+        <div>
+          <div class="modal-title">Daily Briefing</div>
+          <div class="modal-sub">April 14, 2026 · Conflict & Humanitarian</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="header-btn">↻ Refresh</button>
+        <button class="close-btn">✕</button>
+      </div>
+    </div>
+
+    <!-- Body -->
+    <div class="modal-body">
+      <div class="modal-left">
+
+        <!-- Summary -->
+        <div class="summary-block">
+          <div class="summary-label">Here's what's going on in the world</div>
+          <p class="summary-text">Ceasefire negotiations in Gaza have stalled after a failed prisoner exchange. Ukraine's eastern front saw renewed shelling overnight. Venezuela's opposition leader was detained hours before a planned press conference.</p>
+          <div class="summary-meta">Based on 42 live sources · refreshes every 5 min</div>
+        </div>
+
+        <!-- Cards -->
+        <div class="cards-grid">
+
+          <div class="topic-card">
+            <div class="card-top">
+              <div style="display:flex;gap:5px;align-items:center">
+                <span class="urgency-badge" style="color:#ef4444;background:rgba(239,68,68,0.10);border:1px solid rgba(239,68,68,0.28)">● Breaking</span>
+                <span style="font-size:0.55rem;color:var(--fg-dim);font-family:var(--sans);display:flex;align-items:center;gap:3px"><span style="width:5px;height:5px;border-radius:50%;background:#22c55e;display:inline-block"></span>High</span>
+              </div>
+              <button class="track-btn">🔖 Track</button>
+            </div>
+            <div class="card-headline">Gaza ceasefire talks collapse after prisoner swap fails</div>
+            <div class="card-summary">Negotiations mediated by Qatar broke down late Tuesday after both sides failed to agree on prisoner exchange terms. Aid convoys remain blocked at the Kerem Shalom crossing.</div>
+            <div class="card-hook">Key question: Will Egypt broker a new framework before the weekend?</div>
+            <div class="card-footer-row">
+              <span class="card-source">Reuters</span>
+              <button class="explore-btn">Explore Topic ›</button>
+            </div>
+          </div>
+
+          <div class="topic-card">
+            <div class="card-top">
+              <div style="display:flex;gap:5px;align-items:center">
+                <span class="urgency-badge" style="color:#f97316;background:rgba(249,115,22,0.10);border:1px solid rgba(249,115,22,0.28)">◎ Developing</span>
+              </div>
+              <button class="track-btn">🔖 Track</button>
+            </div>
+            <div class="card-headline">Ukraine: renewed shelling on Donetsk civilian areas</div>
+            <div class="card-summary">Russian forces fired artillery at residential districts overnight. Ukraine's military says 3 soldiers were killed and 11 wounded in the past 24 hours along the eastern front.</div>
+            <div class="card-hook">Context: This follows a week of relative quiet after the Kharkiv ceasefire proposal.</div>
+            <div class="card-footer-row">
+              <span class="card-source">AP News</span>
+              <button class="explore-btn">Explore Topic ›</button>
+            </div>
+          </div>
+
+          <div class="topic-card">
+            <div class="card-top">
+              <div style="display:flex;gap:5px;align-items:center">
+                <span class="urgency-badge" style="color:#8b5cf6;background:rgba(139,92,246,0.10);border:1px solid rgba(139,92,246,0.28)">◇ Feature</span>
+                <span style="font-size:0.55rem;color:#f97316;font-family:var(--sans);display:flex;align-items:center;gap:3px">⚠ Contested</span>
+              </div>
+              <button class="track-btn">🔖 Track</button>
+            </div>
+            <div class="card-headline">Venezuela detains opposition leader ahead of press conference</div>
+            <div class="card-summary">Authorities arrested María Corina Machado's chief of staff hours before a scheduled briefing on election fraud evidence. Opposition calls it political intimidation.</div>
+            <div class="card-footer-row">
+              <span class="card-source">BBC World</span>
+              <button class="explore-btn">Explore Topic ›</button>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Chat bar -->
+        <div class="chat-bar">
+          <div class="chat-inner">
+            <input class="chat-input" placeholder='Refine: "show me more defence stories" or "anything on climate?"' />
+            <button class="chat-send">→</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>

@@ -133,6 +133,13 @@ export default function ConversePage() {
         signal: abortRef.current?.signal,
       });
 
+      if (!res.ok || !res.body) {
+        const errText = !res.body
+          ? 'No response body'
+          : await res.text().catch(() => res.statusText);
+        throw new Error(errText || `HTTP ${res.status}`);
+      }
+
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
@@ -149,7 +156,7 @@ export default function ConversePage() {
 
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
-          const payload = line.slice(6);
+          const payload = line.slice(6).replace(/\r$/, '').trim();
           if (payload === '[DONE]') continue;
           try {
             const evt = JSON.parse(payload);
@@ -201,7 +208,44 @@ export default function ConversePage() {
           ? { ...m, streaming: false, research_data: researchData, thinking_steps: thinkingSteps }
           : m
       ));
-    } catch (_) {}
+
+      // Replace optimistic client ids with server-persisted messages (enables Fork, etc.)
+      if (sessionId && branchId) {
+        try {
+          const mr = await fetch(`${API}/chat/sessions/${sessionId}/branches/${branchId}/messages`);
+          if (mr.ok) {
+            const md = await mr.json();
+            const sm = md.messages || [];
+            if (sm.length > 0) {
+              setMessages(prev => {
+                const streamMeta = prev.find(m => m.id === streamId);
+                const thinking = streamMeta?.thinking_steps;
+                const rd = streamMeta?.research_data;
+                return sm.map((m, i) => {
+                  if (m.role !== 'assistant' || i !== sm.length - 1) return m;
+                  return {
+                    ...m,
+                    thinking_steps: thinking || m.thinking_steps,
+                    research_data: m.research_data || rd,
+                  };
+                });
+              });
+            }
+          }
+        } catch (_) {}
+      }
+    } catch (err) {
+      const msg = err && err.message ? String(err.message) : 'Request failed';
+      setMessages(prev => prev.map(m =>
+        m.id === streamId
+          ? {
+              ...m,
+              streaming: false,
+              content: m.content || `Could not complete response (${msg.slice(0, 120)})`,
+            }
+          : m
+      ));
+    }
 
     setStreaming(false);
     fetchSessions();
@@ -218,8 +262,11 @@ export default function ConversePage() {
       if (res.ok) {
         const data = await res.json();
         setActiveBranchId(data.branch_id);
-        const idx = messages.findIndex(m => m.id === messageId);
-        if (idx !== -1) setMessages(messages.slice(0, idx + 1));
+        setMessages(prev => {
+          const idx = prev.findIndex(m => m.id === messageId);
+          if (idx === -1) return prev;
+          return prev.slice(0, idx + 1);
+        });
         await fetchSessions();
       }
     } catch (_) {}

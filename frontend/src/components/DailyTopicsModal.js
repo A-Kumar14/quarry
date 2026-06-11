@@ -201,13 +201,10 @@ function StoryPlanPanel({ topic, profile, onBack, onNavigate }) {
     const controller = new AbortController();
     abortRef.current = controller;
 
-    const authToken = localStorage.getItem('quarry_auth_token') || sessionStorage.getItem('quarry_auth_token') || '';
-
     fetch(`${API}/explore/story-plan`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
       },
       body: JSON.stringify({
         headline: topic.headline,
@@ -250,7 +247,7 @@ function StoryPlanPanel({ topic, profile, onBack, onNavigate }) {
 
   // Extract search queries suggested by AI at the end of the plan
   const handleResearch = useCallback(() => {
-    navigate(`/search?q=${encodeURIComponent(topic.headline)}`);
+    navigate(`/explore?q=${encodeURIComponent(topic.headline)}`);
     if (onNavigate) onNavigate();
   }, [navigate, topic, onNavigate]);
 
@@ -403,7 +400,6 @@ export default function DailyTopicsModal({ onClose }) {
     }
     setPhase('loading');
     setSelectedTopic(null);
-    const authToken = localStorage.getItem('quarry_auth_token') || sessionStorage.getItem('quarry_auth_token') || '';
     const beats = getBeats().map(b => b.name);
 
     try {
@@ -418,7 +414,6 @@ export default function DailyTopicsModal({ onClose }) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         },
         body: JSON.stringify({ beats, profile: profileToSend }),
       });
@@ -588,7 +583,7 @@ export default function DailyTopicsModal({ onClose }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {phase === 'ready' && (
                 <button
-                  onClick={() => fetchBrief()}
+                  onClick={() => fetchBrief('', { force: true })}
                   title="Refresh brief"
                   style={{
                     background: 'none', border: '1px solid var(--border)',

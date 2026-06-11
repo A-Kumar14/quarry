@@ -1,0 +1,59 @@
+<h2>Where do Sources / Contradictions / Perspectives live?</h2>
+<p class="subtitle">Chat is the main view. Pick how the research panels surface.</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#111;border-radius:8px;padding:16px;font-family:monospace;font-size:11px;color:#aaa;min-height:160px;display:flex;flex-direction:column;gap:8px;">
+      <div style="display:flex;gap:6px;align-items:center;color:#F97316;font-size:10px;letter-spacing:.08em;text-transform:uppercase;">AI response</div>
+      <div style="background:#1a1a1a;border-radius:6px;padding:10px;color:#ccc;font-size:11px;line-height:1.6;">The conflict began in 2022 when...</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">
+        <span style="background:#1e1a14;border:1px solid rgba(249,115,22,.25);border-radius:5px;padding:3px 8px;color:#F97316;font-size:10px;">4 sources ›</span>
+        <span style="background:#1e1a14;border:1px solid rgba(249,115,22,.25);border-radius:5px;padding:3px 8px;color:#F97316;font-size:10px;">2 contradictions ›</span>
+        <span style="background:#1e1a14;border:1px solid rgba(249,115,22,.25);border-radius:5px;padding:3px 8px;color:#F97316;font-size:10px;">perspectives ›</span>
+      </div>
+      <div style="font-size:9px;color:#555;margin-top:auto;">↑ clicking a pill expands detail inline below the message</div>
+    </div>
+    <div class="card-body">
+      <h3>A — Inline expandable pills</h3>
+      <p>Each AI message gets pills: Sources · Contradictions · Perspectives. Click to expand inline below the message. Collapses when you move on.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#111;border-radius:8px;padding:0;font-family:monospace;font-size:11px;color:#aaa;min-height:160px;display:flex;overflow:hidden;">
+      <div style="flex:1;padding:16px;display:flex;flex-direction:column;gap:8px;">
+        <div style="color:#F97316;font-size:10px;letter-spacing:.08em;text-transform:uppercase;">Chat thread</div>
+        <div style="background:#1a1a1a;border-radius:6px;padding:10px;color:#ccc;font-size:11px;line-height:1.5;">The conflict began in 2022...</div>
+        <div style="background:#1a1a1a;border-radius:6px;padding:10px;color:#888;font-size:11px;line-height:1.5;align-self:flex-end;max-width:80%;">What caused it?</div>
+      </div>
+      <div style="width:180px;border-left:1px solid #222;padding:12px;display:flex;flex-direction:column;gap:6px;">
+        <div style="color:#555;font-size:9px;text-transform:uppercase;letter-spacing:.1em;">Research Panel</div>
+        <div style="background:#1a1a1a;border-radius:4px;padding:6px 8px;color:#888;font-size:10px;">Sources (4)</div>
+        <div style="background:#1a1a1a;border-radius:4px;padding:6px 8px;color:#888;font-size:10px;">Contradictions (2)</div>
+        <div style="background:#1a1a1a;border-radius:4px;padding:6px 8px;color:#888;font-size:10px;">Perspectives</div>
+        <div style="background:#1a1a1a;border-radius:4px;padding:6px 8px;color:#888;font-size:10px;">Citations</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Persistent right panel</h3>
+      <p>Narrow sidebar always visible. Always shows latest response's data. Tabs: Sources · Contradictions · Perspectives · Citations. Can collapse to icon rail.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#111;border-radius:8px;padding:16px;font-family:monospace;font-size:11px;color:#aaa;min-height:160px;display:flex;flex-direction:column;gap:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="color:#F97316;font-size:10px;letter-spacing:.08em;text-transform:uppercase;">AI response</div>
+        <div style="background:#1e1a14;border:1px solid #333;border-radius:5px;padding:3px 8px;color:#666;font-size:10px;cursor:pointer;">Research ⊞</div>
+      </div>
+      <div style="background:#1a1a1a;border-radius:6px;padding:10px;color:#ccc;font-size:11px;line-height:1.6;">The conflict began in 2022 when...</div>
+      <div style="font-size:9px;color:#555;margin-top:auto;">↑ "Research" button opens a full-width overlay drawer over the chat, showing all panels</div>
+    </div>
+    <div class="card-body">
+      <h3>C — Research drawer button</h3>
+      <p>One "Research" button per AI response. Clicking opens a bottom sheet / overlay showing Sources, Contradictions, Perspectives. Chat stays clean until you need it.</p>
+    </div>
+  </div>
+
+</div>

@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Quarry — Homepage Redesign Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,600;0,700;1,400&family=IBM+Plex+Serif:wght@400;600&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --orange:        #F97316;
+    --orange-dim:    rgba(249,115,22,0.15);
+    --orange-border: rgba(249,115,22,0.35);
+    --glass-bg:      rgba(255,255,255,0.06);
+    --glass-border:  rgba(255,255,255,0.09);
+    --card-radius:   12px;
+    --font-sans:     'IBM Plex Sans', sans-serif;
+    --font-mono:     'IBM Plex Mono', monospace;
+    --font-serif:    'IBM Plex Serif', serif;
+    --text:          rgba(240,230,216,0.92);
+    --text-dim:      rgba(200,190,175,0.55);
+    --text-dimmer:   rgba(200,190,175,0.30);
+  }
+
+  html, body { height: 100%; }
+
+  body {
+    font-family: var(--font-sans);
+    min-height: 100vh;
+    color: var(--text);
+    padding: 0;
+    position: relative;
+    overflow-x: hidden;
+    /* dark sepia */
+    background: linear-gradient(160deg, #16110C 0%, #120E09 50%, #0E0B06 100%);
+  }
+
+  /* ─── WAVE BACKGROUND ─────────────────────────────────────────────── */
+  #wave-bg {
+    position: fixed;
+    inset: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.22;
+    mix-blend-mode: screen;
+  }
+
+  /* subtle orange radial at top */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background: radial-gradient(ellipse 80% 40% at 50% 0%, rgba(249,115,22,0.055) 0%, transparent 68%);
+  }
+
+  /* ─── NAV PILL ─── */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    justify-content: center;
+    padding: 14px 24px;
+  }
+
+  .nav-pill {
+    display: flex;
+    align-items: center;
+    height: 52px;
+    padding: 6px;
+    gap: 2px;
+    background: rgba(255,255,255,0.07);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 9999px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 40px;
+    min-width: 44px;
+    padding: 0 14px;
+    border-radius: 9999px;
+    font-family: var(--font-sans);
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.16s ease;
+    white-space: nowrap;
+    border: none;
+    background: transparent;
+  }
+
+  .nav-item.active {
+    background: var(--orange-dim);
+    color: var(--orange);
+    border: 1px solid var(--orange-border);
+  }
+
+  .nav-item svg { width: 22px; height: 22px; stroke-width: 2; }
+
+  /* ─── MAIN LAYOUT ─── */
+  .main {
+    position: relative;
+    z-index: 1;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 28px 48px;
+  }
+
+  .greeting {
+    margin-bottom: 24px;
+    text-align: center;
+  }
+
+  .greeting h1 {
+    font-family: var(--font-serif);
+    font-size: clamp(1.5rem, 3vw, 1.9rem);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--text);
+  }
+
+  .grid-3 {
+    display: grid;
+    grid-template-columns: 260px 1fr 290px;
+    gap: 16px;
+    align-items: start;
+  }
+
+  /* ─── GLASS CARD ─── */
+  .glass-card {
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--card-radius);
+    overflow: hidden;
+  }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+  }
+
+  .card-title {
+    font-size: 0.84rem;
+    font-weight: 600;
+    font-family: var(--font-sans);
+    color: var(--text);
+    flex: 1;
+  }
+
+  .card-action {
+    font-size: 0.72rem;
+    font-family: var(--font-sans);
+    font-weight: 500;
+    color: var(--orange);
+    cursor: pointer;
+    text-decoration: none;
+  }
+
+  /* ─── NOTES CARD ─── */
+  .notes-card .icon-box {
+    width: 28px; height: 28px;
+    background: var(--orange-dim);
+    border: 1px solid var(--orange-border);
+    border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .notes-card .icon-box svg { width: 14px; height: 14px; color: var(--orange); stroke-width: 2.2; }
+
+  .note-item {
+    padding: 11px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .note-item:hover { background: rgba(255,255,255,0.05); }
+
+  .note-title {
+    font-size: 0.80rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 3px;
+  }
+
+  .note-excerpt {
+    font-size: 0.70rem;
+    color: var(--text-dim);
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .note-time {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    color: var(--text-dimmer);
+    margin-top: 4px;
+  }
+
+  .notes-footer {
+    padding: 10px 16px;
+    border-top: 1px solid rgba(255,255,255,0.07);
+  }
+
+  .btn-new-note {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px;
+    background: transparent;
+    border: 1px dashed rgba(249,115,22,0.35);
+    border-radius: 8px;
+    font-family: var(--font-sans);
+    font-size: 0.76rem;
+    color: var(--orange);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .btn-new-note:hover { background: var(--orange-dim); }
+
+  /* ─── CENTER COLUMN ─── */
+  .center-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+  /* ─── PROMPT BAR ─── */
+  .prompt-shell {
+    background: rgba(26,20,16,0.88);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(249,115,22,0.18);
+    border-radius: var(--card-radius);
+    padding: 12px 14px;
+  }
+
+  .prompt-input-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 9px;
+    padding: 6px 8px 6px 12px;
+    margin-bottom: 10px;
+  }
+
+  .prompt-input-row .placeholder {
+    flex: 1;
+    font-family: var(--font-sans);
+    font-size: 0.86rem;
+    color: rgba(255,255,255,0.28);
+  }
+
+  .pill-token {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: var(--orange-dim);
+    border: 1px solid var(--orange-border);
+    border-radius: 5px;
+    padding: 2px 8px;
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    color: var(--orange);
+    flex-shrink: 0;
+  }
+
+  .pill-token .slash { opacity: 0.5; }
+
+  .send-btn {
+    width: 32px; height: 32px;
+    background: var(--orange);
+    border: none; border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(249,115,22,0.35);
+  }
+
+  .send-btn svg { width: 15px; height: 15px; color: white; stroke-width: 2.5; }
+
+  .prompt-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .action-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 11px;
+    border-radius: 9999px;
+    font-family: var(--font-sans);
+    font-size: 0.72rem;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.55);
+    transition: all 0.15s;
+  }
+
+  .action-btn:hover { background: rgba(255,255,255,0.10); color: rgba(255,255,255,0.85); }
+
+  .action-btn.active {
+    background: var(--orange-dim);
+    border-color: var(--orange-border);
+    color: var(--orange);
+  }
+
+  .action-btn svg { width: 13px; height: 13px; stroke-width: 2; }
+  .action-spacer { flex: 1; }
+
+  /* ─── NOTES PICKER ─── */
+  .notes-picker {
+    background: #1A1410;
+    border: 1px solid rgba(249,115,22,0.22);
+    border-radius: 12px;
+    padding: 6px 0;
+    margin-bottom: 10px;
+    overflow: hidden;
+  }
+
+  .picker-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 14px 7px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    margin-bottom: 2px;
+  }
+
+  .picker-label {
+    font-family: var(--font-mono);
+    font-size: 0.63rem;
+    color: rgba(255,255,255,0.30);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .picker-hint { font-family: var(--font-mono); font-size: 0.60rem; color: rgba(255,255,255,0.20); }
+
+  .picker-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 14px; cursor: pointer; transition: background 0.12s;
+  }
+
+  .picker-row.selected { background: rgba(249,115,22,0.08); }
+  .picker-slash  { font-family: var(--font-mono); font-size: 0.78rem; color: rgba(249,115,22,0.40); }
+  .picker-title  { font-family: var(--font-mono); font-size: 0.78rem; color: rgba(249,115,22,0.88); flex: 1; }
+  .picker-ts     { font-family: var(--font-mono); font-size: 0.63rem; color: rgba(255,255,255,0.25); }
+
+  /* ─── GLOBE CARD ─── */
+  .globe-card { overflow: hidden; }
+
+  .globe-area {
+    background: linear-gradient(180deg, #0C0E12 0%, #111418 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px 0 16px;
+    position: relative;
+  }
+
+  #globe-canvas {
+    width: 260px !important;
+    height: 260px !important;
+    border-radius: 50%;
+    cursor: grab;
+    opacity: 0;
+    transition: opacity 1.2s ease;
+  }
+
+  /* vignette overlay on the globe area */
+  .globe-vignette {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(to right,
+      rgba(12,14,18,0.12) 0%,
+      rgba(12,14,18,0.02) 35%,
+      rgba(12,14,18,0.02) 65%,
+      rgba(12,14,18,0.12) 100%);
+  }
+
+  .pin-bar {
+    background: rgba(13,15,18,0.96);
+    border-top: 1px solid rgba(255,255,255,0.06);
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .pin-bar::-webkit-scrollbar { display: none; }
+
+  .pin-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex-shrink: 0;
+    padding: 5px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .pin-item:hover { background: rgba(255,255,255,0.05); }
+
+  .pin-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+  .pin-location {
+    font-family: var(--font-sans);
+    font-size: 0.80rem;
+    font-weight: 600;
+    color: rgba(255,255,255,0.82);
+    line-height: 1.2;
+  }
+
+  .pin-type {
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    color: rgba(255,255,255,0.32);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .pin-divider { width: 1px; height: 26px; background: rgba(255,255,255,0.07); flex-shrink: 0; margin: 0 2px; }
+
+  /* ─── TOPICS CARD (always dark) ─── */
+  .topics-card {
+    background: rgba(20,14,8,0.92);
+    border: 1px solid rgba(249,115,22,0.22);
+    border-radius: var(--card-radius);
+    overflow: hidden;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  .topics-card .card-header {
+    background: rgba(249,115,22,0.04);
+    border-bottom: 1px solid rgba(249,115,22,0.10);
+  }
+
+  .topics-card .card-title { color: rgba(255,255,255,0.88); }
+  .topics-card .card-action { color: rgba(249,115,22,0.70); }
+
+  .topics-card .count-badge {
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+    color: rgba(255,255,255,0.30);
+  }
+
+  .topic-item {
+    padding: 11px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .topic-item:hover { background: rgba(249,115,22,0.04); }
+
+  .topic-badges { display: flex; gap: 5px; margin-bottom: 6px; flex-wrap: wrap; }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 7px;
+    border-radius: 9999px;
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+
+  .badge-breaking  { background: rgba(239,68,68,0.18);  color: #fca5a5; border: 1px solid rgba(239,68,68,0.28); }
+  .badge-developing{ background: rgba(245,158,11,0.18); color: #fcd34d; border: 1px solid rgba(245,158,11,0.28); }
+  .badge-analysis  { background: rgba(59,130,246,0.18);  color: #93c5fd; border: 1px solid rgba(59,130,246,0.28); }
+  .badge-feature   { background: rgba(168,85,247,0.18);  color: #d8b4fe; border: 1px solid rgba(168,85,247,0.28); }
+  .badge-high      { background: rgba(249,115,22,0.14);  color: rgba(249,115,22,0.9); border: 1px solid rgba(249,115,22,0.24); }
+  .badge-medium    { background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.40); border: 1px solid rgba(255,255,255,0.10); }
+
+  .topic-headline {
+    font-family: var(--font-sans);
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: rgba(255,255,255,0.86);
+    line-height: 1.35;
+    margin-bottom: 5px;
+  }
+
+  .topic-summary {
+    font-family: var(--font-sans);
+    font-size: 0.70rem;
+    font-weight: 300;
+    color: rgba(255,255,255,0.44);
+    line-height: 1.55;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-bottom: 6px;
+  }
+
+  .topic-quote {
+    border-left: 2px solid rgba(249,115,22,0.50);
+    padding-left: 8px;
+    font-family: var(--font-sans);
+    font-size: 0.66rem;
+    font-style: italic;
+    color: rgba(255,255,255,0.34);
+    margin-bottom: 8px;
+  }
+
+  .topic-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .topic-source {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    color: rgba(255,255,255,0.27);
+  }
+
+  .btn-explore {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 3px 9px;
+    background: rgba(249,115,22,0.12);
+    border: 1px solid rgba(249,115,22,0.28);
+    border-radius: 6px;
+    font-family: var(--font-sans);
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--orange);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .btn-explore:hover { background: rgba(249,115,22,0.20); }
+
+  /* ─── SCROLLBAR ─── */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(249,115,22,0.28); border-radius: 2px; }
+
+  /* ─── SPEC BADGE ─── */
+  .spec-badge {
+    position: fixed;
+    bottom: 14px; right: 14px;
+    background: rgba(20,14,8,0.85);
+    border: 1px solid rgba(249,115,22,0.22);
+    border-radius: 9px;
+    padding: 6px 12px;
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+    color: rgba(249,115,22,0.65);
+    backdrop-filter: blur(8px);
+    z-index: 200;
+  }
+</style>
+</head>
+<body>
+
+<!-- WAVE BACKGROUND — simplex-noise driven, matches React Waves component -->
+<svg id="wave-bg" xmlns="http://www.w3.org/2000/svg"></svg>
+
+<!-- NAV PILL -->
+<header class="topbar" style="position:relative;z-index:100;">
+  <nav class="nav-pill">
+    <button class="nav-item active">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      Home
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+      Notes
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      Sources
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+      Artifacts
+    </button>
+    <button class="nav-item" style="min-width:40px;padding:0 10px;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/></svg>
+    </button>
+  </nav>
+</header>
+
+<!-- MAIN -->
+<main class="main">
+  <div class="greeting">
+    <h1>Good morning, Arsh.</h1>
+  </div>
+
+  <div class="grid-3">
+
+    <!-- LEFT: NOTES CARD -->
+    <div class="glass-card notes-card">
+      <div class="card-header">
+        <div class="icon-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        </div>
+        <span class="card-title">Notes</span>
+        <a class="card-action" href="#">View all →</a>
+      </div>
+
+      <div class="note-item">
+        <div class="note-title">Sudan ceasefire analysis</div>
+        <div class="note-excerpt">RSF advances in Khartoum stall as AU mediators signal a 72-hour pause window. Key question: does the SAF command structure hold under…</div>
+        <div class="note-time">2 hours ago</div>
+      </div>
+
+      <div class="note-item">
+        <div class="note-title">IMF debt distress framework</div>
+        <div class="note-excerpt">Comparing Ghana, Zambia, Ethiopia restructuring timelines. Common pattern: 18–24 month delay between DSA trigger and Paris Club…</div>
+        <div class="note-time">Yesterday</div>
+      </div>
+
+      <div class="note-item" style="border-bottom:none;">
+        <div class="note-title">IAEA Iran enrichment briefing</div>
+        <div class="note-excerpt">60% enriched stockpile now 30× JCPOA limit. Three scenarios for IAEA Board response…</div>
+        <div class="note-time">3 days ago</div>
+      </div>
+
+      <div class="notes-footer">
+        <button class="btn-new-note">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          New note
+        </button>
+      </div>
+    </div>
+
+    <!-- CENTER COLUMN -->
+    <div class="center-col">
+
+      <!-- PROMPT BAR -->
+      <div class="prompt-shell">
+        <!-- Notes picker -->
+        <div class="notes-picker">
+          <div class="picker-header">
+            <span class="picker-label">Your notes</span>
+            <span class="picker-hint">↑↓ navigate · ↵ insert</span>
+          </div>
+          <div class="picker-row selected">
+            <span class="picker-slash">/</span>
+            <span class="picker-title">Sudan ceasefire analysis</span>
+            <span class="picker-ts">2h ago</span>
+          </div>
+          <div class="picker-row">
+            <span class="picker-slash">/</span>
+            <span class="picker-title">IMF debt distress framework</span>
+            <span class="picker-ts">1d ago</span>
+          </div>
+          <div class="picker-row">
+            <span class="picker-slash">/</span>
+            <span class="picker-title">IAEA Iran enrichment briefing</span>
+            <span class="picker-ts">3d ago</span>
+          </div>
+        </div>
+
+        <!-- Input row -->
+        <div class="prompt-input-row">
+          <span class="pill-token"><span class="slash">/</span>Sudan ceasefire analysis</span>
+          <span class="placeholder">What gaps exist in the RSF funding chain?</span>
+          <button class="send-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+          </button>
+        </div>
+
+        <!-- Action buttons -->
+        <div class="prompt-actions">
+          <button class="action-btn active">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            Notes
+          </button>
+          <button class="action-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.46 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/></svg>
+            Deep
+          </button>
+          <button class="action-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            Globe
+          </button>
+          <div class="action-spacer"></div>
+          <button class="action-btn" style="padding:5px 9px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+          </button>
+          <button class="action-btn" style="padding:5px 9px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- GLOBE CARD (real cobe) -->
+      <div class="glass-card globe-card">
+        <div class="globe-area">
+          <canvas id="globe-canvas"></canvas>
+          <div class="globe-vignette"></div>
+        </div>
+        <div class="pin-bar">
+          <div class="pin-item">
+            <div class="pin-dot" style="background:#ef4444;box-shadow:0 0 5px #ef4444;"></div>
+            <div>
+              <div class="pin-location">Sudan / Darfur</div>
+              <div class="pin-type">Conflict</div>
+            </div>
+          </div>
+          <div class="pin-divider"></div>
+          <div class="pin-item">
+            <div class="pin-dot" style="background:#fbbf24;box-shadow:0 0 5px #fbbf24;"></div>
+            <div>
+              <div class="pin-location">Tehran, Iran</div>
+              <div class="pin-type">Diplomacy</div>
+            </div>
+          </div>
+          <div class="pin-divider"></div>
+          <div class="pin-item">
+            <div class="pin-dot" style="background:#F97316;box-shadow:0 0 5px #F97316;"></div>
+            <div>
+              <div class="pin-location">Ukraine</div>
+              <div class="pin-type">Conflict</div>
+            </div>
+          </div>
+          <div class="pin-divider"></div>
+          <div class="pin-item">
+            <div class="pin-dot" style="background:#ef4444;box-shadow:0 0 5px #ef4444;"></div>
+            <div>
+              <div class="pin-location">Gaza</div>
+              <div class="pin-type">Conflict</div>
+            </div>
+          </div>
+          <div class="pin-divider"></div>
+          <div class="pin-item">
+            <div class="pin-dot" style="background:#7f77dd;box-shadow:0 0 5px #7f77dd;"></div>
+            <div>
+              <div class="pin-location">Caracas</div>
+              <div class="pin-type">Politics</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: TODAY'S TOPICS CARD -->
+    <div class="topics-card">
+      <div class="card-header">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(249,115,22,0.75)" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        <span class="card-title">Today's Topics</span>
+        <span class="count-badge">5 stories</span>
+      </div>
+
+      <div class="topic-item">
+        <div class="topic-badges">
+          <span class="badge badge-breaking">Breaking</span>
+          <span class="badge badge-high">High</span>
+        </div>
+        <div class="topic-headline">Sudan RSF advances on El Fasher as ceasefire talks collapse in Cairo</div>
+        <div class="topic-summary">Rapid Support Forces moved on El Fasher overnight, the last major city under SAF control in Darfur. AU mediators suspended talks after the SAF delegation walked out citing violations.</div>
+        <div class="topic-quote">"This is the moment the war either ends or expands regionally." — UN envoy</div>
+        <div class="topic-footer">
+          <span class="topic-source">Reuters · Al Jazeera</span>
+          <button class="btn-explore">Explore ›</button>
+        </div>
+      </div>
+
+      <div class="topic-item">
+        <div class="topic-badges">
+          <span class="badge badge-developing">Developing</span>
+          <span class="badge badge-high">High</span>
+        </div>
+        <div class="topic-headline">IAEA: Iran's 60% enriched stockpile now 30× JCPOA limits</div>
+        <div class="topic-summary">Rafael Grossi's report to the Board of Governors shows Iran holds 274.8kg of 60% enriched uranium, far exceeding the 202.8kg threshold.</div>
+        <div class="topic-footer">
+          <span class="topic-source">IAEA · FT · Axios</span>
+          <button class="btn-explore">Explore ›</button>
+        </div>
+      </div>
+
+      <div class="topic-item">
+        <div class="topic-badges">
+          <span class="badge badge-analysis">Analysis</span>
+          <span class="badge badge-medium">Medium</span>
+        </div>
+        <div class="topic-headline">IMF debt framework quietly shifts burden to governments</div>
+        <div class="topic-summary">Revised DSA methodology weights primary surplus targets more heavily, extending austerity timelines for distressed sovereigns by an average 3.4 years.</div>
+        <div class="topic-footer">
+          <span class="topic-source">IMF · The Economist</span>
+          <button class="btn-explore">Explore ›</button>
+        </div>
+      </div>
+
+      <div class="topic-item" style="border-bottom:none;">
+        <div class="topic-badges">
+          <span class="badge badge-feature">Feature</span>
+          <span class="badge badge-medium">Medium</span>
+        </div>
+        <div class="topic-headline">Taiwan's chip sector braces for new US packaging export controls</div>
+        <div class="topic-footer">
+          <span class="topic-source">Nikkei · Bloomberg</span>
+          <button class="btn-explore">Explore ›</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<div class="spec-badge">Quarry · Homepage Mockup · 2026-04-15</div>
+
+<!-- WAVES + GLOBE -->
+<script type="module">
+import createGlobe from 'https://esm.sh/cobe@0.6.3';
+
+/* ── Inline 2D Perlin noise (no CDN needed) ─────────────────────────── */
+function makeNoise2D() {
+  const p = new Uint8Array(512);
+  const src = new Uint8Array(256).map((_, i) => i);
+  for (let i = 255; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [src[i], src[j]] = [src[j], src[i]];
+  }
+  for (let i = 0; i < 512; i++) p[i] = src[i & 255];
+  const fade = t => t * t * t * (t * (t * 6 - 15) + 10);
+  const lerp = (a, b, t) => a + t * (b - a);
+  const grad = (h, x, y) => { const g = h & 3; return g === 0 ? x+y : g === 1 ? -x+y : g === 2 ? x-y : -x-y; };
+  return (x, y) => {
+    const X = Math.floor(x) & 255, Y = Math.floor(y) & 255;
+    x -= Math.floor(x); y -= Math.floor(y);
+    const u = fade(x), v = fade(y);
+    const a = p[X]+Y, b = p[X+1]+Y;
+    return lerp(lerp(grad(p[a],x,y),grad(p[b],x-1,y),u),lerp(grad(p[a+1],x,y-1),grad(p[b+1],x-1,y-1),u),v);
+  };
+}
+
+/* ── Waves ─────────────────────────────────────────────────────────── */
+;(function initWaves() {
+  const svg = document.getElementById('wave-bg');
+  const GID = 'wg-grad';
+  const COLOR_A = 'rgba(255,255,255,0.14)';
+  const COLOR_B = 'rgba(249,115,22,0.16)';
+  const X_GAP   = 8;
+  const Y_GAP   = 8;
+
+  const noise2D = makeNoise2D();
+
+  const mouse = { x: -10, y: 0, lx: 0, ly: 0, sx: 0, sy: 0, v: 0, vs: 0, a: 0, set: false };
+  let lines  = [];   // Point[][]
+  let paths  = [];   // SVGPathElement[]
+  let W = 0, H = 0;
+
+  function ns(tag) { return document.createElementNS('http://www.w3.org/2000/svg', tag); }
+
+  function build() {
+    W = window.innerWidth;
+    H = document.body.scrollHeight;
+
+    svg.style.width  = W + 'px';
+    svg.style.height = H + 'px';
+    svg.innerHTML    = '';
+    lines = [];
+    paths = [];
+
+    // gradient
+    const defs = ns('defs');
+    const grad = ns('linearGradient');
+    grad.setAttribute('id',  GID);
+    grad.setAttribute('x1', '0%'); grad.setAttribute('y1', '0%');
+    grad.setAttribute('x2', '100%'); grad.setAttribute('y2', '0%');
+    const s1 = ns('stop'); s1.setAttribute('offset','0%');   s1.setAttribute('stop-color', COLOR_A);
+    const s2 = ns('stop'); s2.setAttribute('offset','100%'); s2.setAttribute('stop-color', COLOR_B);
+    grad.appendChild(s1); grad.appendChild(s2);
+    defs.appendChild(grad);
+    svg.appendChild(defs);
+
+    const oW = W + 200;
+    const oH = H + 30;
+    const totalLines  = Math.ceil(oW / X_GAP);
+    const totalPoints = Math.ceil(oH / Y_GAP);
+    const xStart = (W - X_GAP * totalLines)  / 2;
+    const yStart = (H - Y_GAP * totalPoints) / 2;
+
+    for (let i = 0; i < totalLines; i++) {
+      const pts = [];
+      for (let j = 0; j < totalPoints; j++) {
+        pts.push({
+          x: xStart + X_GAP * i,
+          y: yStart + Y_GAP * j,
+          wave:   { x: 0, y: 0 },
+          cursor: { x: 0, y: 0, vx: 0, vy: 0 },
+        });
+      }
+      const path = ns('path');
+      path.setAttribute('fill',         'none');
+      path.setAttribute('stroke',       `url(#${GID})`);
+      path.setAttribute('stroke-width', '1');
+      svg.appendChild(path);
+      paths.push(path);
+      lines.push(pts);
+    }
+  }
+
+  function movePoints(time) {
+    lines.forEach(pts => {
+      pts.forEach(p => {
+        const move = noise2D((p.x + time * 0.008) * 0.003, (p.y + time * 0.003) * 0.002) * 8;
+        p.wave.x = Math.cos(move) * 12;
+        p.wave.y = Math.sin(move) * 6;
+
+        const dx = p.x - mouse.sx;
+        const dy = p.y - mouse.sy;
+        const d  = Math.hypot(dx, dy);
+        const l  = Math.max(175, mouse.vs);
+
+        if (d < l) {
+          const s = 1 - d / l;
+          const f = Math.cos(d * 0.001) * s;
+          p.cursor.vx += Math.cos(mouse.a) * f * l * mouse.vs * 0.00035;
+          p.cursor.vy += Math.sin(mouse.a) * f * l * mouse.vs * 0.00035;
+        }
+
+        p.cursor.vx += (0 - p.cursor.x) * 0.01;
+        p.cursor.vy += (0 - p.cursor.y) * 0.01;
+        p.cursor.vx *= 0.95;
+        p.cursor.vy *= 0.95;
+        p.cursor.x  += p.cursor.vx;
+        p.cursor.y  += p.cursor.vy;
+        p.cursor.x = Math.min(50, Math.max(-50, p.cursor.x));
+        p.cursor.y = Math.min(50, Math.max(-50, p.cursor.y));
+      });
+    });
+  }
+
+  function moved(p, withCursor = true) {
+    return {
+      x: p.x + p.wave.x + (withCursor ? p.cursor.x : 0),
+      y: p.y + p.wave.y + (withCursor ? p.cursor.y : 0),
+    };
+  }
+
+  function drawLines() {
+    lines.forEach((pts, li) => {
+      if (pts.length < 2 || !paths[li]) return;
+      const fp = moved(pts[0], false);
+      let d = `M ${fp.x} ${fp.y}`;
+      for (let i = 1; i < pts.length; i++) {
+        const c = moved(pts[i]);
+        d += ` L ${c.x} ${c.y}`;
+      }
+      paths[li].setAttribute('d', d);
+    });
+  }
+
+  function tick(time) {
+    mouse.sx += (mouse.x - mouse.sx) * 0.1;
+    mouse.sy += (mouse.y - mouse.sy) * 0.1;
+    const dx = mouse.x - mouse.lx;
+    const dy = mouse.y - mouse.ly;
+    const d  = Math.hypot(dx, dy);
+    mouse.v  = d;
+    mouse.vs += (d - mouse.vs) * 0.1;
+    mouse.vs = Math.min(100, mouse.vs);
+    mouse.lx = mouse.x;
+    mouse.ly = mouse.y;
+    mouse.a  = Math.atan2(dy, dx);
+    movePoints(time);
+    drawLines();
+    requestAnimationFrame(tick);
+  }
+
+  window.addEventListener('mousemove', e => {
+    mouse.x = e.pageX;
+    mouse.y = e.pageY;
+    if (!mouse.set) {
+      mouse.sx = mouse.x; mouse.sy = mouse.y;
+      mouse.lx = mouse.x; mouse.ly = mouse.y;
+      mouse.set = true;
+    }
+  });
+
+  window.addEventListener('resize', build);
+
+  build();
+  requestAnimationFrame(tick);
+})();
+
+/* ── Globe ──────────────────────────────────────────────────────────── */
+
+const canvas = document.getElementById('globe-canvas');
+
+// Match canvas pixel size to CSS size
+const CSS_SIZE = 260;
+canvas.width  = CSS_SIZE * window.devicePixelRatio;
+canvas.height = CSS_SIZE * window.devicePixelRatio;
+
+let phi = 0;
+let globe;
+
+const globe_markers = [
+  { location: [13.0,  22.0], size: 0.048 }, // Sudan/Darfur
+  { location: [35.6,  51.4], size: 0.042 }, // Tehran
+  { location: [49.0,  31.0], size: 0.042 }, // Ukraine
+  { location: [31.5,  34.5], size: 0.044 }, // Gaza
+  { location: [ 8.0, -66.0], size: 0.038 }, // Venezuela
+  { location: [ 6.0,  46.0], size: 0.038 }, // Somalia
+  { location: [17.0,  96.0], size: 0.040 }, // Myanmar
+];
+
+globe = createGlobe(canvas, {
+  devicePixelRatio: window.devicePixelRatio || 1,
+  width:  CSS_SIZE * (window.devicePixelRatio || 1),
+  height: CSS_SIZE * (window.devicePixelRatio || 1),
+  phi: 0,
+  theta: 0.25,
+  dark: 1,
+  diffuse: 1.05,
+  mapSamples: 16000,
+  mapBrightness: 4,
+  baseColor:   [0.10, 0.12, 0.15],
+  markerColor: [0.98, 0.45, 0.09],
+  glowColor:   [0.05, 0.06, 0.09],
+  markers: globe_markers,
+  onRender(state) {
+    state.phi = phi;
+    phi += 0.003;
+  },
+});
+
+// Fade in once ready
+setTimeout(() => { canvas.style.opacity = '1'; }, 200);
+
+// Basic drag support
+let pointerX = null;
+let offset = 0;
+let drag = 0;
+
+canvas.addEventListener('pointerdown', e => {
+  pointerX = e.clientX;
+  canvas.style.cursor = 'grabbing';
+});
+
+window.addEventListener('pointermove', e => {
+  if (pointerX !== null) drag = (e.clientX - pointerX) / 280;
+}, { passive: true });
+
+window.addEventListener('pointerup', () => {
+  if (pointerX !== null) { offset += drag; drag = 0; }
+  pointerX = null;
+  canvas.style.cursor = 'grab';
+}, { passive: true });
+</script>
+
+</body>
+</html>

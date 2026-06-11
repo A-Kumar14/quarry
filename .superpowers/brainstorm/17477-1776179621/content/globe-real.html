@@ -1,0 +1,233 @@
+<h2>Globe Card — Real cobe Globe</h2>
+<p class="subtitle">Exact config from InlineGlobeMap, both dark + light mode</p>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Serif:wght@400;600;700&display=swap');
+
+  :root {
+    --sans: 'IBM Plex Sans', system-ui, sans-serif;
+    --serif: 'IBM Plex Serif', Georgia, serif;
+    --mono: 'IBM Plex Mono', monospace;
+  }
+
+  .two-up {
+    display: flex; gap: 32px; justify-content: center; align-items: flex-start;
+    flex-wrap: wrap; margin-top: 20px;
+  }
+  .variant-label {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
+    text-transform: uppercase; margin-bottom: 8px; opacity: 0.5;
+  }
+
+  /* Dark card */
+  .globe-card-dark {
+    width: 320px; border-radius: 14px; overflow: hidden;
+    background: rgba(20,14,8,0.92);
+    border: 1px solid rgba(249,115,22,0.22);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.40);
+    display: flex; flex-direction: column;
+  }
+  .globe-area-dark {
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+    padding: 10px 8px;
+  }
+  .canvas-wrap {
+    width: 100%; aspect-ratio: 1 / 1; position: relative;
+  }
+  .globe-canvas {
+    width: 100%; height: 100%;
+    cursor: grab;
+    opacity: 0;
+    transition: opacity 1.2s ease;
+    touch-action: none;
+    display: block;
+  }
+  .globe-vignette-dark {
+    position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(
+      to right,
+      rgba(18,14,10,0.10) 0%,
+      rgba(18,14,10,0.02) 40%,
+      rgba(18,14,10,0.08) 100%
+    );
+  }
+
+  /* Pin bar — dark */
+  .pin-bar {
+    position: absolute; left: 12px; right: 12px; bottom: 10px;
+    border-radius: 9px; padding: 8px 10px;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .pin-bar-dark {
+    border: 1px solid rgba(249,115,22,0.28);
+    background: rgba(12,12,14,0.72);
+  }
+  .pin-bar-light {
+    border: 1px solid rgba(249,115,22,0.24);
+    background: rgba(255,255,255,0.80);
+  }
+  .pin-bar-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 3px; }
+  .pin-label-dark { font-family: var(--serif); font-size: 0.86rem; font-weight: 600; color: #F0E6D8; }
+  .pin-type-dark   { font-family: var(--mono);  font-size: 0.56rem; color: rgba(200,195,185,0.55); text-transform: uppercase; }
+  .pin-desc-dark   { font-family: var(--sans);  font-size: 0.67rem; color: rgba(200,195,185,0.55); line-height: 1.4;
+    display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+
+  .pin-label-light { font-family: var(--serif); font-size: 0.86rem; font-weight: 600; color: #1a0f05; }
+  .pin-type-light  { font-family: var(--mono);  font-size: 0.56rem; color: rgba(90,70,40,0.55); text-transform: uppercase; }
+  .pin-desc-light  { font-family: var(--sans);  font-size: 0.67rem; color: rgba(90,70,40,0.55); line-height: 1.4;
+    display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+
+  /* Light card */
+  .globe-card-light {
+    width: 320px; border-radius: 14px; overflow: hidden;
+    background: rgba(255,255,255,0.44);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(120,100,70,0.16);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    display: flex; flex-direction: column;
+  }
+  .globe-area-light {
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+    padding: 10px 8px;
+  }
+  .globe-vignette-light {
+    position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(
+      to right,
+      rgba(237,232,223,0.20) 0%,
+      rgba(237,232,223,0.04) 38%,
+      rgba(237,232,223,0.16) 100%
+    );
+  }
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/cobe@0.6.3/dist/cobe.min.js"></script>
+
+<div class="two-up">
+
+  <!-- Dark mode -->
+  <div>
+    <div class="variant-label">Dark mode</div>
+    <div class="globe-card-dark">
+      <div class="globe-area-dark">
+        <div class="canvas-wrap">
+          <canvas id="globe-dark" class="globe-canvas"></canvas>
+          <div class="globe-vignette-dark"></div>
+          <div class="pin-bar pin-bar-dark">
+            <div class="pin-bar-top">
+              <span class="pin-label-dark" id="pin-label-dark">Gaza</span>
+              <span class="pin-type-dark" id="pin-type-dark">Conflict</span>
+            </div>
+            <div class="pin-desc-dark" id="pin-desc-dark">Ongoing airstrikes; humanitarian crisis escalating</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Light mode -->
+  <div>
+    <div class="variant-label">Light mode</div>
+    <div class="globe-card-light">
+      <div class="globe-area-light">
+        <div class="canvas-wrap">
+          <canvas id="globe-light" class="globe-canvas"></canvas>
+          <div class="globe-vignette-light"></div>
+          <div class="pin-bar pin-bar-light">
+            <div class="pin-bar-top">
+              <span class="pin-label-light" id="pin-label-light">Gaza</span>
+              <span class="pin-type-light" id="pin-type-light">Conflict</span>
+            </div>
+            <div class="pin-desc-light" id="pin-desc-light">Ongoing airstrikes; humanitarian crisis escalating</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const WORLD_PINS = [
+  { label: 'Gaza',           desc: 'Ongoing airstrikes; humanitarian crisis escalating',     lat:  31.5, lng:  34.5, type: 'Conflict'  },
+  { label: 'Sudan / Darfur', desc: 'RSF offensive; UN reports mass displacement',             lat:  13.0, lng:  22.0, type: 'Conflict'  },
+  { label: 'Ukraine',        desc: 'Front-line shelling continues in Donetsk region',         lat:  49.0, lng:  31.0, type: 'Conflict'  },
+  { label: 'Myanmar',        desc: 'Junta airstrikes on civilian areas; internet blackout',   lat:  17.0, lng:  96.0, type: 'Conflict'  },
+  { label: 'Haiti',          desc: 'Gang violence; government collapse imminent',             lat:  19.0, lng: -72.0, type: 'Conflict'  },
+  { label: 'Sahel',          desc: 'Drought + armed groups driving food insecurity',          lat:  14.0, lng:   2.0, type: 'Famine'    },
+  { label: 'Ethiopia',       desc: 'Tigray ceasefire fragile; aid access blocked',            lat:   9.0, lng:  38.0, type: 'Famine'    },
+  { label: 'Venezuela',      desc: 'Opposition crackdown; election fraud allegations',        lat:   8.0, lng: -66.0, type: 'Politics'  },
+  { label: 'Georgia',        desc: 'Anti-govt protests after disputed election result',       lat:  41.5, lng:  44.5, type: 'Politics'  },
+  { label: 'Bangladesh',     desc: 'Monsoon flooding displaced 4M; aid insufficient',         lat:  23.0, lng:  90.0, type: 'Famine'    },
+  { label: 'Somalia',        desc: 'Al-Shabaab advance; famine risk elevated',                lat:   6.0, lng:  46.0, type: 'Conflict'  },
+];
+
+const markers = WORLD_PINS.map(p => ({ location: [p.lat, p.lng], size: 0.042 }));
+
+function makeGlobe(canvasId, dark) {
+  const canvas = document.getElementById(canvasId);
+  const w = canvas.offsetWidth || 304;
+  canvas.width = w * Math.min(window.devicePixelRatio || 1, 2);
+  canvas.height = w * Math.min(window.devicePixelRatio || 1, 2);
+
+  let phi = 0;
+  let pointerX = null;
+  let dragOffset = 0;
+  let phiOffset = 0;
+  let isPaused = false;
+
+  const globe = createGlobe(canvas, {
+    devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+    width:  w * Math.min(window.devicePixelRatio || 1, 2),
+    height: w * Math.min(window.devicePixelRatio || 1, 2),
+    phi: 0, theta: 0.25,
+    dark: dark ? 1 : 0,
+    diffuse: dark ? 1.05 : 1.35,
+    mapSamples: 16000,
+    mapBrightness: dark ? 4 : 6,
+    baseColor:   dark ? [0.10, 0.12, 0.15] : [0.90, 0.88, 0.84],
+    markerColor: [0.98, 0.45, 0.09],
+    glowColor:   dark ? [0.05, 0.06, 0.09] : [0.88, 0.84, 0.78],
+    markers,
+    onRender(state) {
+      if (!isPaused) phi += 0.003;
+      state.phi = phi + phiOffset + dragOffset;
+      state.theta = 0.25;
+    },
+  });
+
+  setTimeout(() => { canvas.style.opacity = '1'; });
+
+  canvas.addEventListener('pointerdown', e => {
+    pointerX = e.clientX; isPaused = true; canvas.style.cursor = 'grabbing';
+  });
+  window.addEventListener('pointermove', e => {
+    if (pointerX !== null) dragOffset = (e.clientX - pointerX) / 300;
+  });
+  window.addEventListener('pointerup', () => {
+    if (pointerX !== null) { phiOffset += dragOffset; dragOffset = 0; }
+    pointerX = null; isPaused = false; canvas.style.cursor = 'grab';
+  });
+}
+
+// init both globes
+makeGlobe('globe-dark',  true);
+makeGlobe('globe-light', false);
+
+// cycle active pin label
+let activeIdx = 0;
+function updatePin() {
+  const pin = WORLD_PINS[activeIdx];
+  ['dark','light'].forEach(mode => {
+    document.getElementById('pin-label-' + mode).textContent = pin.label;
+    document.getElementById('pin-type-'  + mode).textContent = pin.type;
+    document.getElementById('pin-desc-'  + mode).textContent = pin.desc;
+  });
+  activeIdx = (activeIdx + 1) % WORLD_PINS.length;
+}
+setInterval(updatePin, 2800);
+</script>

@@ -1,0 +1,267 @@
+<h2>Globe Card — cobe v2</h2>
+<p class="subtitle">New card design with real cobe globe</p>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Serif:wght@400;600;700&display=swap');
+
+  :root {
+    --sans:  'IBM Plex Sans',  system-ui, sans-serif;
+    --serif: 'IBM Plex Serif', Georgia, serif;
+    --mono:  'IBM Plex Mono',  monospace;
+  }
+
+  .two-up {
+    display: flex; gap: 32px; justify-content: center; align-items: flex-start;
+    flex-wrap: wrap; margin-top: 20px;
+  }
+  .variant-label {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
+    text-transform: uppercase; margin-bottom: 8px; opacity: 0.5;
+  }
+
+  /* ── DARK CARD ── */
+  .gc-dark {
+    width: 300px;
+    border-radius: 14px;
+    overflow: hidden;
+    background: rgba(20,14,8,0.92);
+    border: 1px solid rgba(249,115,22,0.22);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.50);
+  }
+
+  /* Globe area */
+  .gc-globe-area {
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px 16px 48px; /* extra bottom padding for pin bar overlap */
+  }
+  .gc-canvas-wrap {
+    width: 100%;
+    max-width: 260px;
+    aspect-ratio: 1 / 1;
+    position: relative;
+  }
+  .gc-canvas {
+    display: block;
+    width: 100%; height: 100%;
+    border-radius: 50%;
+    cursor: grab;
+    opacity: 0;
+    transition: opacity 1.2s ease;
+    touch-action: none;
+  }
+
+  /* Edge vignette */
+  .gc-vignette-dark {
+    position: absolute; inset: 0; pointer-events: none; border-radius: 50%;
+    background: radial-gradient(circle at 50% 50%, transparent 60%, rgba(14,10,6,0.35) 100%);
+  }
+
+  /* Pin bar — dark */
+  .gc-pinbar-dark {
+    position: absolute;
+    left: 12px; right: 12px; bottom: 10px;
+    border-radius: 9px;
+    border: 1px solid rgba(249,115,22,0.28);
+    background: rgba(12,10,8,0.80);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    padding: 8px 12px;
+  }
+  .gc-pinbar-top {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    margin-bottom: 3px;
+  }
+  .gc-pin-label  { font-family: var(--serif); font-size: 0.86rem; font-weight: 600; color: #F0E6D8; }
+  .gc-pin-type   { font-family: var(--mono);  font-size: 0.54rem; color: rgba(200,185,165,0.55); text-transform: uppercase; letter-spacing: 0.06em; }
+  .gc-pin-desc   {
+    font-family: var(--sans); font-size: 0.66rem; color: rgba(200,185,165,0.50);
+    line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* dot indicator */
+  .gc-pin-dot {
+    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+    box-shadow: 0 0 5px currentColor;
+  }
+
+  /* ── LIGHT CARD ── */
+  .gc-light {
+    width: 300px;
+    border-radius: 14px;
+    overflow: hidden;
+    background: rgba(255,255,255,0.50);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(120,100,70,0.18);
+    box-shadow: 0 2px 14px rgba(0,0,0,0.07);
+  }
+  .gc-pinbar-light {
+    position: absolute;
+    left: 12px; right: 12px; bottom: 10px;
+    border-radius: 9px;
+    border: 1px solid rgba(249,115,22,0.22);
+    background: rgba(255,255,255,0.85);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    padding: 8px 12px;
+  }
+  .gc-pin-label-l { font-family: var(--serif); font-size: 0.86rem; font-weight: 600; color: #1a0f05; }
+  .gc-pin-type-l  { font-family: var(--mono);  font-size: 0.54rem; color: rgba(80,60,30,0.50); text-transform: uppercase; letter-spacing: 0.06em; }
+  .gc-pin-desc-l  {
+    font-family: var(--sans); font-size: 0.66rem; color: rgba(80,60,30,0.50);
+    line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  /* type → color */
+  .type-conflict { color: #e24b4a; }
+  .type-famine   { color: #facc15; }
+  .type-politics { color: #7f77dd; }
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/cobe@0.6.3/dist/cobe.min.js"></script>
+
+<div class="two-up">
+
+  <!-- Dark -->
+  <div>
+    <div class="variant-label">Dark mode</div>
+    <div class="gc-dark">
+      <div class="gc-globe-area">
+        <div class="gc-canvas-wrap" id="wrap-dark">
+          <canvas id="c-dark" class="gc-canvas"></canvas>
+          <div class="gc-vignette-dark"></div>
+        </div>
+        <div class="gc-pinbar-dark">
+          <div class="gc-pinbar-top">
+            <div style="display:flex;align-items:center;gap:6px">
+              <div class="gc-pin-dot" id="dot-dark" style="background:#e24b4a;color:#e24b4a"></div>
+              <span class="gc-pin-label" id="label-dark">Gaza</span>
+            </div>
+            <span class="gc-pin-type" id="type-dark">Conflict</span>
+          </div>
+          <div class="gc-pin-desc" id="desc-dark">Ongoing airstrikes; humanitarian crisis escalating</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Light -->
+  <div>
+    <div class="variant-label">Light mode</div>
+    <div class="gc-light">
+      <div class="gc-globe-area">
+        <div class="gc-canvas-wrap" id="wrap-light">
+          <canvas id="c-light" class="gc-canvas"></canvas>
+          <div class="gc-vignette-dark" style="background:radial-gradient(circle at 50% 50%, transparent 60%, rgba(237,232,223,0.30) 100%)"></div>
+        </div>
+        <div class="gc-pinbar-light">
+          <div class="gc-pinbar-top">
+            <div style="display:flex;align-items:center;gap:6px">
+              <div class="gc-pin-dot" id="dot-light" style="background:#e24b4a;color:#e24b4a"></div>
+              <span class="gc-pin-label-l" id="label-light">Gaza</span>
+            </div>
+            <span class="gc-pin-type-l" id="type-light">Conflict</span>
+          </div>
+          <div class="gc-pin-desc-l" id="desc-light">Ongoing airstrikes; humanitarian crisis escalating</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const PINS = [
+  { label:'Gaza',          desc:'Ongoing airstrikes; humanitarian crisis escalating',  lat: 31.5, lng:  34.5, type:'Conflict',  color:'#e24b4a' },
+  { label:'Sudan/Darfur',  desc:'RSF offensive; UN reports mass displacement',          lat: 13.0, lng:  22.0, type:'Conflict',  color:'#e24b4a' },
+  { label:'Ukraine',       desc:'Front-line shelling continues in Donetsk region',      lat: 49.0, lng:  31.0, type:'Conflict',  color:'#F97316' },
+  { label:'Myanmar',       desc:'Junta airstrikes on civilian areas; internet blackout',lat: 17.0, lng:  96.0, type:'Conflict',  color:'#e24b4a' },
+  { label:'Haiti',         desc:'Gang violence; government collapse imminent',          lat: 19.0, lng: -72.0, type:'Conflict',  color:'#e24b4a' },
+  { label:'Sahel',         desc:'Drought + armed groups driving food insecurity',       lat: 14.0, lng:   2.0, type:'Famine',    color:'#facc15' },
+  { label:'Ethiopia',      desc:'Tigray ceasefire fragile; aid access blocked',         lat:  9.0, lng:  38.0, type:'Famine',    color:'#F97316' },
+  { label:'Venezuela',     desc:'Opposition crackdown; election fraud allegations',     lat:  8.0, lng: -66.0, type:'Politics',  color:'#7f77dd' },
+  { label:'Georgia',       desc:'Anti-govt protests after disputed election result',    lat: 41.5, lng:  44.5, type:'Politics',  color:'#7f77dd' },
+  { label:'Bangladesh',    desc:'Monsoon flooding displaced 4M; aid insufficient',      lat: 23.0, lng:  90.0, type:'Famine',    color:'#facc15' },
+  { label:'Somalia',       desc:'Al-Shabaab advance; famine risk elevated',             lat:  6.0, lng:  46.0, type:'Conflict',  color:'#e24b4a' },
+];
+
+const MARKERS = PINS.map(p => ({ location: [p.lat, p.lng], size: 0.042 }));
+
+function initGlobe(canvasId, dark) {
+  const canvas = document.getElementById(canvasId);
+
+  let globe = null;
+  let phi = 0;
+  let pointerX = null, pointerY = null;
+  let dragPhi = 0;
+  let phiOffset = 0;
+  let isPaused = false;
+
+  function build() {
+    const w = canvas.offsetWidth;
+    if (!w || globe) return;
+
+    globe = createGlobe(canvas, {
+      devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+      width:  w,
+      height: w,
+      phi: 0,
+      theta: 0.25,
+      dark: dark ? 1 : 0,
+      diffuse: dark ? 1.05 : 1.35,
+      mapSamples: 16000,
+      mapBrightness: dark ? 4 : 6,
+      baseColor:   dark ? [0.10, 0.12, 0.15] : [0.90, 0.88, 0.84],
+      markerColor: [0.98, 0.45, 0.09],
+      glowColor:   dark ? [0.05, 0.06, 0.09] : [0.88, 0.84, 0.78],
+      markers: MARKERS,
+      onRender(state) {
+        if (!isPaused) phi += 0.003;
+        state.phi   = phi + phiOffset + dragPhi;
+        state.theta = 0.25;
+      },
+    });
+
+    setTimeout(() => { canvas.style.opacity = '1'; });
+  }
+
+  if (canvas.offsetWidth > 0) {
+    build();
+  } else {
+    const ro = new ResizeObserver(entries => {
+      if (entries[0]?.contentRect.width > 0) { ro.disconnect(); build(); }
+    });
+    ro.observe(canvas);
+  }
+
+  canvas.addEventListener('pointerdown', e => {
+    pointerX = e.clientX; isPaused = true; canvas.style.cursor = 'grabbing';
+  });
+  window.addEventListener('pointermove', e => {
+    if (pointerX !== null) dragPhi = (e.clientX - pointerX) / 300;
+  }, { passive: true });
+  window.addEventListener('pointerup', () => {
+    if (pointerX !== null) { phiOffset += dragPhi; dragPhi = 0; }
+    pointerX = null; isPaused = false; canvas.style.cursor = 'grab';
+  }, { passive: true });
+}
+
+initGlobe('c-dark',  true);
+initGlobe('c-light', false);
+
+// Cycle pin labels
+let idx = 0;
+function tick() {
+  const p = PINS[idx];
+  ['dark','light'].forEach(mode => {
+    const isLight = mode === 'light';
+    document.getElementById('dot-'   + mode).style.background = p.color;
+    document.getElementById('dot-'   + mode).style.color      = p.color;
+    document.getElementById('label-' + mode).textContent = p.label;
+    document.getElementById('type-'  + mode).textContent = p.type;
+    document.getElementById('desc-'  + mode).textContent = p.desc;
+  });
+  idx = (idx + 1) % PINS.length;
+}
+setInterval(tick, 2800);
+</script>

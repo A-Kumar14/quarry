@@ -1,13 +1,18 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Briefcase, Building2, BookOpen, Star, Tags, Layers, LogOut, Check } from 'lucide-react';
+import { User, Briefcase, Tags, Layers, LogOut, Check } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useDarkMode } from '../DarkModeContext';
 import GlassCard from '../components/GlassCard';
 import PageShell from '../components/PageShell';
 
 const ROLES = ['News Researcher', 'Policy Analyst', 'Academic Researcher', 'Student', 'Independent Analyst', 'Other'];
-const EXPERTISE = ['Beginner', 'Intermediate', 'Expert'];
+const INTEREST_TOPICS = [
+  'Climate & Environment', 'Defence & Security', 'Health & Pandemic',
+  'Technology & AI', 'Trade & Economics', 'Human Rights', 'Energy & Resources',
+  'Elections & Democracy', 'Migration & Refugees', 'Geopolitics',
+  'Disinformation', 'Legal & Regulation', 'Education', 'Finance & Markets',
+];
 const SOURCE_TYPES = [
   'Academic / peer-reviewed', 'Mainstream quality news', 'Wire services (Reuters, AP, AFP)',
   'Government / official', 'NGO / think tanks', 'Alternative / independent media',
@@ -33,23 +38,68 @@ function FieldGroup({ children }) {
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>{children}</div>;
 }
 
-function Chip({ active, onClick, children }) {
+const CHIP_FONT = {
+  fontFamily: 'var(--font-family)',
+  fontSize: '0.78rem',
+  cursor: 'pointer',
+  transition: 'all 0.14s',
+  userSelect: 'none',
+  WebkitAppearance: 'none',
+  appearance: 'none',
+  margin: 0,
+};
+
+/** Single-select (role): active = filled outline — orange ring + tint, not solid pill. */
+function ChipSingle({ active, onClick, children }) {
   return (
-    <span
+    <button
+      type="button"
+      className="profile-chip-single"
+      aria-pressed={active}
       onClick={onClick}
       style={{
-        display: 'inline-flex', alignItems: 'center',
-        padding: '5px 13px', borderRadius: 999, cursor: 'pointer',
-        fontFamily: 'var(--font-family)', fontSize: '0.78rem', fontWeight: active ? 500 : 400,
-        border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
-        background: active ? 'var(--accent)' : 'var(--bg-tertiary)',
-        color: active ? '#fff' : 'var(--fg-secondary)',
-        transition: 'all 0.14s',
-        userSelect: 'none',
+        ...CHIP_FONT,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: active ? '4px 12px' : '5px 13px',
+        borderRadius: 999,
+        fontWeight: active ? 600 : 400,
+        border: active ? '2px solid var(--accent)' : '1px solid var(--border)',
+        background: active ? 'rgba(249, 115, 22, 0.13)' : 'var(--bg-tertiary)',
+        color: active ? 'var(--accent)' : 'var(--fg-secondary)',
+        boxShadow: active ? 'inset 0 0 0 1px rgba(249, 115, 22, 0.12)' : 'none',
       }}
     >
       {children}
-    </span>
+    </button>
+  );
+}
+
+/** Multi-select: checkmark when on; dashed border when off to read as “toggle set”. */
+function ChipMulti({ active, onClick, children }) {
+  return (
+    <button
+      type="button"
+      className="profile-chip-multi"
+      aria-pressed={active}
+      onClick={onClick}
+      style={{
+        ...CHIP_FONT,
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 5,
+        padding: '5px 13px',
+        borderRadius: 999,
+        fontWeight: active ? 500 : 400,
+        border: `1px ${active ? 'solid' : 'dashed'} ${active ? 'var(--accent)' : 'var(--border)'}`,
+        background: active ? 'rgba(249, 115, 22, 0.09)' : 'var(--bg-tertiary)',
+        color: active ? 'var(--fg-primary)' : 'var(--fg-secondary)',
+      }}
+    >
+      {active ? <Check size={12} strokeWidth={3} aria-hidden style={{ flexShrink: 0, color: 'var(--accent)' }} /> : null}
+      {children}
+    </button>
   );
 }
 
@@ -61,9 +111,7 @@ export default function ProfilePage() {
 
   const [form, setForm] = useState({
     role:                   p.role || '',
-    organization:           p.organization || '',
-    focus_area:             p.focus_area || p.beat || '',
-    expertise_level:        p.expertise_level || '',
+    interests:              p.interests || [],
     topics_of_focus:        p.topics_of_focus || [],
     preferred_source_types: p.preferred_source_types || [],
   });
@@ -90,7 +138,7 @@ export default function ProfilePage() {
 
   const handleSave = async () => {
     setSaving(true);
-    await updateProfile({ ...form, beat: form.focus_area, onboarded: true });
+    await updateProfile({ ...form, onboarded: true });
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
@@ -118,6 +166,10 @@ export default function ProfilePage() {
     margin: '4px 0',
   };
 
+  const accountCardExtra = dark
+    ? '0 0 0 1px rgba(249, 115, 22, 0.14), 0 16px 48px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.06)'
+    : '0 0 0 1px rgba(249, 115, 22, 0.16), 0 14px 42px rgba(55, 44, 32, 0.09), inset 0 1px 0 rgba(255, 255, 255, 0.5)';
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -126,25 +178,49 @@ export default function ProfilePage() {
         : 'linear-gradient(158deg, #EDE8DF 0%, #E5DDD0 40%, #DDD5C0 75%, #E8E2D5 100%)',
       backgroundAttachment: 'fixed',
     }}>
+      <style>{`
+        .profile-chip-single:focus-visible,
+        .profile-chip-multi:focus-visible {
+          outline: 2px solid var(--accent);
+          outline-offset: 2px;
+        }
+        .profile-topic-remove:focus-visible {
+          outline: 2px solid #fff;
+          outline-offset: 2px;
+          box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.45);
+        }
+        .profile-topic-remove:hover {
+          filter: brightness(1.06);
+        }
+        .profile-topic-remove:active {
+          filter: brightness(0.95);
+        }
+      `}</style>
 
       {/* ── Content ── */}
       <PageShell maxWidth={680} paddingTop={92} paddingBottom={80} paddingX={24}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
           {/* Account card */}
-          <GlassCard style={{ padding: '24px 28px', borderRadius: 18 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <GlassCard
+            style={{
+              padding: '26px 32px',
+              borderRadius: 18,
+              boxShadow: `${accountCardExtra}, var(--glass-card-shadow)`,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 18, minWidth: 0 }}>
                 {/* Avatar */}
                 <div style={{
-                  width: 54, height: 54, borderRadius: '50%', flexShrink: 0,
-                  background: 'var(--accent)',
+                  width: 56, height: 56, borderRadius: '50%', flexShrink: 0,
+                  background: 'linear-gradient(145deg, #fb923c 0%, var(--accent) 55%, #ea580c 100%)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  boxShadow: '0 4px 12px rgba(249,115,22,0.30)',
+                  boxShadow: '0 4px 14px rgba(249,115,22,0.32), 0 0 0 2px rgba(255,255,255,0.22) inset',
                 }}>
                   <User size={24} color="#fff" />
                 </div>
-                <div>
+                <div style={{ minWidth: 0 }}>
                   <div style={{
                     fontFamily: 'var(--font-serif)', fontSize: '1.30rem', fontWeight: 600,
                     color: 'var(--fg-primary)', lineHeight: 1.2, marginBottom: 3,
@@ -168,12 +244,13 @@ export default function ProfilePage() {
                 </div>
               </div>
               <button
+                type="button"
                 onClick={handleLogout}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
-                  padding: '8px 14px', borderRadius: 9, cursor: 'pointer',
+                  padding: '9px 16px', borderRadius: 9, cursor: 'pointer',
                   background: 'rgba(239,68,68,0.10)',
-                  border: '1px solid rgba(239,68,68,0.25)',
+                  border: '1px solid rgba(239,68,68,0.28)',
                   fontFamily: 'var(--font-family)', fontSize: '0.78rem',
                   color: dark ? '#f87171' : '#dc2626', fontWeight: 500,
                   transition: 'background 0.14s',
@@ -211,49 +288,25 @@ export default function ProfilePage() {
                 <SectionLabel icon={Briefcase}>Role</SectionLabel>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
                   {ROLES.map(r => (
-                    <Chip key={r} active={form.role === r} onClick={() => set('role', r)}>{r}</Chip>
+                    <ChipSingle key={r} active={form.role === r} onClick={() => set('role', r)}>{r}</ChipSingle>
                   ))}
                 </div>
               </FieldGroup>
 
               <div style={divider} />
 
-              {/* Organisation */}
+              {/* Interests */}
               <FieldGroup>
-                <SectionLabel icon={Building2}>Organisation</SectionLabel>
-                <input
-                  style={inputStyle}
-                  placeholder="e.g. Reuters, Oxford University, Ministry of Finance"
-                  value={form.organization}
-                  onChange={e => set('organization', e.target.value)}
-                  onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
-                  onBlur={e => e.currentTarget.style.borderColor = 'var(--border)'}
-                />
-              </FieldGroup>
-
-              <div style={divider} />
-
-              {/* Focus area */}
-              <FieldGroup>
-                <SectionLabel icon={BookOpen}>Focus area</SectionLabel>
-                <input
-                  style={inputStyle}
-                  placeholder="e.g. Climate Policy, Defence, Health, Technology Regulation"
-                  value={form.focus_area}
-                  onChange={e => set('focus_area', e.target.value)}
-                  onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
-                  onBlur={e => e.currentTarget.style.borderColor = 'var(--border)'}
-                />
-              </FieldGroup>
-
-              <div style={divider} />
-
-              {/* Expertise */}
-              <FieldGroup>
-                <SectionLabel icon={Star}>Expertise level</SectionLabel>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {EXPERTISE.map(e => (
-                    <Chip key={e} active={form.expertise_level === e} onClick={() => set('expertise_level', e)}>{e}</Chip>
+                <SectionLabel icon={Tags}>Interests</SectionLabel>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+                  {INTEREST_TOPICS.map(t => (
+                    <ChipMulti
+                      key={t}
+                      active={form.interests.includes(t)}
+                      onClick={() => toggleArr('interests', t)}
+                    >
+                      {t}
+                    </ChipMulti>
                   ))}
                 </div>
               </FieldGroup>
@@ -266,8 +319,11 @@ export default function ProfilePage() {
                 {form.topics_of_focus.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: 10 }}>
                     {form.topics_of_focus.map(t => (
-                      <span
+                      <button
                         key={t}
+                        type="button"
+                        className="profile-topic-remove"
+                        aria-label={`Remove topic: ${t}`}
                         onClick={() => setForm(f => ({ ...f, topics_of_focus: f.topics_of_focus.filter(x => x !== t) }))}
                         style={{
                           display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -276,11 +332,16 @@ export default function ProfilePage() {
                           border: '1px solid var(--accent)',
                           fontFamily: 'var(--font-family)', fontSize: '0.78rem', fontWeight: 500,
                           userSelect: 'none',
+                          margin: 0,
+                          font: 'inherit',
+                          WebkitAppearance: 'none',
+                          appearance: 'none',
+                          transition: 'filter 0.14s ease',
                         }}
                       >
-                        {t}
-                        <span style={{ opacity: 0.75, fontSize: '0.85em' }}>×</span>
-                      </span>
+                        <span style={{ textAlign: 'left' }}>{t}</span>
+                        <span style={{ opacity: 0.85, fontSize: '0.95em', fontWeight: 600 }} aria-hidden>×</span>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -315,13 +376,13 @@ export default function ProfilePage() {
                 <SectionLabel icon={Layers}>Preferred source types</SectionLabel>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
                   {SOURCE_TYPES.map(s => (
-                    <Chip
+                    <ChipMulti
                       key={s}
                       active={form.preferred_source_types.includes(s)}
                       onClick={() => toggleArr('preferred_source_types', s)}
                     >
                       {s}
-                    </Chip>
+                    </ChipMulti>
                   ))}
                 </div>
               </FieldGroup>
@@ -329,6 +390,7 @@ export default function ProfilePage() {
               {/* Save */}
               <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 4 }}>
                 <button
+                  type="button"
                   onClick={handleSave}
                   disabled={saving}
                   style={{

@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Globe Card</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #EDE8DF;
+      font-family: 'IBM Plex Sans', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 32px 16px;
+      gap: 32px;
+      flex-wrap: wrap;
+    }
+
+    .col { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px; letter-spacing: 0.08em;
+      text-transform: uppercase; opacity: 0.45;
+    }
+
+    /* ── Card shell ── */
+    .gc {
+      width: 300px;
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .gc-dark {
+      background: rgba(20,14,8,0.92);
+      border: 1px solid rgba(249,115,22,0.22);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.55);
+    }
+    .gc-light {
+      background: rgba(255,255,255,0.50);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(120,100,70,0.18);
+      box-shadow: 0 2px 14px rgba(0,0,0,0.07);
+    }
+
+    /* Globe area */
+    .gc-body {
+      position: relative;
+      display: flex; align-items: center; justify-content: center;
+      padding: 16px 16px 56px;
+    }
+    .gc-wrap {
+      width: 100%;
+      max-width: 256px;
+      aspect-ratio: 1;
+      position: relative;
+      user-select: none;
+    }
+    canvas {
+      display: block;
+      width: 100%; height: 100%;
+      border-radius: 50%;
+      cursor: grab;
+      opacity: 0;
+      transition: opacity 1.2s ease;
+      touch-action: none;
+    }
+
+    /* Pin bar */
+    .pinbar {
+      position: absolute;
+      left: 12px; right: 12px; bottom: 10px;
+      border-radius: 9px;
+      padding: 8px 12px;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    .pinbar-dark {
+      border: 1px solid rgba(249,115,22,0.28);
+      background: rgba(12,10,8,0.82);
+    }
+    .pinbar-light {
+      border: 1px solid rgba(249,115,22,0.22);
+      background: rgba(255,255,255,0.88);
+    }
+
+    .pinbar-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 3px; }
+    .pin-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+    /* dark text */
+    .d-label { font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 0.86rem; font-weight: 600; color: #F0E6D8; }
+    .d-type  { font-family: 'IBM Plex Mono', monospace; font-size: 0.54rem; color: rgba(200,185,165,0.55); text-transform: uppercase; letter-spacing: 0.06em; }
+    .d-desc  { font-family: 'IBM Plex Sans', sans-serif; font-size: 0.66rem; color: rgba(200,185,165,0.50); line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* light text */
+    .l-label { font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 0.86rem; font-weight: 600; color: #1a0f05; }
+    .l-type  { font-family: 'IBM Plex Mono', monospace; font-size: 0.54rem; color: rgba(80,60,30,0.50); text-transform: uppercase; letter-spacing: 0.06em; }
+    .l-desc  { font-family: 'IBM Plex Sans', sans-serif; font-size: 0.66rem; color: rgba(80,60,30,0.50); line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  </style>
+</head>
+<body>
+
+  <!-- Dark -->
+  <div class="col">
+    <div class="label">Dark mode</div>
+    <div class="gc gc-dark">
+      <div class="gc-body">
+        <div class="gc-wrap">
+          <canvas id="cd"></canvas>
+        </div>
+        <div class="pinbar pinbar-dark">
+          <div class="pinbar-top">
+            <div style="display:flex;align-items:center;gap:6px">
+              <div class="pin-dot" id="dot-d" style="background:#e24b4a;box-shadow:0 0 5px #e24b4a"></div>
+              <span class="d-label" id="label-d">Gaza</span>
+            </div>
+            <span class="d-type" id="type-d">Conflict</span>
+          </div>
+          <div class="d-desc" id="desc-d">Ongoing airstrikes; humanitarian crisis escalating</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Light -->
+  <div class="col">
+    <div class="label">Light mode</div>
+    <div class="gc gc-light">
+      <div class="gc-body">
+        <div class="gc-wrap">
+          <canvas id="cl"></canvas>
+        </div>
+        <div class="pinbar pinbar-light">
+          <div class="pinbar-top">
+            <div style="display:flex;align-items:center;gap:6px">
+              <div class="pin-dot" id="dot-l" style="background:#e24b4a;box-shadow:0 0 5px #e24b4a"></div>
+              <span class="l-label" id="label-l">Gaza</span>
+            </div>
+            <span class="l-type" id="type-l">Conflict</span>
+          </div>
+          <div class="l-desc" id="desc-l">Ongoing airstrikes; humanitarian crisis escalating</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+import createGlobe from 'https://esm.sh/cobe@0.6.3';
+
+const PINS = [
+  { label:'Gaza',          desc:'Ongoing airstrikes; humanitarian crisis escalating',   lat: 31.5, lng:  34.5, type:'Conflict', color:'#e24b4a' },
+  { label:'Sudan/Darfur',  desc:'RSF offensive; UN reports mass displacement',           lat: 13.0, lng:  22.0, type:'Conflict', color:'#e24b4a' },
+  { label:'Ukraine',       desc:'Front-line shelling continues in Donetsk region',       lat: 49.0, lng:  31.0, type:'Conflict', color:'#F97316' },
+  { label:'Myanmar',       desc:'Junta airstrikes on civilian areas; internet blackout', lat: 17.0, lng:  96.0, type:'Conflict', color:'#e24b4a' },
+  { label:'Haiti',         desc:'Gang violence; government collapse imminent',           lat: 19.0, lng: -72.0, type:'Conflict', color:'#e24b4a' },
+  { label:'Sahel',         desc:'Drought + armed groups driving food insecurity',        lat: 14.0, lng:   2.0, type:'Famine',   color:'#facc15' },
+  { label:'Ethiopia',      desc:'Tigray ceasefire fragile; aid access blocked',          lat:  9.0, lng:  38.0, type:'Famine',   color:'#F97316' },
+  { label:'Venezuela',     desc:'Opposition crackdown; election fraud allegations',      lat:  8.0, lng: -66.0, type:'Politics', color:'#7f77dd' },
+  { label:'Georgia',       desc:'Anti-govt protests after disputed election result',     lat: 41.5, lng:  44.5, type:'Politics', color:'#7f77dd' },
+  { label:'Bangladesh',    desc:'Monsoon flooding displaced 4M; aid insufficient',       lat: 23.0, lng:  90.0, type:'Famine',   color:'#facc15' },
+  { label:'Somalia',       desc:'Al-Shabaab advance; famine risk elevated',              lat:  6.0, lng:  46.0, type:'Conflict', color:'#e24b4a' },
+];
+
+const MARKERS = PINS.map(p => ({ location: [p.lat, p.lng], size: 0.042 }));
+
+function initGlobe(canvasId, dark) {
+  const canvas = document.getElementById(canvasId);
+  let phi = 0, phiOffset = 0, dragPhi = 0, isPaused = false, pointerX = null;
+  let globe = null;
+
+  function build() {
+    const w = canvas.offsetWidth;
+    if (!w || globe) return;
+    globe = createGlobe(canvas, {
+      devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+      width:  w,
+      height: w,
+      phi: 0, theta: 0.25,
+      dark: dark ? 1 : 0,
+      diffuse: dark ? 1.05 : 1.35,
+      mapSamples: 16000,
+      mapBrightness: dark ? 4 : 6,
+      baseColor:   dark ? [0.10, 0.12, 0.15] : [0.90, 0.88, 0.84],
+      markerColor: [0.98, 0.45, 0.09],
+      glowColor:   dark ? [0.05, 0.06, 0.09] : [0.88, 0.84, 0.78],
+      markers: MARKERS,
+      onRender(state) {
+        if (!isPaused) phi += 0.003;
+        state.phi   = phi + phiOffset + dragPhi;
+        state.theta = 0.25;
+      },
+    });
+    setTimeout(() => { canvas.style.opacity = '1'; });
+  }
+
+  canvas.addEventListener('pointerdown', e => {
+    pointerX = e.clientX; isPaused = true; canvas.style.cursor = 'grabbing';
+  });
+  window.addEventListener('pointermove', e => {
+    if (pointerX !== null) dragPhi = (e.clientX - pointerX) / 300;
+  }, { passive: true });
+  window.addEventListener('pointerup', () => {
+    if (pointerX !== null) { phiOffset += dragPhi; dragPhi = 0; }
+    pointerX = null; isPaused = false; canvas.style.cursor = 'grab';
+  }, { passive: true });
+
+  if (canvas.offsetWidth > 0) {
+    build();
+  } else {
+    const ro = new ResizeObserver(e => {
+      if (e[0]?.contentRect.width > 0) { ro.disconnect(); build(); }
+    });
+    ro.observe(canvas);
+  }
+}
+
+initGlobe('cd', true);
+initGlobe('cl', false);
+
+// Cycle pin labels
+let idx = 0;
+function tick() {
+  const p = PINS[idx];
+  for (const s of ['d','l']) {
+    document.getElementById('dot-'   + s).style.background  = p.color;
+    document.getElementById('dot-'   + s).style.boxShadow   = `0 0 5px ${p.color}`;
+    document.getElementById('label-' + s).textContent = p.label;
+    document.getElementById('type-'  + s).textContent = p.type;
+    document.getElementById('desc-'  + s).textContent = p.desc;
+  }
+  idx = (idx + 1) % PINS.length;
+}
+setInterval(tick, 2800);
+</script>
+</body>
+</html>

@@ -3,7 +3,7 @@ import { createContext, useContext, useState, useEffect } from 'react';
 const DarkModeContext = createContext([false, () => {}]);
 
 const LIGHT_BG = 'linear-gradient(158deg, #EDE8DF 0%, #E5DDD0 40%, #DDD5C0 75%, #E8E2D5 100%)';
-const DARK_BG  = 'linear-gradient(158deg, #1c1814 0%, #221d17 40%, #2a2318 75%, #1f1b14 100%)';
+const DARK_BG  = 'linear-gradient(160deg, #16110C 0%, #120E09 50%, #0E0B06 100%)';
 
 export function DarkModeProvider({ children }) {
   const [dark, setDark] = useState(() => {

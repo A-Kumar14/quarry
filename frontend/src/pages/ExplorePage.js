@@ -32,20 +32,8 @@ function getSaved() {
   catch { return []; }
 }
 
-function agoE(ts) {
-  const s = Math.floor((Date.now() - ts) / 1000);
-  if (s < 60)    return 'just now';
-  if (s < 3600)  return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86400)}d ago`;
-}
 const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 const MAX_FOLLOW_UPS = 5;
-const ANALYSIS_PROFILE_LABELS = {
-  fast_scan: 'Fast scan',
-  careful_analysis: 'Careful analysis',
-  deep_mapping: 'Deep mapping',
-};
 
 function profileIdFromModel(modelId = '') {
   if (modelId === 'openai/gpt-4o-mini') return 'fast_scan';
@@ -54,19 +42,38 @@ function profileIdFromModel(modelId = '') {
 }
 
 // ── Source database hook ───────────────────────────────────────────────────────
-function useSources() {
+/** Hydrate source profiles per domain via GET /api/sources/{domain} as results arrive. */
+function useSourcesForArticles(sourcesList) {
   const [sourceMap, setSourceMap] = useState({});
+  const fetchedRef = useRef(new Set());
+  const key = useMemo(() => {
+    const urls = (sourcesList || []).map(s => s && s.url).filter(Boolean);
+    const domains = [...new Set(urls.map(url => {
+      try { return new URL(url).hostname.replace(/^www\./i, ''); } catch { return null; }
+    }).filter(Boolean))];
+    domains.sort();
+    return domains.join('|');
+  }, [sourcesList]);
+
   useEffect(() => {
-    fetch(`${API}/api/sources`)
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then(data => {
-        const list = data.sources || data || [];
-        const map = {};
-        list.forEach(s => { if (s.domain) map[s.domain] = s; });
-        setSourceMap(map);
-      })
-      .catch(() => {});
-  }, []);
+    if (!key) return undefined;
+    const domains = key.split('|').filter(Boolean);
+    let cancelled = false;
+    domains.forEach(domain => {
+      if (fetchedRef.current.has(domain)) return;
+      fetchedRef.current.add(domain);
+      fetch(`${API}/api/sources/${encodeURIComponent(domain.replace(/^www\./i, ''))}`)
+        .then(r => (r.ok ? r.json() : null))
+        .then(data => {
+          if (!data || cancelled) return;
+          const d = data.domain || domain;
+          setSourceMap(prev => ({ ...prev, [d]: data }));
+        })
+        .catch(() => {});
+    });
+    return () => { cancelled = true; };
+  }, [key]);
+
   return sourceMap;
 }
 
@@ -1579,7 +1586,7 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
     opinionSummary: '',
     queryKey: '',
   });
-  const sourceMap = useSources();
+  const sourceMap = useSourcesForArticles(sources);
 
   // Buffer: keep SearchingCard visible until streaming is truly done.
   // `revealed` only flips to true after streaming ends and processedAnswer is set,
@@ -2757,13 +2764,16 @@ export default function ExplorePage() {
         sessionStorage.setItem('quarry_next_action', 'write');
       }
       setQuery(q.trim());
-      runSearch(q.trim(), deepFromUrl, model || '');
+      runSearch(q.trim(), deepFromUrl, model || '', ap || null);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const runSearch = useCallback(async (q, deepEnabled = false, modelOverride = '') => {
+  const runSearch = useCallback(async (q, deepEnabled = false, modelOverride = '', profileIdOverride = null) => {
     if (!q?.trim()) return;
     const modelToUse = (modelOverride || selectedModel || 'openai/gpt-4o').trim();
+    const profileToUse = (profileIdOverride != null && String(profileIdOverride).trim())
+      ? String(profileIdOverride).trim()
+      : selectedProfileId;
 
     // Persist to search history (max 20, deduplicated, most recent first)
     try {
@@ -2796,17 +2806,15 @@ export default function ExplorePage() {
     let accumulatedAnswer = '';
 
     const readStream = async (queryStr, skipSources = false) => {
-      const _token = localStorage.getItem('quarry_token') || '';
       const res = await fetch(`${API}/explore/search?deep=${deepEnabled ? 'true' : 'false'}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(_token && { 'Authorization': `Bearer ${_token}` }),
         },
         body: JSON.stringify({
           query: queryStr,
           model: modelToUse,
-          analysis_profile: selectedProfileId,
+          analysis_profile: profileToUse,
         }),
         signal,
       });
@@ -2926,12 +2934,10 @@ export default function ExplorePage() {
 
     let blockAnswer = '';
     try {
-      const authToken = localStorage.getItem('quarry_token') || '';
       const res = await fetch(`${API}/explore/search?deep=${isDeep ? 'true' : 'false'}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         },
         body: JSON.stringify({
           query: followUpText,
@@ -3113,7 +3119,7 @@ export default function ExplorePage() {
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr', gap: 1, width: '100%' }}>
 
             {/* Finance Terminal */}
-            <Box onClick={() => navigate('/finance')} sx={{
+            <Box onClick={() => navigate('/explore?q=' + encodeURIComponent('major stock indices market news') + '&mode=finance')} sx={{
               display: 'flex', flexDirection: 'column', gap: 1,
               px: 2, py: 1.5,
               borderRadius: '12px',
@@ -3276,7 +3282,7 @@ export default function ExplorePage() {
             {getSaved().slice(0, 4).map((item, i) => (
               <div
                 key={i}
-                onClick={() => navigate(`/search?q=${encodeURIComponent(item.query)}`)}
+                onClick={() => navigate(`/explore?q=${encodeURIComponent(item.query)}`)}
                 style={{
                   padding: '5px 8px', borderRadius: 6, cursor: 'pointer',
                   transition: 'background 0.12s',

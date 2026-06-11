@@ -125,7 +125,13 @@ async def explore_search(
     async def _stream():
         try:
             try:
-                stream = ai_service.explore_the_web(query=query, deep=deep, user_context=user_context)
+                stream = ai_service.explore_the_web(
+                    query=query,
+                    deep=deep,
+                    user_context=user_context,
+                    model_id=body.model,
+                    analysis_profile=body.analysis_profile,
+                )
             except TypeError:
                 # Backward-compatible with older mocks/signatures (tests monkeypatch
                 # explore_the_web with a sync generator that only accepts `query`).
@@ -1366,11 +1372,22 @@ async def _build_daily_digest(body: DailyBriefRequest):
     for t in (p.get("topics_of_focus") or [])[:3]:
         if t:
             search_terms.append(t)
-    for b in body.beats[:3]:
+    for b in body.beats[:5]:
         if b:
             search_terms.append(b)
     if not search_terms:
-        search_terms = ["world news", "international crisis", "breaking news"]
+        focus_topics = [
+            str(t).strip()
+            for t in (p.get("topics_of_focus") or [])
+            if str(t).strip()
+        ][:5]
+        if focus_topics:
+            search_terms = focus_topics
+    if not search_terms and focus_area:
+        search_terms = [str(focus_area).strip()]
+    if not search_terms:
+        # Softer general mix — avoids hard-wiring "international relations" bias
+        search_terms = ["world news", "technology and business news", "breaking news"]
 
     # Parallel news fetch
     loop = asyncio.get_event_loop()

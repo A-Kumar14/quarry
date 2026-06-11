@@ -1,0 +1,155 @@
+<h2>Globe Card — Faithful Mockup</h2>
+<p class="subtitle">Card shell + pin bar as they actually appear (dark + light mode)</p>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Serif:wght@400;600;700&display=swap');
+
+  :root {
+    --sans: 'IBM Plex Sans', system-ui, sans-serif;
+    --serif: 'IBM Plex Serif', Georgia, serif;
+    --mono: 'IBM Plex Mono', monospace;
+  }
+
+  .two-up {
+    display: flex; gap: 32px; justify-content: center; align-items: flex-start;
+    flex-wrap: wrap; margin-top: 20px;
+  }
+  .variant-label {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
+    text-transform: uppercase; margin-bottom: 8px; opacity: 0.5;
+  }
+
+  /* ── Dark card ── */
+  .globe-card-dark {
+    width: 320px; border-radius: 14px; overflow: hidden;
+    background: rgba(20,14,8,0.92);
+    border: 1px solid rgba(249,115,22,0.22);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.40);
+    display: flex; flex-direction: column;
+  }
+  .globe-area-dark {
+    position: relative; height: 240px;
+    background: radial-gradient(ellipse 80% 80% at 50% 50%, #1c1a17 0%, #0e0c0a 100%);
+    display: flex; align-items: center; justify-content: center;
+  }
+  /* Fake globe — dark dotted feel */
+  .fake-globe-dark {
+    width: 200px; height: 200px; border-radius: 50%;
+    background: radial-gradient(circle at 38% 38%, #2a2520 0%, #18140f 55%, #0c0a08 100%);
+    box-shadow: 0 0 80px rgba(0,0,0,0.8), inset 0 0 40px rgba(0,0,0,0.5);
+    position: relative;
+  }
+  /* Dot texture suggestion */
+  .fake-globe-dark::before {
+    content: '';
+    position: absolute; inset: 0; border-radius: 50%;
+    background-image: radial-gradient(circle, rgba(200,180,150,0.18) 1px, transparent 1px);
+    background-size: 10px 10px;
+    mask-image: radial-gradient(circle, white 60%, transparent 100%);
+  }
+  /* Orange markers */
+  .gpin { position: absolute; width: 7px; height: 7px; border-radius: 50%; background: #F97316; box-shadow: 0 0 8px rgba(249,115,22,0.8); }
+
+  /* Pin bar — dark */
+  .pin-bar-dark {
+    padding: 10px 14px 11px;
+    border-top: 1px solid rgba(249,115,22,0.22);
+    background: rgba(14,10,6,0.90);
+  }
+  .pin-bar-dark-top {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 3px;
+  }
+
+  /* ── Light card ── */
+  .globe-card-light {
+    width: 320px; border-radius: 14px; overflow: hidden;
+    background: rgba(255,255,255,0.44);
+    backdrop-filter: blur(14px);
+    border: 1px solid rgba(120,100,70,0.18);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    display: flex; flex-direction: column;
+  }
+  .globe-area-light {
+    position: relative; height: 240px;
+    background: radial-gradient(ellipse 80% 80% at 50% 50%, #d8cfc0 0%, #c4b89a 100%);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .fake-globe-light {
+    width: 200px; height: 200px; border-radius: 50%;
+    background: radial-gradient(circle at 38% 38%, #d4c8b0 0%, #b8a888 55%, #9a8860 100%);
+    box-shadow: inset -18px -10px 40px rgba(0,0,0,0.18), 0 0 40px rgba(0,0,0,0.08);
+    position: relative;
+  }
+  .fake-globe-light::before {
+    content: '';
+    position: absolute; inset: 0; border-radius: 50%;
+    background-image: radial-gradient(circle, rgba(80,60,30,0.20) 1px, transparent 1px);
+    background-size: 10px 10px;
+    mask-image: radial-gradient(circle, white 60%, transparent 100%);
+  }
+  .gpin-light { position: absolute; width: 7px; height: 7px; border-radius: 50%; box-shadow: 0 0 6px currentColor; }
+
+  /* Pin bar — light */
+  .pin-bar-light {
+    position: absolute; left: 12px; right: 12px; bottom: 10px;
+    border-radius: 9px;
+    border: 1px solid rgba(249,115,22,0.24);
+    background: rgba(255,255,255,0.82);
+    backdrop-filter: blur(8px);
+    padding: 8px 10px;
+  }
+  .pin-bar-light-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 3px; }
+
+  @keyframes pinPulse { 0%,100% { transform:scale(1); opacity:0.5; } 50% { transform:scale(1.9); opacity:0; } }
+  .pulse { position:absolute; width:100%; height:100%; border-radius:50%; border:1.5px solid currentColor; animation: pinPulse 2s ease-in-out infinite; }
+  .gpin-wrap { position:absolute; width:7px; height:7px; }
+</style>
+
+<div class="two-up">
+
+  <!-- Dark mode -->
+  <div>
+    <div class="variant-label">Dark mode</div>
+    <div class="globe-card-dark">
+      <div class="globe-area-dark">
+        <div class="fake-globe-dark">
+          <div class="gpin-wrap" style="top:30%;left:55%;color:#F97316"><div class="gpin" style="position:relative;background:#F97316"></div><div class="pulse"></div></div>
+          <div class="gpin-wrap" style="top:28%;left:62%;color:#F97316"><div class="gpin" style="position:relative;background:#F97316"></div></div>
+          <div class="gpin-wrap" style="top:34%;left:58%;color:#F97316"><div class="gpin" style="position:relative;background:#F97316"></div></div>
+          <div class="gpin-wrap" style="top:55%;left:36%;color:#F97316"><div class="gpin" style="position:relative;background:#F97316"></div></div>
+          <div class="gpin-wrap" style="top:65%;left:42%;color:#F97316"><div class="gpin" style="position:relative;background:#F97316"></div></div>
+        </div>
+      </div>
+      <div class="pin-bar-dark">
+        <div class="pin-bar-dark-top">
+          <span style="font-family:var(--serif);font-size:0.90rem;font-weight:700;color:#F0E6D8">Buenos Aires</span>
+          <span style="font-family:var(--mono);font-size:0.54rem;color:rgba(240,230,216,0.40);text-transform:uppercase;letter-spacing:0.08em">Sports</span>
+        </div>
+        <div style="font-family:var(--sans);font-size:0.67rem;color:rgba(240,230,216,0.45);line-height:1.4">South American football headlines and player pipeline news.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Light mode -->
+  <div>
+    <div class="variant-label">Light mode</div>
+    <div class="globe-card-light">
+      <div class="globe-area-light">
+        <div class="fake-globe-light">
+          <div class="gpin-wrap" style="top:41%;left:57%;color:#e24b4a"><div class="gpin-light" style="position:relative;background:#e24b4a;color:#e24b4a"></div><div class="pulse"></div></div>
+          <div class="gpin-wrap" style="top:28%;left:54%;color:#F97316"><div class="gpin-light" style="position:relative;background:#F97316;color:#F97316"></div></div>
+          <div class="gpin-wrap" style="top:47%;left:72%;color:#e24b4a"><div class="gpin-light" style="position:relative;background:#e24b4a;color:#e24b4a"></div></div>
+          <div class="gpin-wrap" style="top:50%;left:47%;color:#facc15"><div class="gpin-light" style="position:relative;background:#facc15;color:#facc15"></div></div>
+        </div>
+        <div class="pin-bar-light">
+          <div class="pin-bar-light-top">
+            <span style="font-family:var(--serif);font-size:0.86rem;font-weight:600;color:#1a0f05">Gaza</span>
+            <span style="font-family:var(--mono);font-size:0.56rem;color:rgba(90,62,40,0.55);text-transform:uppercase">Conflict</span>
+          </div>
+          <div style="font-family:var(--sans);font-size:0.67rem;color:rgba(90,62,40,0.55);line-height:1.4">Ongoing airstrikes; humanitarian crisis escalating</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>

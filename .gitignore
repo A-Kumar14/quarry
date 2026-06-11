@@ -14,6 +14,20 @@ frontend/build/
 frontend/.env.local
 frontend/.env
 
+# Runtime data dumps (not code — vector store + conversation history)
+backend/data/chroma/
+backend/data/conversations.json
+
+# User credentials store (PII + password hashes — never commit)
+backend/data/users.json
+
+# Editor state
+.cursor/
+frontend/.cursor/
+
+# Brainstorm runtime state (logs, pids — machine-local)
+.superpowers/brainstorm/*/state/
+
 # OS
 .DS_Store
 *.swp

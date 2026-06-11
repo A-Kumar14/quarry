@@ -1,0 +1,208 @@
+<h2>Card Design Directions</h2>
+<p class="subtitle">Same content, 3 different feels — which direction fits Quarry?</p>
+
+<style>
+  .preview-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    margin-top: 24px;
+  }
+  .direction-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    opacity: 0.6;
+  }
+
+  /* --- A: Refined Glass (current + polish) --- */
+  .card-a {
+    border-radius: 16px;
+    background: rgba(255,255,255,0.18);
+    backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,255,255,0.30);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
+    overflow: hidden;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  }
+  .card-a .card-header {
+    padding: 11px 16px 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.22);
+    background: rgba(249,115,22,0.06);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .card-a .card-header-title {
+    font-family: 'IBM Plex Serif', Georgia, serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: #2c1a0a;
+  }
+  .card-a .live-dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: #F97316; display: inline-block;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  .card-a .card-body { padding: 12px 16px; }
+  .card-a .topic-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+    font-size: 12px; color: #3a2210;
+  }
+  .card-a .topic-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+
+  /* --- B: Editorial / Newspaper --- */
+  .card-b {
+    border-radius: 4px;
+    background: #FAF7F2;
+    border: 1px solid #D4C9B5;
+    border-top: 3px solid #F97316;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    overflow: hidden;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  }
+  .card-b .card-header {
+    padding: 10px 14px 9px;
+    border-bottom: 1px solid #D4C9B5;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: transparent;
+  }
+  .card-b .card-header-title {
+    font-family: 'IBM Plex Serif', Georgia, serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: #1a0f05;
+    letter-spacing: -0.01em;
+  }
+  .card-b .live-badge {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: #F97316;
+    border: 1px solid rgba(249,115,22,0.4);
+    padding: 1px 6px; border-radius: 2px;
+  }
+  .card-b .card-body { padding: 10px 14px; }
+  .card-b .topic-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 0;
+    border-bottom: 1px solid #E8E0D0;
+    font-size: 12px; color: #2c1a0a;
+    font-weight: 500;
+  }
+  .card-b .rule-num {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px; color: #9a8a75;
+    min-width: 14px;
+  }
+
+  /* --- C: Dark/Contrast cards --- */
+  .card-c {
+    border-radius: 14px;
+    background: #1C1208;
+    border: 1px solid rgba(249,115,22,0.20);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.30);
+    overflow: hidden;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  }
+  .card-c .card-header {
+    padding: 11px 16px 10px;
+    border-bottom: 1px solid rgba(249,115,22,0.12);
+    background: rgba(249,115,22,0.07);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .card-c .card-header-title {
+    font-family: 'IBM Plex Serif', Georgia, serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: #F5EDE0;
+  }
+  .card-c .live-dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: #F97316; display: inline-block;
+    box-shadow: 0 0 6px rgba(249,115,22,0.6);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  .card-c .card-body { padding: 12px 16px; }
+  .card-c .topic-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    font-size: 12px; color: #C9A882;
+  }
+  .card-c .topic-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+
+  @keyframes pulse {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.5); }
+  }
+</style>
+
+<div class="preview-grid">
+
+  <!-- Option A -->
+  <div class="option" data-choice="a" onclick="toggleSelect(this)" style="cursor:pointer">
+    <div class="direction-label">A — Refined Glass</div>
+    <div class="card-a">
+      <div class="card-header">
+        <span class="card-header-title">Today's topics</span>
+        <span class="live-dot"></span>
+      </div>
+      <div class="card-body">
+        <div class="topic-row"><span class="topic-dot" style="background:#e24b4a"></span>Gaza ceasefire talks stall</div>
+        <div class="topic-row"><span class="topic-dot" style="background:#F97316"></span>Ukraine front-line update</div>
+        <div class="topic-row"><span class="topic-dot" style="background:#7f77dd"></span>Venezuela opposition crackdown</div>
+        <div class="topic-row"><span class="topic-dot" style="background:#facc15"></span>Sahel drought escalation</div>
+        <div class="topic-row" style="border:none"><span class="topic-dot" style="background:#e24b4a"></span>Myanmar junta airstrike</div>
+      </div>
+    </div>
+    <p style="font-size:12px;margin-top:8px;opacity:0.55;text-align:center">Polished version of current glass style</p>
+  </div>
+
+  <!-- Option B -->
+  <div class="option" data-choice="b" onclick="toggleSelect(this)" style="cursor:pointer">
+    <div class="direction-label">B — Editorial / Ink</div>
+    <div class="card-b">
+      <div class="card-header">
+        <span class="card-header-title">Today's topics</span>
+        <span class="live-badge">live</span>
+      </div>
+      <div class="card-body">
+        <div class="topic-row"><span class="rule-num">01</span>Gaza ceasefire talks stall</div>
+        <div class="topic-row"><span class="rule-num">02</span>Ukraine front-line update</div>
+        <div class="topic-row"><span class="rule-num">03</span>Venezuela opposition crackdown</div>
+        <div class="topic-row"><span class="rule-num">04</span>Sahel drought escalation</div>
+        <div class="topic-row" style="border:none"><span class="rule-num">05</span>Myanmar junta airstrike</div>
+      </div>
+    </div>
+    <p style="font-size:12px;margin-top:8px;opacity:0.55;text-align:center">Paper + ink — reads like a front page</p>
+  </div>
+
+  <!-- Option C -->
+  <div class="option" data-choice="c" onclick="toggleSelect(this)" style="cursor:pointer">
+    <div class="direction-label">C — Dark Contrast</div>
+    <div class="card-c">
+      <div class="card-header">
+        <span class="card-header-title">Today's topics</span>
+        <span class="live-dot"></span>
+      </div>
+      <div class="card-body">
+        <div class="topic-row"><span class="topic-dot" style="background:#e24b4a"></span>Gaza ceasefire talks stall</div>
+        <div class="topic-row"><span class="topic-dot" style="background:#F97316"></span>Ukraine front-line update</div>
+        <div class="topic-row"><span class="topic-dot" style="background:#7f77dd"></span>Venezuela opposition crackdown</div>
+        <div class="topic-row"><span class="topic-dot" style="background:#facc15"></span>Sahel drought escalation</div>
+        <div class="topic-row" style="border:none"><span class="topic-dot" style="background:#e24b4a"></span>Myanmar junta airstrike</div>
+      </div>
+    </div>
+    <p style="font-size:12px;margin-top:8px;opacity:0.55;text-align:center">Rich dark surface — high contrast, moody</p>
+  </div>
+
+</div>

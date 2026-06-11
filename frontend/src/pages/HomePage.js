@@ -12,6 +12,7 @@ import GlassCard from '../components/GlassCard';
 import { useNotes } from '../hooks/useNotes';
 import { buildDailyDigestSignature, getCachedDailyDigest, setCachedDailyDigest } from '../utils/dailyDigestCache';
 import { PromptInputBox } from '../components/ui/ai-prompt-box';
+import BorderGlow from '../components/ui/BorderGlow';
 import { Waves } from '../components/ui/wave-background';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -118,12 +119,7 @@ function useGlobePins(topicHint = '') {
     const url = q
       ? `${API}/explore/globe-pins?topic=${encodeURIComponent(q)}`
       : `${API}/explore/globe-pins`;
-    const authToken = localStorage.getItem('quarry_auth_token') || sessionStorage.getItem('quarry_auth_token') || '';
-    fetch(url, {
-      headers: {
-        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-      },
-    })
+    fetch(url)
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(data => {
         const live = (data.pins || []).filter(p => p.lat != null && p.lng != null);
@@ -594,13 +590,11 @@ function DailyTopicsCard({ onOpen, profile, userId }) {
       return;
     }
 
-    const authToken = localStorage.getItem('quarry_auth_token') || sessionStorage.getItem('quarry_auth_token') || '';
     setLoading(true);
     fetch(`${API}/explore/daily-digest`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
       },
       body: JSON.stringify({ beats: beatNames, profile: profile || {} }),
     })
@@ -625,10 +619,15 @@ function DailyTopicsCard({ onOpen, profile, userId }) {
   const shimmerBg = dark ? 'rgba(249,115,22,0.07)' : 'rgba(249,115,22,0.05)';
   const topics = (digest?.topics || []).slice(0, 5);
   const fallbackTopics = (profile?.topics_of_focus || []).slice(0, 5).map(label => ({ label, category: 'Focus' }));
-  const displayTopics = topics.length > 0
-    ? topics.map(t => ({ label: t.headline || t.summary || 'Untitled topic', category: t.beat || t.urgency || 'Topic' }))
-    : fallbackTopics;
-  const scopedCategory = String(profile?.focus_area || profile?.beat || '').trim().toLowerCase();
+  const hasRealTopics = topics.length > 0;
+
+  const URGENCY_BADGE = (raw = '') => {
+    const u = raw.toLowerCase();
+    if (u.includes('break')) return { label: 'Breaking',   bg: 'rgba(239,68,68,0.18)',  color: '#fca5a5', border: 'rgba(239,68,68,0.28)'  };
+    if (u.includes('develop'))return { label: 'Developing', bg: 'rgba(245,158,11,0.18)', color: '#fcd34d', border: 'rgba(245,158,11,0.28)' };
+    if (u.includes('analy'))  return { label: 'Analysis',   bg: 'rgba(59,130,246,0.18)', color: '#93c5fd', border: 'rgba(59,130,246,0.28)' };
+    return null;
+  };
 
   return (
     <div
@@ -664,56 +663,86 @@ function DailyTopicsCard({ onOpen, profile, userId }) {
       </div>
 
       {/* Topic list */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
-        {displayTopics.length === 0 && !loading && (
-          <div style={{ padding: '12px 14px', fontFamily: T.sans, fontSize: '0.76rem', color: T.fgDim }}>
-            No personalized topics yet. Add focus areas in your profile to tailor this digest.
+      <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
+        {loading && topics.length === 0 && (
+          <div style={{ padding: '12px 14px', fontFamily: T.sans, fontSize: '0.76rem', color: 'rgba(200,190,175,0.45)' }}>
+            Loading your digest…
           </div>
         )}
-        {loading && displayTopics.length === 0 && (
-          <div style={{ padding: '12px 14px', fontFamily: T.sans, fontSize: '0.76rem', color: T.fgDim }}>
-            Loading your digest...
+        {!loading && topics.length === 0 && fallbackTopics.length === 0 && (
+          <div style={{ padding: '12px 14px', fontFamily: T.sans, fontSize: '0.76rem', color: 'rgba(200,190,175,0.45)' }}>
+            Add focus areas in your profile to personalise this digest.
           </div>
         )}
-        {displayTopics.map((topic, i) => {
-          const color = CATEGORY_COLOR[topic.category] || T.accent;
-          const topicCategory = String(topic.category || '').trim().toLowerCase();
-          const showCategoryBadge = topicCategory && topicCategory !== 'focus' && topicCategory !== scopedCategory;
+        {(hasRealTopics ? topics : fallbackTopics.map(f => ({ headline: f.label, urgency: f.category }))).map((topic, i, arr) => {
+          const badge = URGENCY_BADGE(topic.urgency || topic.beat || '');
+          const catColor = CATEGORY_COLOR[topic.beat] || T.accent;
+          const headline = topic.headline || topic.label || 'Untitled topic';
+          const summary = topic.summary && topic.summary !== headline ? topic.summary : null;
           return (
             <div
               key={i}
               style={{
-                padding: '8px 14px',
-                borderBottom: i < displayTopics.length - 1
-                  ? `1px solid ${dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)'}` : 'none',
-                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '10px 14px',
+                borderBottom: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
                 transition: 'background 0.12s',
-                background: hovered ? (dark ? 'rgba(255,255,255,0.015)' : 'rgba(249,115,22,0.02)') : 'transparent',
+                cursor: 'pointer',
               }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(249,115,22,0.04)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
             >
-              {/* Category dot */}
-              <span style={{
-                width: 5, height: 5, borderRadius: '50%',
-                background: color, flexShrink: 0,
-                opacity: 0.85,
-              }} />
-              {/* Topic text */}
-              <span style={{
-                fontFamily: T.sans, fontSize: '0.76rem', fontWeight: 500,
-                color: T.fg, lineHeight: 1.35, flex: 1,
+              {/* Badges row */}
+              <div style={{ display: 'flex', gap: 5, marginBottom: 6, flexWrap: 'wrap' }}>
+                {badge ? (
+                  <span style={{
+                    fontFamily: T.mono, fontSize: '0.58rem', fontWeight: 500,
+                    textTransform: 'uppercase', letterSpacing: '0.03em',
+                    padding: '2px 7px', borderRadius: 9999,
+                    background: badge.bg, color: badge.color, border: `1px solid ${badge.border}`,
+                  }}>{badge.label}</span>
+                ) : (
+                  <span style={{
+                    fontFamily: T.mono, fontSize: '0.58rem', fontWeight: 500,
+                    textTransform: 'uppercase', letterSpacing: '0.03em',
+                    padding: '2px 7px', borderRadius: 9999,
+                    background: `${catColor}18`, color: catColor, border: `1px solid ${catColor}28`,
+                  }}>{topic.beat || 'Topic'}</span>
+                )}
+              </div>
+              {/* Headline */}
+              <div style={{
+                fontFamily: T.sans, fontSize: '0.80rem', fontWeight: 600,
+                color: 'rgba(240,230,216,0.88)', lineHeight: 1.35, marginBottom: summary ? 5 : 8,
               }}>
-                {topic.label}
-              </span>
-              {showCategoryBadge && (
-                <span style={{
-                  fontFamily: T.mono, fontSize: '0.50rem', fontWeight: 600,
-                  color: color, background: `${color}12`,
-                  border: `1px solid ${color}24`,
-                  padding: '1px 6px', borderRadius: 4, flexShrink: 0,
+                {headline}
+              </div>
+              {/* Summary */}
+              {summary && (
+                <div style={{
+                  fontFamily: T.sans, fontSize: '0.70rem', fontWeight: 300,
+                  color: 'rgba(200,190,175,0.50)', lineHeight: 1.55, marginBottom: 8,
+                  display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
                 }}>
-                  {topic.category}
-                </span>
+                  {summary}
+                </div>
               )}
+              {/* Footer */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontFamily: T.mono, fontSize: '0.60rem', color: 'rgba(200,190,175,0.30)' }}>
+                  {(topic.sources || []).slice(0, 2).join(' · ')}
+                </span>
+                <button
+                  onClick={e => { e.stopPropagation(); onOpen?.(); }}
+                  style={{
+                    background: 'rgba(249,115,22,0.12)', border: '1px solid rgba(249,115,22,0.28)',
+                    borderRadius: 6, padding: '3px 9px',
+                    fontFamily: T.sans, fontSize: '0.68rem', fontWeight: 600,
+                    color: '#F97316', cursor: 'pointer',
+                  }}
+                >
+                  Explore ›
+                </button>
+              </div>
             </div>
           );
         })}
@@ -825,12 +854,36 @@ function HomeNotesCard({ notes = [], onOpen, onNewNote }) {
           </div>
 
           {recent.map((note) => (
-            <div key={note.id} style={{ borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', padding: '8px 10px' }}>
+            <div key={note.id} style={{ borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', padding: '9px 11px' }}>
               <div style={{ fontFamily: T.sans, fontSize: '0.76rem', color: T.fg, fontWeight: 600, marginBottom: 4 }}>
                 {note.title || 'Untitled note'}
               </div>
-              <div style={{ fontFamily: T.mono, fontSize: '0.58rem', color: T.fgDim }}>
-                {note.topic?.[0] || 'General'} · updated {formatAgoFromISO(note.updatedAt)}
+              {note.body && (() => {
+                // Strip YAML frontmatter, markdown syntax, blank lines → clean preview
+                const clean = note.body
+                  .replace(/^---[\s\S]*?---\n?/, '')        // YAML frontmatter
+                  .split('\n')
+                  .filter(l => !/^\s*[\w\s]{1,20}:\s+\S/.test(l)) // skip "Key: value" metadata lines
+                  .join('\n')
+                  .replace(/^#{1,6}\s+/gm, '')              // headings
+                  .replace(/\*\*|__|~~|`{1,3}/g, '')        // bold/italic/code
+                  .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')  // links → label
+                  .replace(/^[-*>]\s+/gm, '')               // list/quote markers
+                  .replace(/\n{2,}/g, ' ')
+                  .trim();
+                if (!clean) return null;
+                return (
+                  <div style={{
+                    fontFamily: T.sans, fontSize: '0.70rem', color: T.fgSec,
+                    lineHeight: 1.5, marginBottom: 5,
+                    display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                  }}>
+                    {clean}
+                  </div>
+                );
+              })()}
+              <div style={{ fontFamily: T.mono, fontSize: '0.57rem', color: T.fgDim }}>
+                {formatAgoFromISO(note.updatedAt)}
               </div>
             </div>
           ))}
@@ -852,83 +905,68 @@ function HomeNotesCard({ notes = [], onOpen, onNewNote }) {
   );
 }
 
-function IntelligenceGrid({ onOpenDailyTopics, onOpenNotes, onCreateNote, notes, profile, userId, onSearch }) {
+function IntelligenceGrid({ onOpenDailyTopics, onOpenNotes, onCreateNote, notes, profile, userId, onSearch, userName }) {
   const [beats, setBeats] = useState([]);
   const [showGlobeModal, setShowGlobeModal] = useState(false);
-  const [globeCardHeight, setGlobeCardHeight] = useState(332);
-  const globeCardRef = useRef(null);
   const globeTopicHint = profile?.focus_area || profile?.beat || profile?.topics_of_focus?.[0] || beats[0]?.name || '';
   const globePins = useGlobePins(globeTopicHint);
 
   useEffect(() => { setBeats(getBeats()); }, []);
-  useEffect(() => {
-    if (!globeCardRef.current) return;
-    const updateHeight = () => {
-      const h = globeCardRef.current?.offsetHeight || 332;
-      if (h > 0) setGlobeCardHeight(h);
-    };
-    updateHeight();
-    const ro = new ResizeObserver(() => updateHeight());
-    ro.observe(globeCardRef.current);
-    window.addEventListener('resize', updateHeight, { passive: true });
-    return () => {
-      ro.disconnect();
-      window.removeEventListener('resize', updateHeight);
-    };
-  }, [globePins.length]);
+
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const firstName = userName ? userName.split(/[\s@]/)[0] : '';
 
   return (
     <div style={{
       width: '100%',
       display: 'flex',
-      alignItems: 'center',
+      alignItems: 'flex-start',
       justifyContent: 'center',
-      minHeight: 'calc(100vh - 56px)',
-      padding: '12px 24px',
+      minHeight: '100vh',
+      padding: '100px 24px 48px',
       boxSizing: 'border-box',
     }}>
       <div style={{
         width: '100%',
-        maxWidth: 1120,
+        maxWidth: 1220,
         display: 'flex',
         flexDirection: 'column',
-        gap: 12,
+        gap: 16,
         margin: '0 auto',
       }}>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
-          gap: 12,
-          alignItems: 'stretch',
-          width: '100%',
-        }}>
-          <div ref={globeCardRef} style={{ minWidth: 0 }}>
-            <InlineGlobeMap pins={globePins} onOpenMap={() => setShowGlobeModal(true)} />
-          </div>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateRows: `${Math.floor((globeCardHeight - 12) / 2)}px ${Math.ceil((globeCardHeight - 12) / 2)}px`,
-              gap: 12,
-              minHeight: 0,
-              height: globeCardHeight,
-            }}
-          >
-            <div style={{ minHeight: 0 }}>
-              <DailyTopicsCard onOpen={onOpenDailyTopics} profile={profile} userId={userId} />
-            </div>
-            <div style={{ minHeight: 0 }}>
-              <HomeNotesCard
-                notes={notes}
-                onOpen={onOpenNotes}
-                onNewNote={onCreateNote}
-              />
-            </div>
-          </div>
+        {/* Greeting */}
+        <div style={{ textAlign: 'center', marginBottom: 4 }}>
+          <h1 style={{
+            fontFamily: T.serif,
+            fontSize: 'clamp(1.5rem, 3vw, 1.9rem)',
+            fontWeight: 600,
+            color: T.fg,
+            letterSpacing: '-0.01em',
+          }}>
+            {greeting}{firstName ? `, ${firstName}` : ''}.
+          </h1>
         </div>
 
-        <div style={{ paddingTop: 4, width: '100%' }}>
-          <HomePromptBar onSearch={onSearch} />
+        {/* 3-column grid */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '260px 1fr 290px',
+          gap: 16,
+          alignItems: 'start',
+          width: '100%',
+        }}>
+          {/* Left: Notes */}
+          <HomeNotesCard notes={notes} onOpen={onOpenNotes} onNewNote={onCreateNote} />
+
+          {/* Centre: Prompt bar + Globe */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+            <HomePromptBar onSearch={onSearch} />
+            <InlineGlobeMap pins={globePins} onOpenMap={() => setShowGlobeModal(true)} />
+          </div>
+
+          {/* Right: Today's Topics */}
+          <DailyTopicsCard onOpen={onOpenDailyTopics} profile={profile} userId={userId} />
         </div>
       </div>
       <GlobeMapModal open={showGlobeModal} onClose={() => setShowGlobeModal(false)} pins={globePins} />
@@ -937,7 +975,7 @@ function IntelligenceGrid({ onOpenDailyTopics, onOpenNotes, onCreateNote, notes,
 }
 
 /* ── Inline globe map (cobe) ────────────────────────────────────────────── */
-function InlineGlobeMap({ pins = WORLD_PINS, onOpenMap, showSignalsList = false }) {
+function InlineGlobeMap({ pins = WORLD_PINS, onOpenMap, showSignalsList = false, modalLayout = false }) {
   const [dark] = useDarkMode();
   const [activePinIndex, setActivePinIndex] = useState(0);
   const canvasRef = useRef(null);
@@ -1028,8 +1066,6 @@ function InlineGlobeMap({ pins = WORLD_PINS, onOpenMap, showSignalsList = false 
 
   const borderC = dark ? 'rgba(255,255,255,0.08)' : 'rgba(120,100,70,0.16)';
   const fgDim   = dark ? 'rgba(200,195,185,0.55)' : 'rgba(90,70,40,0.55)';
-  const activePin = pins[Math.max(0, Math.min(activePinIndex, pins.length - 1))];
-
   return (
     <GlassCard
       onClick={onOpenMap}
@@ -1037,14 +1073,30 @@ function InlineGlobeMap({ pins = WORLD_PINS, onOpenMap, showSignalsList = false 
         borderRadius: 14,
         overflow: 'hidden',
         display: 'flex',
-        minHeight: showSignalsList ? 520 : 332,
+        flexDirection: showSignalsList ? 'row' : 'column',
+        minHeight: showSignalsList ? 520 : 0,
         cursor: onOpenMap ? 'pointer' : 'default',
       }}
     >
 
       {/* Globe */}
-      <div style={{ flex: showSignalsList ? 0.95 : 1, position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: showSignalsList ? '14px 12px' : '10px 8px' }}>
-        <div style={{ width: '100%', maxWidth: showSignalsList ? 560 : 360, aspectRatio: '1 / 1', position: 'relative' }}>
+      <div style={{
+        flex: showSignalsList ? 0.95 : 'none',
+        height: showSignalsList ? 'auto' : (modalLayout ? 460 : 300),
+        minHeight: modalLayout ? 420 : undefined,
+        position: 'relative',
+        overflow: 'hidden',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: showSignalsList ? '14px 12px' : (modalLayout ? '18px 14px' : '12px 8px'),
+      }}>
+        <div style={{
+          width: '100%',
+          maxWidth: showSignalsList ? 560 : (modalLayout ? 560 : 280),
+          aspectRatio: '1 / 1',
+          position: 'relative',
+        }}>
           <canvas
             ref={canvasRef}
             onPointerDown={e => {
@@ -1073,43 +1125,42 @@ function InlineGlobeMap({ pins = WORLD_PINS, onOpenMap, showSignalsList = false 
               : 'linear-gradient(to right, rgba(237,232,223,0.20) 0%, rgba(237,232,223,0.04) 38%, rgba(237,232,223,0.16) 100%)',
           }}
         />
-        {!showSignalsList && (
-          <div style={{
-            position: 'absolute',
-            left: 12,
-            right: 12,
-            bottom: 10,
-            borderRadius: 9,
-            border: `1px solid ${dark ? 'rgba(249,115,22,0.28)' : 'rgba(249,115,22,0.24)'}`,
-            background: dark ? 'rgba(12,12,14,0.72)' : 'rgba(255,255,255,0.80)',
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
-            padding: '8px 10px',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-              <span style={{ fontFamily: T.sans, fontSize: '0.86rem', fontWeight: 600, color: 'var(--fg-primary)' }}>
-                {activePin?.label || 'Global signal'}
-              </span>
-              <span style={{ fontFamily: T.mono, fontSize: '0.56rem', color: 'var(--fg-dim)', textTransform: 'uppercase' }}>
-                {activePin?.type || 'Signal'}
-              </span>
-            </div>
-            <div style={{
-              marginTop: 3,
-              fontFamily: T.sans,
-              fontSize: '0.67rem',
-              color: fgDim,
-              lineHeight: 1.4,
-              display: '-webkit-box',
-              WebkitLineClamp: 1,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-            }}>
-              {activePin?.desc || 'Click to open full globe map'}
-            </div>
-          </div>
-        )}
       </div>
+
+      {/* Horizontal pin bar (inline mode only) */}
+      {!showSignalsList && (
+        <div style={{
+          background: dark ? 'rgba(10,8,5,0.95)' : 'rgba(250,248,244,0.90)',
+          borderTop: `1px solid ${dark ? 'rgba(255,255,255,0.06)' : 'rgba(120,100,70,0.12)'}`,
+          padding: '6px 10px',
+          display: 'flex',
+          alignItems: 'center',
+          overflowX: 'auto',
+          scrollbarWidth: 'none',
+          flexShrink: 0,
+        }}>
+          {pins.map((pin, i) => (
+            <React.Fragment key={i}>
+              {i > 0 && <div style={{ width: 1, height: 24, background: dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.08)', flexShrink: 0, margin: '0 2px' }} />}
+              <div
+                onMouseEnter={e => { e.currentTarget.style.background = dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0, padding: '4px 9px', borderRadius: 7, background: 'transparent', transition: 'background 0.13s' }}
+              >
+                <div style={{ width: 7, height: 7, borderRadius: '50%', background: pin.color, boxShadow: `0 0 5px ${pin.color}80`, flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontFamily: T.sans, fontSize: '0.78rem', fontWeight: 600, color: dark ? 'rgba(240,230,216,0.85)' : T.fg, lineHeight: 1.2, whiteSpace: 'nowrap' }}>
+                    {pin.label}
+                  </div>
+                  <div style={{ fontFamily: T.mono, fontSize: '0.56rem', color: fgDim, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    {pin.type}
+                  </div>
+                </div>
+              </div>
+            </React.Fragment>
+          ))}
+        </div>
+      )}
 
       {/* Signal list (modal-only) */}
       {showSignalsList && (
@@ -1199,7 +1250,7 @@ function GlobeMapModal({ open, onClose, pins }) {
 
   if (!open) return null;
 
-  const modalW = activePin ? 'min(1040px,96vw)' : 'min(680px,96vw)';
+  const modalW = activePin ? 'min(1240px,98vw)' : 'min(980px,98vw)';
 
   const typePillColor = (type = '') => {
     const t = type.toLowerCase();
@@ -1216,7 +1267,7 @@ function GlobeMapModal({ open, onClose, pins }) {
         position: 'fixed', inset: 0, zIndex: 1200,
         background: 'rgba(0,0,0,0.68)',
         backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12,
       }}
     >
       <div
@@ -1229,7 +1280,7 @@ function GlobeMapModal({ open, onClose, pins }) {
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          maxHeight: '88vh',
+          maxHeight: '94vh',
           transition: 'width 0.28s cubic-bezier(0.4,0,0.2,1)',
           boxShadow: '0 24px 80px rgba(0,0,0,0.60)',
         }}
@@ -1269,13 +1320,13 @@ function GlobeMapModal({ open, onClose, pins }) {
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
 
           {/* Globe pane */}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <InlineGlobeMap pins={pins} showSignalsList={false} />
+          <div style={{ flex: 1, minWidth: 0, minHeight: 460 }}>
+            <InlineGlobeMap pins={pins} showSignalsList={false} modalLayout />
           </div>
 
           {/* Signal list */}
           <div style={{
-            width: 260, flexShrink: 0,
+            width: 300, flexShrink: 0,
             borderLeft: '1px solid rgba(255,255,255,0.06)',
             overflowY: 'auto',
           }}>
@@ -1481,7 +1532,7 @@ function HomePromptBar({ onSearch }) {
 
     if (parsed.mode === 'think') {
       nextParams.set('d', 'true');
-      navigate(`/search?${nextParams.toString()}`);
+      navigate(`/explore?${nextParams.toString()}`);
       return;
     }
 
@@ -1498,16 +1549,32 @@ function HomePromptBar({ onSearch }) {
     if (onSearch) {
       onSearch(text, { deep: false, model: profile.model, profileId: profile.id });
     } else {
-      navigate(`/search?${nextParams.toString()}`);
+      navigate(`/explore?${nextParams.toString()}`);
     }
   };
 
   return (
     <div style={{ width: '100%' }}>
-      <PromptInputBox
-        onSend={handleSend}
-        placeholder="Ask to drill into a signal or start a new investigation…"
-      />
+      <BorderGlow
+        className="w-full"
+        edgeSensitivity={27}
+        glowColor="40 80 80"
+        backgroundColor="#120F17"
+        borderRadius={28}
+        glowRadius={40}
+        glowIntensity={1.0}
+        coneSpread={25}
+        animated={false}
+        colors={['#c084fc', '#f472b6', '#38bdf8']}
+      >
+        <div style={{ padding: '8px 10px', width: '100%', boxSizing: 'border-box' }}>
+          <PromptInputBox
+            onSend={handleSend}
+            placeholder="Ask to drill into a signal or start a new investigation…"
+            className="!rounded-[26px] !border-0 !bg-transparent !shadow-none"
+          />
+        </div>
+      </BorderGlow>
     </div>
   );
 }
@@ -1533,7 +1600,7 @@ function LoggedInHome({ user }) {
     if (opts.model) params.set('model', opts.model);
     if (opts.profileId) params.set('ap', opts.profileId);
     if (opts.deep) params.set('d', 'true');
-    navigate(`/search?${params.toString()}`);
+    navigate(`/explore?${params.toString()}`);
   }, [navigate]);
 
   return (
@@ -1559,6 +1626,7 @@ function LoggedInHome({ user }) {
         profile={user?.profile || {}}
         userId={user?.id || user?.email || 'anon'}
         onSearch={handleSearch}
+        userName={user?.name || user?.email || ''}
       />
     </>
   );

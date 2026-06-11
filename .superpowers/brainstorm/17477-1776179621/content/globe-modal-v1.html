@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Globe Modal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: rgba(0,0,0,0.62);
+      backdrop-filter: blur(3px);
+      font-family: 'IBM Plex Sans', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    /* ── Modal shell ── */
+    .modal {
+      width: min(1000px, 96vw);
+      border-radius: 18px;
+      background: rgba(14,10,6,0.96);
+      border: 1px solid rgba(255,255,255,0.09);
+      box-shadow: 0 32px 80px rgba(0,0,0,0.70);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      max-height: 90vh;
+    }
+
+    /* ── Header ── */
+    .modal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 18px;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+      flex-shrink: 0;
+    }
+    .modal-header-left { display: flex; align-items: center; gap: 10px; }
+    .header-icon {
+      width: 30px; height: 30px; border-radius: 9px;
+      background: rgba(249,115,22,0.12);
+      border: 1px solid rgba(249,115,22,0.28);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+    }
+    .modal-title { font-size: 0.95rem; font-weight: 600; color: #F0E6D8; }
+    .modal-sub   { font-family: 'IBM Plex Mono', monospace; font-size: 0.56rem; color: rgba(240,230,216,0.38); margin-top: 2px; }
+    .close-btn {
+      border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; background: none;
+      width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; color: rgba(240,230,216,0.40); font-size: 13px;
+    }
+    .close-btn:hover { background: rgba(255,255,255,0.05); color: #F0E6D8; }
+
+    /* ── Body: globe + list ── */
+    .modal-body {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    /* Globe pane */
+    .globe-pane {
+      flex: 1;
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+      position: relative;
+    }
+    .globe-wrap {
+      width: 100%;
+      max-width: 480px;
+      aspect-ratio: 1;
+      position: relative;
+      user-select: none;
+    }
+    canvas {
+      display: block;
+      width: 100%; height: 100%;
+      border-radius: 50%;
+      cursor: grab;
+      opacity: 0;
+      transition: opacity 1.2s ease;
+      touch-action: none;
+    }
+
+    /* Signals pane */
+    .signals-pane {
+      width: 300px;
+      flex-shrink: 0;
+      border-left: 1px solid rgba(255,255,255,0.07);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .signals-header {
+      padding: 9px 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      background: rgba(255,255,255,0.015);
+      display: flex; align-items: center; justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .signals-label { font-family: 'IBM Plex Mono', monospace; font-size: 0.54rem; color: rgba(240,230,216,0.38); letter-spacing: 0.08em; text-transform: uppercase; }
+    .signals-count { font-family: 'IBM Plex Mono', monospace; font-size: 0.53rem; color: rgba(240,230,216,0.30); }
+
+    .signals-list { flex: 1; overflow-y: auto; }
+    .signal-row {
+      padding: 10px 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      cursor: pointer;
+      transition: background 0.12s ease;
+    }
+    .signal-row:hover, .signal-row.active {
+      background: rgba(249,115,22,0.08);
+    }
+    .signal-row-top { display: flex; align-items: center; gap: 7px; margin-bottom: 3px; }
+    .signal-num {
+      width: 16px; height: 16px; border-radius: 999px;
+      background: rgba(249,115,22,0.14);
+      border: 1px solid rgba(249,115,22,0.35);
+      flex-shrink: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-family: 'IBM Plex Mono', monospace; font-size: 0.50rem; color: #f3ded2;
+    }
+    .signal-name { font-size: 0.80rem; font-weight: 600; color: #ece2d6; flex: 1; }
+    .signal-pill {
+      display: inline-flex; align-items: center;
+      border-radius: 9999px; font-size: 9px; font-weight: 500;
+      white-space: nowrap; height: 16px; padding: 0 6px; flex-shrink: 0;
+    }
+    .pill-conflict { background: oklch(25.93% 0.0834 19.02); color: oklch(69.96% 0.2136 22.03); }
+    .pill-famine   { background: oklch(24.95% 0.0642 64.78); color: oklch(77.21% 0.1991 64.28); }
+    .pill-politics { background: oklch(25.91% 0.0921 314.41); color: oklch(69.87% 0.2037 309.51); }
+
+    .signal-desc {
+      font-size: 0.67rem; color: rgba(200,185,165,0.48); line-height: 1.42;
+      padding-left: 23px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    /* Active detail strip at bottom */
+    .detail-bar {
+      padding: 10px 14px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      background: rgba(249,115,22,0.04);
+      flex-shrink: 0;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .detail-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .detail-text { flex: 1; }
+    .detail-label { font-size: 0.78rem; font-weight: 600; color: #F0E6D8; margin-bottom: 2px; }
+    .detail-desc  { font-size: 0.65rem; color: rgba(200,185,165,0.50); line-height: 1.4; }
+    .explore-btn {
+      background: #F97316; color: #fff; border: none; border-radius: 8px;
+      padding: 6px 12px; font-family: 'IBM Plex Sans', sans-serif; font-size: 0.68rem; font-weight: 500;
+      cursor: pointer; flex-shrink: 0; white-space: nowrap;
+    }
+    .explore-btn:hover { background: #ea6a0c; }
+  </style>
+</head>
+<body>
+
+<div class="modal">
+
+  <!-- Header -->
+  <div class="modal-header">
+    <div class="modal-header-left">
+      <div class="header-icon">🌐</div>
+      <div>
+        <div class="modal-title">World Signals</div>
+        <div class="modal-sub">11 active incidents</div>
+      </div>
+    </div>
+    <button class="close-btn">✕</button>
+  </div>
+
+  <!-- Body -->
+  <div class="modal-body">
+
+    <!-- Globe -->
+    <div class="globe-pane">
+      <div class="globe-wrap">
+        <canvas id="cg"></canvas>
+      </div>
+    </div>
+
+    <!-- Signal list -->
+    <div class="signals-pane">
+      <div class="signals-list" id="signal-list"></div>
+
+      <!-- Active detail -->
+      <div class="detail-bar" id="detail-bar">
+        <div class="detail-dot" id="detail-dot" style="background:#e24b4a;box-shadow:0 0 6px #e24b4a"></div>
+        <div class="detail-text">
+          <div class="detail-label" id="detail-label">Gaza</div>
+          <div class="detail-desc"  id="detail-desc">Ongoing airstrikes; humanitarian crisis escalating</div>
+        </div>
+        <button class="explore-btn">Explore ›</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script type="module">
+import createGlobe from 'https://esm.sh/cobe@0.6.3';
+
+const PINS = [
+  { label:'Gaza',          desc:'Ongoing airstrikes; humanitarian crisis escalating',   lat: 31.5, lng:  34.5, type:'Conflict', color:'#e24b4a' },
+  { label:'Sudan/Darfur',  desc:'RSF offensive; UN reports mass displacement',           lat: 13.0, lng:  22.0, type:'Conflict', color:'#e24b4a' },
+  { label:'Ukraine',       desc:'Front-line shelling continues in Donetsk region',       lat: 49.0, lng:  31.0, type:'Conflict', color:'#F97316' },
+  { label:'Myanmar',       desc:'Junta airstrikes on civilian areas; internet blackout', lat: 17.0, lng:  96.0, type:'Conflict', color:'#e24b4a' },
+  { label:'Haiti',         desc:'Gang violence; government collapse imminent',           lat: 19.0, lng: -72.0, type:'Conflict', color:'#e24b4a' },
+  { label:'Sahel',         desc:'Drought + armed groups driving food insecurity',        lat: 14.0, lng:   2.0, type:'Famine',   color:'#facc15' },
+  { label:'Ethiopia',      desc:'Tigray ceasefire fragile; aid access blocked',          lat:  9.0, lng:  38.0, type:'Famine',   color:'#F97316' },
+  { label:'Venezuela',     desc:'Opposition crackdown; election fraud allegations',      lat:  8.0, lng: -66.0, type:'Politics', color:'#7f77dd' },
+  { label:'Georgia',       desc:'Anti-govt protests after disputed election result',     lat: 41.5, lng:  44.5, type:'Politics', color:'#7f77dd' },
+  { label:'Bangladesh',    desc:'Monsoon flooding displaced 4M; aid insufficient',       lat: 23.0, lng:  90.0, type:'Famine',   color:'#facc15' },
+  { label:'Somalia',       desc:'Al-Shabaab advance; famine risk elevated',              lat:  6.0, lng:  46.0, type:'Conflict', color:'#e24b4a' },
+];
+
+const PILL_CLASS = { Conflict:'pill-conflict', Famine:'pill-famine', Politics:'pill-politics' };
+
+// Build signal list
+const list = document.getElementById('signal-list');
+PINS.forEach((pin, i) => {
+  const row = document.createElement('div');
+  row.className = 'signal-row' + (i === 0 ? ' active' : '');
+  row.dataset.idx = i;
+  row.innerHTML = `
+    <div class="signal-row-top">
+      <span class="signal-num">${i+1}</span>
+      <span class="signal-name">${pin.label}</span>
+      <span class="signal-pill ${PILL_CLASS[pin.type] || ''}">${pin.type}</span>
+    </div>
+    <div class="signal-desc">${pin.desc}</div>
+  `;
+  row.addEventListener('mouseenter', () => setActive(i));
+  list.appendChild(row);
+});
+
+let activeIdx = 0;
+function setActive(i) {
+  activeIdx = i;
+  document.querySelectorAll('.signal-row').forEach((r,j) => r.classList.toggle('active', j === i));
+  const p = PINS[i];
+  document.getElementById('detail-dot').style.background   = p.color;
+  document.getElementById('detail-dot').style.boxShadow    = `0 0 6px ${p.color}`;
+  document.getElementById('detail-label').textContent = p.label;
+  document.getElementById('detail-desc').textContent  = p.desc;
+}
+
+// Globe
+const canvas = document.getElementById('cg');
+let phi = 0, phiOffset = 0, dragPhi = 0, isPaused = false, pointerX = null;
+
+function build() {
+  const w = canvas.offsetWidth;
+  if (!w) return;
+  const globe = createGlobe(canvas, {
+    devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+    width: w, height: w,
+    phi: 0, theta: 0.25,
+    dark: 1, diffuse: 1.05,
+    mapSamples: 16000, mapBrightness: 4,
+    baseColor:   [0.10, 0.12, 0.15],
+    markerColor: [0.98, 0.45, 0.09],
+    glowColor:   [0.05, 0.06, 0.09],
+    markers: PINS.map(p => ({ location: [p.lat, p.lng], size: 0.042 })),
+    onRender(state) {
+      if (!isPaused) phi += 0.003;
+      state.phi   = phi + phiOffset + dragPhi;
+      state.theta = 0.25;
+    },
+  });
+  setTimeout(() => { canvas.style.opacity = '1'; });
+}
+
+canvas.addEventListener('pointerdown', e => { pointerX = e.clientX; isPaused = true; canvas.style.cursor = 'grabbing'; });
+window.addEventListener('pointermove', e => { if (pointerX !== null) dragPhi = (e.clientX - pointerX) / 300; }, { passive: true });
+window.addEventListener('pointerup', () => {
+  if (pointerX !== null) { phiOffset += dragPhi; dragPhi = 0; }
+  pointerX = null; isPaused = false; canvas.style.cursor = 'grab';
+}, { passive: true });
+
+if (canvas.offsetWidth > 0) build();
+else { const ro = new ResizeObserver(e => { if (e[0]?.contentRect.width > 0) { ro.disconnect(); build(); } }); ro.observe(canvas); }
+
+// Auto-cycle active pin
+setInterval(() => { setActive((activeIdx + 1) % PINS.length); }, 2800);
+</script>
+</body>
+</html>

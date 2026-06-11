@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Prompt Bar v2</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #EDE8DF;
+      font-family: 'IBM Plex Sans', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 32px 24px; gap: 64px;
+    }
+
+    .section { width: 100%; max-width: 640px; }
+    .section-label {
+      font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+      letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.4;
+      margin-bottom: 10px;
+    }
+
+    /* Prompt box */
+    .prompt-wrap { position: relative; }
+    .prompt-box {
+      width: 100%; border-radius: 24px;
+      border: 1px solid #444; background: #1F2023;
+      padding: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.24);
+      transition: border-color 0.2s;
+    }
+    .prompt-box.active { border-color: rgba(249,115,22,0.55); }
+
+    .prompt-textarea {
+      width: 100%; border: none; background: transparent; outline: none; resize: none;
+      font-family: 'IBM Plex Sans', system-ui, sans-serif;
+      font-size: 0.95rem; color: rgba(240,230,216,0.90);
+      padding: 4px 6px 8px; min-height: 44px; line-height: 1.5;
+    }
+    .prompt-textarea::placeholder { color: rgba(240,230,216,0.28); }
+
+    .prompt-actions {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 4px 2px 2px; gap: 8px;
+    }
+    .prompt-left { display: flex; align-items: center; gap: 4px; }
+
+    .icon-btn {
+      display: flex; align-items: center; justify-content: center;
+      width: 32px; height: 32px; border-radius: 999px;
+      border: none; background: transparent;
+      color: rgba(240,230,216,0.38); cursor: pointer;
+      transition: background 0.14s, color 0.14s;
+    }
+    .icon-btn:hover { background: rgba(255,255,255,0.07); color: rgba(240,230,216,0.80); }
+    .icon-btn svg { width: 18px; height: 18px; }
+
+    .mode-btn {
+      display: flex; align-items: center; gap: 5px;
+      height: 32px; padding: 0 9px; border-radius: 999px;
+      border: 1px solid transparent; background: transparent;
+      color: rgba(240,230,216,0.38); cursor: pointer; font-size: 0.72rem;
+      font-family: 'IBM Plex Sans', sans-serif; transition: all 0.14s;
+    }
+    .mode-btn:hover { color: rgba(240,230,216,0.80); }
+    .mode-btn.active { background: rgba(249,115,22,0.15); border-color: #F97316; color: #F97316; }
+    .mode-btn svg { width: 15px; height: 15px; flex-shrink: 0; }
+
+    .divider {
+      width: 1.5px; height: 24px; margin: 0 2px;
+      background: linear-gradient(to bottom, transparent, rgba(249,115,22,0.55), transparent);
+      border-radius: 999px; flex-shrink: 0;
+    }
+
+    .send-btn {
+      width: 32px; height: 32px; border-radius: 999px; border: none;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; flex-shrink: 0; transition: background 0.14s;
+    }
+    .send-btn.idle { background: transparent; color: rgba(240,230,216,0.38); }
+    .send-btn.idle:hover { background: rgba(255,255,255,0.07); }
+    .send-btn.has-content { background: #F97316; color: #fff; }
+    .send-btn svg { width: 16px; height: 16px; }
+
+    /* ── Notes picker ── */
+    .notes-picker {
+      position: absolute;
+      left: 0; right: 0;
+      bottom: calc(100% + 8px);
+      background: #1A1410;
+      border: 1px solid rgba(249,115,22,0.22);
+      border-radius: 14px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.55);
+      overflow: hidden;
+      z-index: 10;
+    }
+    .picker-header {
+      padding: 8px 14px 6px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .picker-label {
+      font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      color: rgba(240,230,216,0.30);
+    }
+    .picker-hint {
+      font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+      color: rgba(240,230,216,0.22);
+    }
+
+    .note-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 14px; cursor: pointer;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+      transition: background 0.1s;
+    }
+    .note-item:last-child { border-bottom: none; }
+    .note-item:hover, .note-item.selected { background: rgba(249,115,22,0.08); }
+
+    .note-slash {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.72rem; color: #F97316; flex-shrink: 0; opacity: 0.7;
+    }
+    .note-title {
+      font-size: 0.82rem; font-weight: 500; color: rgba(240,230,216,0.85);
+      flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .note-meta {
+      font-family: 'IBM Plex Mono', monospace; font-size: 0.58rem;
+      color: rgba(240,230,216,0.25); flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Default state -->
+  <div class="section">
+    <div class="section-label">Default</div>
+    <div class="prompt-wrap">
+      <div class="prompt-box">
+        <textarea class="prompt-textarea" placeholder="Ask to drill into a signal or start a new investigation…" rows="1"></textarea>
+        <div class="prompt-actions">
+          <div class="prompt-left">
+            <button class="icon-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+              </svg>
+            </button>
+            <button class="mode-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
+                <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>
+              </svg>
+              Search
+            </button>
+            <div class="divider"></div>
+            <button class="mode-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9.5 2A2.5 2.5 0 0112 4.5v15a2.5 2.5 0 01-4.96-.46 2.5 2.5 0 01-2.96-3.08 3 3 0 01-.34-5.58 2.5 2.5 0 013.76-3.38z"/>
+                <path d="M14.5 2A2.5 2.5 0 0112 4.5v15a2.5 2.5 0 004.96-.46 2.5 2.5 0 002.96-3.08 3 3 0 00.34-5.58 2.5 2.5 0 00-3.76-3.38z"/>
+              </svg>
+              Think
+            </button>
+            <div class="divider"></div>
+            <button class="mode-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+              </svg>
+              Notes
+            </button>
+          </div>
+          <button class="send-btn idle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notes picker open -->
+  <div class="section">
+    <div class="section-label">Notes picker open</div>
+    <div class="prompt-wrap">
+
+      <!-- Notes picker -->
+      <div class="notes-picker">
+        <div class="picker-header">
+          <span class="picker-label">Your notes</span>
+          <span class="picker-hint">↑↓ navigate · ↵ insert</span>
+        </div>
+
+        <div class="note-item selected">
+          <span class="note-slash">/</span>
+          <span class="note-title">Latest transfer market news</span>
+          <span class="note-meta">2h ago</span>
+        </div>
+        <div class="note-item">
+          <span class="note-slash">/</span>
+          <span class="note-title">Gaza ceasefire — source tracking</span>
+          <span class="note-meta">yesterday</span>
+        </div>
+        <div class="note-item">
+          <span class="note-slash">/</span>
+          <span class="note-title">Sudan RSF offensive — draft</span>
+          <span class="note-meta">2d ago</span>
+        </div>
+        <div class="note-item">
+          <span class="note-slash">/</span>
+          <span class="note-title">Venezuela election fraud analysis</span>
+          <span class="note-meta">3d ago</span>
+        </div>
+        <div class="note-item">
+          <span class="note-slash">/</span>
+          <span class="note-title">Arteta vs Guardiola tactical breakdown</span>
+          <span class="note-meta">4d ago</span>
+        </div>
+      </div>
+
+      <div class="prompt-box active">
+        <textarea class="prompt-textarea" placeholder="Ask to drill into a signal or start a new investigation…" rows="1"></textarea>
+        <div class="prompt-actions">
+          <div class="prompt-left">
+            <button class="icon-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+              </svg>
+            </button>
+            <button class="mode-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
+                <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>
+              </svg>
+              Search
+            </button>
+            <div class="divider"></div>
+            <button class="mode-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9.5 2A2.5 2.5 0 0112 4.5v15a2.5 2.5 0 01-4.96-.46 2.5 2.5 0 01-2.96-3.08 3 3 0 01-.34-5.58 2.5 2.5 0 013.76-3.38z"/>
+                <path d="M14.5 2A2.5 2.5 0 0112 4.5v15a2.5 2.5 0 004.96-.46 2.5 2.5 0 002.96-3.08 3 3 0 00.34-5.58 2.5 2.5 0 00-3.76-3.38z"/>
+              </svg>
+              Think
+            </button>
+            <div class="divider"></div>
+            <button class="mode-btn active">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+              </svg>
+              Notes
+            </button>
+          </div>
+          <button class="send-btn idle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- After selecting a note -->
+  <div class="section">
+    <div class="section-label">After selecting — note inserted as context</div>
+    <div class="prompt-wrap">
+      <div class="prompt-box active">
+        <textarea class="prompt-textarea" rows="1">/Latest transfer market news </textarea>
+        <div class="prompt-actions">
+          <div class="prompt-left">
+            <button class="icon-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+              </svg>
+            </button>
+            <button class="mode-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
+                <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 014-10 15.3 15.3 0 01-4 10z"/>
+              </svg>
+              Search
+            </button>
+            <div class="divider"></div>
+            <button class="mode-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9.5 2A2.5 2.5 0 0112 4.5v15a2.5 2.5 0 01-4.96-.46 2.5 2.5 0 01-2.96-3.08 3 3 0 01-.34-5.58 2.5 2.5 0 013.76-3.38z"/>
+                <path d="M14.5 2A2.5 2.5 0 0112 4.5v15a2.5 2.5 0 004.96-.46 2.5 2.5 0 002.96-3.08 3 3 0 00.34-5.58 2.5 2.5 0 00-3.76-3.38z"/>
+              </svg>
+              Think
+            </button>
+            <div class="divider"></div>
+            <button class="mode-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+              </svg>
+              Notes
+            </button>
+          </div>
+          <button class="send-btn has-content">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Topbar</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'IBM Plex Sans', system-ui, sans-serif;
+      min-height: 100vh; padding: 48px 24px;
+      display: flex; flex-direction: column; gap: 48px; align-items: center;
+    }
+
+    .scene {
+      width: 100%; max-width: 900px; border-radius: 14px;
+      padding: 14px 18px; position: relative;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .scene-dark  { background: rgba(18,13,7,0.88); }
+    .scene-light { background: #EDE8DF; border: 1px solid rgba(0,0,0,0.06); }
+
+    .section-label {
+      font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+      letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.4;
+      margin-bottom: 8px;
+    }
+
+    /* Logo */
+    .logo {
+      font-family: 'IBM Plex Serif', Georgia, serif;
+      font-size: 1.12rem; font-weight: 500; letter-spacing: 0.16em;
+      text-transform: uppercase; color: #F97316; border: none; background: none;
+      cursor: pointer;
+    }
+    .logo-dark  { text-shadow: 0 2px 12px rgba(0,0,0,0.45); }
+    .logo-light { text-shadow: 0 2px 10px rgba(255,255,255,0.55); }
+
+    /* Nav pill */
+    .nav-pill {
+      display: flex; align-items: center; gap: 4px;
+      border-radius: 999px; padding: 6px;
+      border: 1px solid; height: 52px;
+    }
+    .nav-pill-dark  {
+      background: rgba(20,16,14,0.42);
+      border-color: rgba(255,255,255,0.10);
+      backdrop-filter: blur(14px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+    }
+    .nav-pill-light {
+      background: rgba(255,255,255,0.18);
+      border-color: rgba(120,100,70,0.18);
+      backdrop-filter: blur(14px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+    }
+
+    .nav-item {
+      display: flex; align-items: center; justify-content: center;
+      height: 40px; min-width: 44px; padding: 0 12px;
+      border-radius: 999px; border: none; background: transparent;
+      cursor: pointer; gap: 8px; transition: background 0.15s;
+      font-family: 'IBM Plex Sans', sans-serif; font-size: 0.75rem; font-weight: 500;
+      white-space: nowrap;
+    }
+    .nav-item svg { width: 22px; height: 22px; flex-shrink: 0; stroke-width: 2; }
+
+    /* dark inactive */
+    .nav-item-dark { color: rgba(240,230,216,0.45); }
+    .nav-item-dark:hover { background: rgba(255,255,255,0.06); color: rgba(240,230,216,0.80); }
+    /* dark active */
+    .nav-item-dark.active {
+      background: rgba(249,115,22,0.15); color: #F97316;
+    }
+
+    /* light inactive */
+    .nav-item-light { color: rgba(80,60,30,0.50); }
+    .nav-item-light:hover { background: rgba(0,0,0,0.05); }
+    /* light active */
+    .nav-item-light.active {
+      background: rgba(249,115,22,0.12); color: #ea6a0c;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Dark mode -->
+  <div style="width:100%;max-width:900px">
+    <div class="section-label">Dark mode — Home active</div>
+    <div class="scene scene-dark">
+      <button class="logo logo-dark">Quarry</button>
+      <nav class="nav-pill nav-pill-dark">
+        <button class="nav-item nav-item-dark active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          Home
+        </button>
+        <button class="nav-item nav-item-dark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+        </button>
+        <button class="nav-item nav-item-dark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </button>
+        <button class="nav-item nav-item-dark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+        </button>
+        <button class="nav-item nav-item-dark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07M8.46 8.46a5 5 0 000 7.07"/></svg>
+        </button>
+        <button class="nav-item nav-item-dark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </button>
+      </nav>
+    </div>
+  </div>
+
+  <!-- Light mode -->
+  <div style="width:100%;max-width:900px">
+    <div class="section-label">Light mode — Notes active</div>
+    <div class="scene scene-light">
+      <button class="logo logo-light">Quarry</button>
+      <nav class="nav-pill nav-pill-light">
+        <button class="nav-item nav-item-light">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        </button>
+        <button class="nav-item nav-item-light active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+          Notes
+        </button>
+        <button class="nav-item nav-item-light">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </button>
+        <button class="nav-item nav-item-light">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+        </button>
+        <button class="nav-item nav-item-light">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07M8.46 8.46a5 5 0 000 7.07"/></svg>
+        </button>
+        <button class="nav-item nav-item-light">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </button>
+      </nav>
+    </div>
+  </div>
+
+</body>
+</html>

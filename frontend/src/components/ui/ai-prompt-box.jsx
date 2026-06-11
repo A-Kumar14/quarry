@@ -388,7 +388,7 @@ export const PromptInputBox = React.forwardRef((props, ref) => {
   const [selectedImage, setSelectedImage] = React.useState(null);
   const [isRecording, setIsRecording] = React.useState(false);
   const [showSearch, setShowSearch] = React.useState(false);
-  const [showThink, setShowThink] = React.useState(false);
+  const [showDeep, setShowDeep] = React.useState(false);
   const [showNotes, setShowNotes] = React.useState(false);
   const [notesPicker, setNotesPicker] = React.useState(false);
   const [selectedNote, setSelectedNote] = React.useState(null);
@@ -401,9 +401,9 @@ export const PromptInputBox = React.forwardRef((props, ref) => {
   const handleToggleChange = (value) => {
     if (value === "search") {
       setShowSearch((prev) => !prev);
-      setShowThink(false);
-    } else if (value === "think") {
-      setShowThink((prev) => !prev);
+      setShowDeep(false);
+    } else if (value === "deep") {
+      setShowDeep((prev) => !prev);
       setShowSearch(false);
     }
   };
@@ -533,7 +533,7 @@ export const PromptInputBox = React.forwardRef((props, ref) => {
       }
       let messagePrefix = "";
       if (showSearch) messagePrefix = "[Search: ";
-      else if (showThink) messagePrefix = "[Think: ";
+      else if (showDeep) messagePrefix = "[Deep: ";
       else if (showNotes && !selectedNote) messagePrefix = "[Notes: ";
       const formattedInput = messagePrefix ? `${messagePrefix}${baseInput}]` : baseInput;
       onSend(formattedInput, files);
@@ -711,8 +711,8 @@ export const PromptInputBox = React.forwardRef((props, ref) => {
             placeholder={
               showSearch
                 ? "Search the web..."
-                : showThink
-                ? "Think deeply..."
+                : showDeep
+                ? "Go deeper..."
                 : showNotes
                 ? "Add a note..."
                 : placeholder
@@ -795,25 +795,25 @@ export const PromptInputBox = React.forwardRef((props, ref) => {
 
               <button
                 type="button"
-                onClick={() => handleToggleChange("think")}
+                onClick={() => handleToggleChange("deep")}
                 className={cn(
                   "rounded-full transition-all flex items-center gap-1 px-2 py-1 border h-8",
-                  showThink
+                  showDeep
                     ? "bg-[#F97316]/15 border-[#F97316] text-[#F97316]"
                     : "bg-transparent border-transparent text-[var(--fg-dim)] hover:text-[var(--fg-primary)]"
                 )}
               >
                 <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
                   <motion.div
-                    animate={{ rotate: showThink ? 360 : 0, scale: showThink ? 1.1 : 1 }}
-                    whileHover={{ rotate: showThink ? 360 : 15, scale: 1.1, transition: { type: "spring", stiffness: 300, damping: 10 } }}
+                    animate={{ rotate: showDeep ? 360 : 0, scale: showDeep ? 1.1 : 1 }}
+                    whileHover={{ rotate: showDeep ? 360 : 15, scale: 1.1, transition: { type: "spring", stiffness: 300, damping: 10 } }}
                     transition={{ type: "spring", stiffness: 260, damping: 25 }}
                   >
-                    <BrainCog className={cn("w-4 h-4", showThink ? "text-[#F97316]" : "text-inherit")} />
+                    <BrainCog className={cn("w-4 h-4", showDeep ? "text-[#F97316]" : "text-inherit")} />
                   </motion.div>
                 </div>
                 <AnimatePresence>
-                  {showThink && (
+                  {showDeep && (
                     <motion.span
                       initial={{ width: 0, opacity: 0 }}
                       animate={{ width: "auto", opacity: 1 }}

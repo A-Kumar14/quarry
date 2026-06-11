@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Globe Modal v2</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: rgba(0,0,0,0.62);
+      backdrop-filter: blur(3px);
+      font-family: 'IBM Plex Sans', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      padding: 16px;
+    }
+
+    /* Modal shell — expands width when detail panel opens */
+    .modal {
+      width: min(680px, 96vw);
+      border-radius: 18px;
+      background: rgba(14,10,6,0.96);
+      border: 1px solid rgba(255,255,255,0.09);
+      box-shadow: 0 32px 80px rgba(0,0,0,0.70);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+      max-height: 92vh;
+      transition: width 0.28s cubic-bezier(0.4,0,0.2,1);
+    }
+    .modal.expanded { width: min(1040px, 96vw); }
+
+    /* Header */
+    .modal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 18px;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+      flex-shrink: 0;
+    }
+    .modal-header-left { display: flex; align-items: center; gap: 10px; }
+    .header-icon {
+      width: 30px; height: 30px; border-radius: 9px;
+      background: rgba(249,115,22,0.12); border: 1px solid rgba(249,115,22,0.28);
+      display: flex; align-items: center; justify-content: center; font-size: 14px;
+    }
+    .modal-title { font-size: 0.95rem; font-weight: 600; color: #F0E6D8; }
+    .modal-sub   { font-family: 'IBM Plex Mono', monospace; font-size: 0.56rem; color: rgba(240,230,216,0.38); margin-top: 2px; }
+    .close-btn {
+      border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; background: none;
+      width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; color: rgba(240,230,216,0.40); font-size: 13px;
+    }
+    .close-btn:hover { background: rgba(255,255,255,0.05); color: #F0E6D8; }
+
+    /* Body */
+    .modal-body { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+
+    /* Globe pane */
+    .globe-pane {
+      flex: 1; min-width: 0;
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+      position: relative;
+    }
+    .globe-wrap {
+      width: 100%; max-width: 420px;
+      aspect-ratio: 1; position: relative; user-select: none;
+    }
+    canvas {
+      display: block; width: 100%; height: 100%;
+      border-radius: 50%; cursor: grab;
+      opacity: 0; transition: opacity 1.2s ease; touch-action: none;
+    }
+
+    /* Signal list */
+    .signals-pane {
+      width: 260px; flex-shrink: 0;
+      border-left: 1px solid rgba(255,255,255,0.07);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .signals-list { flex: 1; overflow-y: auto; }
+    .signal-row {
+      padding: 10px 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      cursor: pointer;
+      transition: background 0.12s ease;
+    }
+    .signal-row:hover, .signal-row.active { background: rgba(249,115,22,0.08); }
+    .signal-row-top { display: flex; align-items: center; gap: 7px; margin-bottom: 3px; }
+    .signal-num {
+      width: 16px; height: 16px; border-radius: 999px;
+      background: rgba(249,115,22,0.14); border: 1px solid rgba(249,115,22,0.35);
+      flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+      font-family: 'IBM Plex Mono', monospace; font-size: 0.50rem; color: #f3ded2;
+    }
+    .signal-name { font-size: 0.80rem; font-weight: 600; color: #ece2d6; flex: 1; }
+    .signal-pill {
+      display: inline-flex; align-items: center; border-radius: 9999px;
+      font-size: 9px; font-weight: 500; white-space: nowrap; height: 16px; padding: 0 6px; flex-shrink: 0;
+    }
+    .pill-conflict { background: oklch(25.93% 0.0834 19.02); color: oklch(69.96% 0.2136 22.03); }
+    .pill-famine   { background: oklch(24.95% 0.0642 64.78); color: oklch(77.21% 0.1991 64.28); }
+    .pill-politics { background: oklch(25.91% 0.0921 314.41); color: oklch(69.87% 0.2037 309.51); }
+    .signal-desc {
+      font-size: 0.66rem; color: rgba(200,185,165,0.45); line-height: 1.42;
+      padding-left: 23px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    /* Explore btn inside each row */
+    .explore-row-btn {
+      display: none; margin-top: 7px; padding-left: 23px;
+    }
+    .signal-row.active .explore-row-btn { display: block; }
+    .explore-btn {
+      background: #F97316; color: #fff; border: none; border-radius: 7px;
+      padding: 5px 11px; font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 0.67rem; font-weight: 500; cursor: pointer;
+    }
+    .explore-btn:hover { background: #ea6a0c; }
+
+    /* ── Detail panel (slides in from right) ── */
+    .detail-panel {
+      width: 0; flex-shrink: 0;
+      border-left: 0px solid rgba(255,255,255,0.07);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+      transition: width 0.28s cubic-bezier(0.4,0,0.2,1),
+                  border-left-width 0.01s 0.14s;
+    }
+    .detail-panel.open {
+      width: 360px;
+      border-left-width: 1px;
+    }
+
+    .plan-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 11px 16px; border-bottom: 1px solid rgba(255,255,255,0.07); flex-shrink: 0;
+    }
+    .back-btn {
+      border: 1px solid rgba(255,255,255,0.08); border-radius: 7px; background: none;
+      padding: 4px 9px; cursor: pointer;
+      font-family: 'IBM Plex Sans', sans-serif; font-size: 0.68rem; color: rgba(240,230,216,0.45);
+      display: flex; align-items: center; gap: 4px; flex-shrink: 0; white-space: nowrap;
+    }
+    .back-btn:hover { color: #F0E6D8; }
+    .plan-headline {
+      font-size: 0.84rem; font-weight: 600; color: #F0E6D8;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;
+    }
+
+    .plan-body { flex: 1; overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 15px; }
+    .info-block { display: flex; flex-direction: column; gap: 5px; }
+    .info-label {
+      font-family: 'IBM Plex Mono', monospace; font-size: 0.54rem; font-weight: 600;
+      color: rgba(240,230,216,0.38); letter-spacing: 0.12em; text-transform: uppercase;
+      padding-bottom: 5px; border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .info-text { font-size: 0.78rem; font-weight: 300; color: #C9A882; line-height: 1.7; }
+    .info-row {
+      display: flex; align-items: baseline; gap: 8px;
+      font-size: 0.76rem; line-height: 1.6; color: #C9A882;
+      padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.03);
+    }
+    .info-row:last-child { border-bottom: none; }
+    .info-row-key {
+      font-family: 'IBM Plex Mono', monospace; font-size: 0.56rem;
+      color: rgba(240,230,216,0.38); text-transform: uppercase; letter-spacing: 0.06em;
+      min-width: 64px; flex-shrink: 0; padding-top: 2px;
+    }
+    .pill-source {
+      height: 18px; font-size: 10px; padding: 0 8px; background: hsla(0,0%,12%,1);
+      color: hsla(0,0%,93%,1); border-radius: 9999px; display: inline-flex; align-items: center;
+    }
+
+    .plan-footer {
+      padding: 11px 16px; border-top: 1px solid rgba(255,255,255,0.07);
+      display: flex; gap: 8px; flex-shrink: 0; background: rgba(255,255,255,0.015);
+    }
+    .btn-primary {
+      flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+      background: #F97316; color: #fff; border: none; border-radius: 9px;
+      padding: 8px 0; font-family: 'IBM Plex Sans', sans-serif; font-size: 0.78rem; font-weight: 500; cursor: pointer;
+    }
+    .btn-secondary {
+      flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+      background: transparent; color: #F0E6D8; border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 9px; padding: 8px 0;
+      font-family: 'IBM Plex Sans', sans-serif; font-size: 0.78rem; font-weight: 500; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+<div class="modal" id="modal">
+  <div class="modal-header">
+    <div class="modal-header-left">
+      <div class="header-icon">🌐</div>
+      <div>
+        <div class="modal-title">World Signals</div>
+        <div class="modal-sub">11 active incidents</div>
+      </div>
+    </div>
+    <button class="close-btn">✕</button>
+  </div>
+
+  <div class="modal-body">
+
+    <!-- Globe -->
+    <div class="globe-pane">
+      <div class="globe-wrap">
+        <canvas id="cg"></canvas>
+      </div>
+    </div>
+
+    <!-- Signal list -->
+    <div class="signals-pane">
+      <div class="signals-list" id="signal-list"></div>
+    </div>
+
+    <!-- Detail panel -->
+    <div class="detail-panel" id="detail-panel">
+      <div class="plan-header">
+        <button class="back-btn" id="back-btn">← Back</button>
+        <div class="plan-headline" id="plan-headline">Gaza</div>
+      </div>
+      <div class="plan-body" id="plan-body"></div>
+      <div class="plan-footer">
+        <button class="btn-primary">🔍 Start Researching</button>
+        <button class="btn-secondary">✏ Open in Notes</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script type="module">
+import createGlobe from 'https://esm.sh/cobe@0.6.3';
+
+const PINS = [
+  { label:'Gaza',         desc:'Ongoing airstrikes; humanitarian crisis escalating',   lat: 31.5, lng:  34.5, type:'Conflict',
+    what:'Qatari-mediated negotiations between Israel and Hamas broke down after both sides failed to agree on a prisoner exchange. Israeli negotiators left Doha without a deal. Aid convoys remain blocked at the Kerem Shalom crossing.',
+    bg:'This is the third collapse of ceasefire talks in six weeks. Previous rounds broke down over disagreements on hostage numbers and the duration of a sustained pause in fighting.',
+    facts:[['Location','Doha (talks); Gaza Strip (fighting)'],['Parties','Israel, Hamas, Qatar (mediator)'],['Aid status','Kerem Shalom crossing closed'],['Casualties','34 killed in past 48 hrs (Gaza MoH)']],
+    sources:['Reuters','Al Jazeera','BBC World','AP News','Haaretz'], color:'#e24b4a' },
+  { label:'Ukraine',      desc:'Front-line shelling continues in Donetsk region',       lat: 49.0, lng:  31.0, type:'Conflict',
+    what:'Russian forces continued heavy artillery bombardment across the Donetsk front line. Ukrainian forces reported renewed pressure on Avdiivka outskirts. Civilian evacuation corridors remain contested.',
+    bg:'The Donetsk region has been the site of the most intense fighting since early 2024. Both sides have suffered significant casualties in attritional trench warfare.',
+    facts:[['Location','Donetsk Oblast, eastern Ukraine'],['Front','Avdiivka–Pokrovsk corridor'],['Aid access','Partially restricted'],['Shelling','14 civilian sites hit (UN OCHA)']],
+    sources:['Reuters','AP News','Kyiv Independent','BBC World'], color:'#F97316' },
+  { label:'Sudan/Darfur', desc:'RSF offensive; UN reports mass displacement',           lat: 13.0, lng:  22.0, type:'Conflict',
+    what:'The Rapid Support Forces (RSF) launched a new offensive in North Darfur, capturing three towns and triggering mass displacement. The UN estimates 200,000 people have fled in the past two weeks.',
+    bg:'Sudan has been in civil war since April 2023 between the SAF and RSF. The Darfur region has seen the worst humanitarian fallout, with famine conditions emerging in IDP camps.',
+    facts:[['Location','North Darfur, Sudan'],['Displaced','~200,000 in two weeks'],['Famine risk','IPC Phase 4 in camps'],['Aid access','Severely restricted']],
+    sources:['UN OCHA','Al Jazeera','Reuters','MSF'], color:'#e24b4a' },
+  { label:'Myanmar',      desc:'Junta airstrikes on civilian areas; internet blackout', lat: 17.0, lng:  96.0, type:'Conflict',
+    what:'Myanmar military conducted airstrikes on three villages in Sagaing Region controlled by resistance forces. Internet and mobile networks cut for the fourth consecutive day across affected areas.',
+    bg:'Since the 2021 coup, the junta has fought a multi-front war against ethnic armed organisations and the People\'s Defence Force. Civilian infrastructure is routinely targeted.',
+    facts:[['Location','Sagaing Region, northwest Myanmar'],['Comms','Internet blackout day 4'],['Casualties','Unconfirmed'],['Displacement','Est. 2.6M total since 2021']],
+    sources:['AP News','Irrawaddy','RFA','Human Rights Watch'], color:'#e24b4a' },
+  { label:'Haiti',        desc:'Gang violence; government collapse imminent',           lat: 19.0, lng: -72.0, type:'Conflict',
+    what:'Gang coalition Viv Ansanm now controls an estimated 85% of Port-au-Prince. The transitional presidential council has suspended operations. Essential services including hospitals are non-functional in most districts.',
+    bg:'Haiti\'s political vacuum following President Moïse\'s 2021 assassination allowed gang networks to consolidate power. A Kenya-led multinational force has had limited impact.',
+    facts:[['Location','Port-au-Prince, Haiti'],['Gang control','~85% of capital'],['Govt status','Transitional council suspended'],['MSS force','~400 deployed of 1,000 pledged']],
+    sources:['AP News','Reuters','Le Nouvelliste','UN'], color:'#e24b4a' },
+  { label:'Sahel',        desc:'Drought + armed groups driving food insecurity',        lat: 14.0, lng:   2.0, type:'Famine',
+    what:'Acute food insecurity has reached crisis levels across the central Sahel as below-average rainfall combines with disrupted supply chains caused by jihadist activity in Mali, Burkina Faso and Niger.',
+    bg:'The Sahel has faced worsening food insecurity since 2020. Military coups across the region have expelled UN agencies and French forces, limiting humanitarian access.',
+    facts:[['Affected','~8M people, IPC Phase 3+'],['Countries','Mali, Burkina Faso, Niger'],['Access','UN agencies expelled from Niger/Burkina'],['Harvest','30% below 5-year average']],
+    sources:['WFP','FEWS NET','Al Jazeera','Reuters'], color:'#facc15' },
+  { label:'Venezuela',    desc:'Opposition crackdown; election fraud allegations',      lat:  8.0, lng: -66.0, type:'Politics',
+    what:'Venezuelan authorities arrested three opposition campaign staff members ahead of a planned press conference on disputed election results. Internet throttling on Maduro-critical platforms reported.',
+    bg:'The July 2024 presidential election results remain disputed. Opposition candidate González claims victory based on voting tallies; the Maduro government was declared winner by the CNE.',
+    facts:[['Location','Caracas, Venezuela'],['Arrested','3 opposition staff'],['Platforms','Signal, X throttled'],['Int\'l stance','US/EU contest results']],
+    sources:['Reuters','BBC World','Efecto Cocuyo','AP News'], color:'#7f77dd' },
+  { label:'Ethiopia',     desc:'Tigray ceasefire fragile; aid access blocked',          lat:  9.0, lng:  38.0, type:'Famine',
+    what:'Aid convoys to Tigray have been blocked for 18 consecutive days amid renewed tensions between federal authorities and Tigrayan forces. WFP warns of deteriorating conditions in displacement camps.',
+    bg:'The 2022 Pretoria ceasefire ended two years of war in Tigray but has not been fully implemented. Disarmament and federal force withdrawal remain incomplete.',
+    facts:[['Location','Tigray Region, northern Ethiopia'],['Aid blocked','18 consecutive days'],['Camp conditions','WFP: deteriorating'],['Disarmament','Incomplete per Pretoria terms']],
+    sources:['WFP','Reuters','AP News','The Reporter'], color:'#F97316' },
+  { label:'Georgia',      desc:'Anti-govt protests after disputed election result',     lat: 41.5, lng:  44.5, type:'Politics',
+    what:'Tens of thousands gathered in Tbilisi for the tenth consecutive night protesting the ruling Georgian Dream party\'s suspension of EU accession talks. Police used water cannons on demonstrators.',
+    bg:'Georgian Dream won contested elections in October 2024. The decision to halt EU accession — a constitutional goal — has unified opposition across party lines and sparked the largest protests since independence.',
+    facts:[['Location','Tbilisi, Georgia'],['Protest night','10th consecutive'],['Trigger','EU accession suspended'],['Police action','Water cannons deployed']],
+    sources:['Reuters','Civil Georgia','BBC World','RFE/RL'], color:'#7f77dd' },
+  { label:'Bangladesh',   desc:'Monsoon flooding displaced 4M; aid insufficient',       lat: 23.0, lng:  90.0, type:'Famine',
+    what:'Flash flooding from early monsoon rains has displaced over 4 million people across southeastern Bangladesh. Relief operations are hampered by road damage and insufficient pre-positioned supplies.',
+    bg:'Bangladesh floods annually but the 2025 pre-monsoon rains arrived six weeks early. Climate scientists attribute increased intensity to warming Bay of Bengal sea surface temperatures.',
+    facts:[['Location','Chittagong Division, southeastern Bangladesh'],['Displaced','~4 million'],['Roads','Major arteries cut'],['Supplies','IFRC: 40% of assessed need covered']],
+    sources:['Reuters','IFRC','Daily Star BD','AP News'], color:'#facc15' },
+  { label:'Somalia',      desc:'Al-Shabaab advance; famine risk elevated',              lat:  6.0, lng:  46.0, type:'Conflict',
+    what:'Al-Shabaab forces advanced within 40km of Mogadishu along the southern corridor, overrunning two district checkpoints. AMISOM-successor forces have withdrawn to defensive positions.',
+    bg:'Al-Shabaab lost significant territory in 2022–23 during a federal offensive. The group has since recovered ground as clan militias and African Union forces face funding shortfalls.',
+    facts:[['Location','South-central Somalia'],['Advance','40km from Mogadishu'],['AU force','Underfunded; partial withdrawal'],['Famine risk','IPC Phase 4 in conflict zones']],
+    sources:['AP News','Reuters','Garowe Online','UN OCHA'], color:'#e24b4a' },
+];
+
+const PILL_CLASS = { Conflict:'pill-conflict', Famine:'pill-famine', Politics:'pill-politics' };
+
+// Build signal list
+const listEl = document.getElementById('signal-list');
+PINS.forEach((pin, i) => {
+  const row = document.createElement('div');
+  row.className = 'signal-row' + (i === 0 ? ' active' : '');
+  row.dataset.idx = i;
+  row.innerHTML = `
+    <div class="signal-row-top">
+      <span class="signal-num">${i+1}</span>
+      <span class="signal-name">${pin.label}</span>
+      <span class="signal-pill ${PILL_CLASS[pin.type]||''}">${pin.type}</span>
+    </div>
+    <div class="signal-desc">${pin.desc}</div>
+    <div class="explore-row-btn">
+      <button class="explore-btn" data-idx="${i}">Explore ›</button>
+    </div>
+  `;
+  row.addEventListener('mouseenter', () => setActive(i));
+  listEl.appendChild(row);
+});
+
+let activeIdx = 0;
+function setActive(i) {
+  activeIdx = i;
+  document.querySelectorAll('.signal-row').forEach((r,j) => r.classList.toggle('active', j===i));
+}
+
+// Explore → open detail panel
+document.getElementById('signal-list').addEventListener('click', e => {
+  const btn = e.target.closest('.explore-btn');
+  if (!btn) return;
+  openDetail(parseInt(btn.dataset.idx));
+});
+
+function openDetail(i) {
+  const pin = PINS[i];
+  document.getElementById('plan-headline').textContent = pin.label;
+
+  const body = document.getElementById('plan-body');
+  body.innerHTML = `
+    <div class="info-block">
+      <div class="info-label">What happened</div>
+      <div class="info-text">${pin.what}</div>
+    </div>
+    <div class="info-block">
+      <div class="info-label">Background</div>
+      <div class="info-text">${pin.bg}</div>
+    </div>
+    <div class="info-block">
+      <div class="info-label">Key facts</div>
+      <div>
+        ${pin.facts.map(([k,v]) => `<div class="info-row"><span class="info-row-key">${k}</span>${v}</div>`).join('')}
+      </div>
+    </div>
+    <div class="info-block">
+      <div class="info-label">Sources reporting</div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:4px">
+        ${pin.sources.map(s => `<span class="pill-source">${s}</span>`).join('')}
+      </div>
+    </div>
+  `;
+
+  document.getElementById('detail-panel').classList.add('open');
+  document.getElementById('modal').classList.add('expanded');
+}
+
+document.getElementById('back-btn').addEventListener('click', () => {
+  document.getElementById('detail-panel').classList.remove('open');
+  document.getElementById('modal').classList.remove('expanded');
+});
+
+// Globe
+const canvas = document.getElementById('cg');
+let phi=0, phiOffset=0, dragPhi=0, isPaused=false, pointerX=null;
+
+function build() {
+  const w = canvas.offsetWidth; if (!w) return;
+  createGlobe(canvas, {
+    devicePixelRatio: Math.min(window.devicePixelRatio||1,2),
+    width:w, height:w, phi:0, theta:0.25,
+    dark:1, diffuse:1.05, mapSamples:16000, mapBrightness:4,
+    baseColor:[0.10,0.12,0.15], markerColor:[0.98,0.45,0.09], glowColor:[0.05,0.06,0.09],
+    markers: PINS.map(p=>({ location:[p.lat,p.lng], size:0.042 })),
+    onRender(state) {
+      if (!isPaused) phi += 0.003;
+      state.phi = phi + phiOffset + dragPhi; state.theta = 0.25;
+    },
+  });
+  setTimeout(() => { canvas.style.opacity='1'; });
+}
+canvas.addEventListener('pointerdown', e=>{pointerX=e.clientX;isPaused=true;canvas.style.cursor='grabbing';});
+window.addEventListener('pointermove', e=>{if(pointerX!==null) dragPhi=(e.clientX-pointerX)/300;},{passive:true});
+window.addEventListener('pointerup', ()=>{if(pointerX!==null){phiOffset+=dragPhi;dragPhi=0;}pointerX=null;isPaused=false;canvas.style.cursor='grab';},{passive:true});
+if(canvas.offsetWidth>0) build();
+else { const ro=new ResizeObserver(e=>{if(e[0]?.contentRect.width>0){ro.disconnect();build();}}); ro.observe(canvas); }
+
+setInterval(()=>{ setActive((activeIdx+1)%PINS.length); }, 2800);
+</script>
+</body>
+</html>

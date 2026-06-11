@@ -843,7 +843,14 @@ class AIService:
             logger.error("extract_quotes.failed: %s", exc)
         return []
 
-    async def explore_the_web(self, query: str, deep: bool = False, user_context: str = ""):
+    async def explore_the_web(
+        self,
+        query: str,
+        deep: bool = False,
+        user_context: str = "",
+        model_id: str | None = None,
+        analysis_profile: str | None = None,
+    ):
         """
         Search-Augmented Generation streaming generator.
         Yields SSE-formatted strings: sources event, then chunk events, then [DONE].
@@ -987,6 +994,13 @@ class AIService:
             reconciled_claims=reconciled,
             user_context=user_context,
         )
+        if analysis_profile and str(analysis_profile).strip():
+            ap = str(analysis_profile).strip()
+            system_prompt += (
+                "\n\n## Analysis profile\n"
+                f"The user selected `{ap}` as the analysis stance. "
+                "Match reasoning depth, sourcing emphasis, and epistemic caution to that profile.\n"
+            )
 
         # ── Gap analysis + quote extraction (parallel, non-blocking) ─────────
         gaps: list[str] = []
@@ -1024,7 +1038,10 @@ class AIService:
                 {"role": "user", "content": query},
             ]
             llm = self._get_llm()
-            for text in llm.stream_sync(messages):
+            resolved_model = None
+            if model_id and str(model_id).strip():
+                resolved_model = str(model_id).strip()
+            for text in llm.stream_sync(messages, model=resolved_model):
                 yield f"data: {_json.dumps({'type': 'chunk', 'text': sanitize_sse_chunk(text)})}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as exc:

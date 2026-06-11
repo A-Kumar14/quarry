@@ -1,0 +1,154 @@
+<h2>Notes Card — Clean</h2>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Serif:wght@400;600;700&display=swap');
+
+  :root {
+    --card-bg: rgba(255,255,255,0.72);
+    --card-border: rgba(200,188,170,0.70);
+    --accent: #F97316;
+    --accent-dim: rgba(249,115,22,0.10);
+    --accent-border: rgba(249,115,22,0.38);
+    --fg: #1a0f05;
+    --fg-sec: #5a3e28;
+    --fg-dim: #9a8070;
+    --muted-bg: rgba(237,232,223,0.60);
+    --serif: 'IBM Plex Serif', Georgia, serif;
+    --sans: 'IBM Plex Sans', system-ui, sans-serif;
+    --mono: 'IBM Plex Mono', monospace;
+    --radius: 14px;
+  }
+
+  .qcard {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 4px 20px rgba(0,0,0,0.04);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-family: var(--sans);
+    width: 100%;
+    max-width: 340px;
+  }
+  .qcard-header {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    padding: 12px 16px 11px;
+    border-bottom: 1px solid var(--card-border);
+    background: var(--accent-dim);
+  }
+  .qcard-title {
+    font-family: var(--serif);
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--fg);
+  }
+  .add-btn {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 10px; border-radius: 7px;
+    border: 1px solid var(--accent-border);
+    background: rgba(249,115,22,0.08);
+    color: var(--accent);
+    font-family: var(--sans); font-size: 11px; font-weight: 600;
+    cursor: pointer; white-space: nowrap;
+  }
+  .qcard-content { padding: 4px 0; }
+  .note-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 16px;
+    border-bottom: 1px solid rgba(0,0,0,0.045);
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+  .note-row:last-child { border-bottom: none; }
+  .note-row:hover { background: rgba(249,115,22,0.04); }
+  .note-icon {
+    width: 26px; height: 26px; border-radius: 6px;
+    background: rgba(249,115,22,0.07);
+    border: 1px solid rgba(249,115,22,0.16);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    color: rgba(249,115,22,0.65);
+  }
+  .note-meta { flex: 1; min-width: 0; }
+  .note-title {
+    font-family: var(--sans); font-size: 12px; font-weight: 500;
+    color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    margin-bottom: 2px;
+  }
+  .note-sub {
+    font-family: var(--mono); font-size: 9px; color: var(--fg-dim);
+    letter-spacing: 0.03em;
+  }
+  .note-age {
+    font-family: var(--mono); font-size: 9px; color: var(--fg-dim);
+    flex-shrink: 0;
+  }
+  .qcard-footer {
+    padding: 10px 16px;
+    border-top: 1px solid var(--card-border);
+    background: var(--muted-bg);
+    display: flex; align-items: center; justify-content: flex-end;
+  }
+  .link-btn {
+    font-family: var(--sans); font-size: 11px; font-weight: 600;
+    color: var(--accent); background: none; border: none; cursor: pointer; padding: 0;
+  }
+</style>
+
+<div style="display:flex;justify-content:center;margin-top:24px;">
+  <div class="qcard">
+    <div class="qcard-header">
+      <div class="qcard-title">Your notes</div>
+      <button class="add-btn">＋ New note</button>
+    </div>
+
+    <div class="qcard-content">
+      <div class="note-row">
+        <div class="note-icon">
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9.5 2.5l2 2L5 11H3v-2L9.5 2.5z"/>
+            <line x1="8" y1="4" x2="10" y2="6"/>
+          </svg>
+        </div>
+        <div class="note-meta">
+          <div class="note-title">Gaza humanitarian corridor draft</div>
+          <div class="note-sub">Conflict</div>
+        </div>
+        <div class="note-age">2h ago</div>
+      </div>
+      <div class="note-row">
+        <div class="note-icon">
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9.5 2.5l2 2L5 11H3v-2L9.5 2.5z"/>
+            <line x1="8" y1="4" x2="10" y2="6"/>
+          </svg>
+        </div>
+        <div class="note-meta">
+          <div class="note-title">Venezuela election timeline</div>
+          <div class="note-sub">Politics</div>
+        </div>
+        <div class="note-age">1d ago</div>
+      </div>
+      <div class="note-row">
+        <div class="note-icon">
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9.5 2.5l2 2L5 11H3v-2L9.5 2.5z"/>
+            <line x1="8" y1="4" x2="10" y2="6"/>
+          </svg>
+        </div>
+        <div class="note-meta">
+          <div class="note-title">Sudan RSF displacement figures</div>
+          <div class="note-sub">Conflict</div>
+        </div>
+        <div class="note-age">2d ago</div>
+      </div>
+    </div>
+
+    <div class="qcard-footer">
+      <button class="link-btn">View all notes →</button>
+    </div>
+  </div>
+</div>

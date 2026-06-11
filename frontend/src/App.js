@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import ConversePage from './pages/ConversePage';
+import ExplorePage from './pages/ExplorePage';
 import HomePage from './pages/HomePage';
 import SettingsPage from './pages/SettingsPage';
 import SourcesPage from './pages/SourcesPage';
@@ -16,6 +17,12 @@ import ProfilePage from './pages/ProfilePage';
 import { Toaster } from 'sonner';
 import AppTopbar from './components/AppTopbar';
 
+/** Legacy `/search` URLs → epistemic research at `/explore` (preserve query string). */
+function SearchToExploreRedirect() {
+  const { search } = useLocation();
+  return <Navigate to={{ pathname: '/explore', search }} replace />;
+}
+
 function AppContent() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -27,21 +34,21 @@ function AppContent() {
     const profile = analysisProfileId ? encodeURIComponent(analysisProfileId) : '';
     if (modeOrDeep === 'write') {
       if (q) {
-        navigate('/search?q=' + q + '&next=notes');
+        navigate('/explore?q=' + q + '&next=notes');
       } else {
         navigate('/notes');
       }
       return;
     }
     if (modeOrDeep === 'finance') {
-      navigate('/search?q=' + q + '&mode=finance');
+      navigate('/explore?q=' + q + '&mode=finance');
       return;
     }
     if (q) {
       if (modeOrDeep === true) {
-        navigate('/search?q=' + q + '&d=true' + (model ? '&model=' + model : '') + (profile ? '&ap=' + profile : ''));
+        navigate('/explore?q=' + q + '&d=true' + (model ? '&model=' + model : '') + (profile ? '&ap=' + profile : ''));
       } else {
-        navigate('/search?q=' + q + (model ? '&model=' + model : '') + (profile ? '&ap=' + profile : ''));
+        navigate('/explore?q=' + q + (model ? '&model=' + model : '') + (profile ? '&ap=' + profile : ''));
       }
     }
   }, [navigate]);
@@ -56,7 +63,9 @@ function AppContent() {
         
         {/* Protected Routes */}
         <Route path="/"                   element={<ProtectedRoute><HomePage onSearch={handleHomeSearch} /></ProtectedRoute>} />
-        <Route path="/search"             element={<ProtectedRoute><ConversePage /></ProtectedRoute>} />
+        <Route path="/explore"            element={<ProtectedRoute><ExplorePage /></ProtectedRoute>} />
+        <Route path="/ask"                element={<ProtectedRoute><ConversePage /></ProtectedRoute>} />
+        <Route path="/search"             element={<ProtectedRoute><SearchToExploreRedirect /></ProtectedRoute>} />
         <Route path="/write"              element={<ProtectedRoute><WritePage /></ProtectedRoute>} />
         <Route path="/notes"              element={<ProtectedRoute><WritePage /></ProtectedRoute>} />
         <Route path="/notes/:id"          element={<ProtectedRoute><WritePage /></ProtectedRoute>} />

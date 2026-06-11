@@ -18,6 +18,8 @@ class ExploreSearchRequest(BaseModel):
     query: str = Field(..., max_length=500)
     context: Optional[str] = Field(None, max_length=500)  # previous query for follow-ups
     session_id: Optional[str] = None
+    model: Optional[str] = Field(None, max_length=120)
+    analysis_profile: Optional[str] = Field(None, max_length=80)
 
     @field_validator("query")
     @classmethod

@@ -15,12 +15,13 @@ window.fetch = function (input, init = {}) {
       localStorage.getItem('quarry_token') ||
       process.env.REACT_APP_DEV_TOKEN ||
       '';
+    // Apply caller headers first so the Bearer from `quarry_token` wins (no stale overrides).
     if (token) {
       init = {
         ...init,
         headers: {
+          ...(init.headers || {}),
           Authorization: `Bearer ${token}`,
-          ...init.headers,
         },
       };
     }

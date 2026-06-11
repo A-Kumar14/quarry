@@ -5,6 +5,7 @@ routers/chat.py — Chat session management and AI message streaming.
 import asyncio
 import json
 import logging
+import threading
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -236,15 +237,34 @@ async def _agentic_stream(body: ChatMessageRequest):
         })
 
     # ── 5. Stream final answer ────────────────────────────────────────────
+    # IMPORTANT: stream_sync() is synchronous I/O. Run it in a worker thread and
+    # forward tokens through an asyncio.Queue so we yield SSE chunks as they
+    # arrive. (Buffering the full stream with list(stream_sync) made the UI sit
+    # on "thinking…" until the entire completion finished.)
     full_response = ""
     try:
-        def _collect_stream(messages):
-            return list(llm_service.stream_sync(messages))
+        loop = asyncio.get_running_loop()
+        token_queue: asyncio.Queue = asyncio.Queue()
 
-        tokens = await asyncio.to_thread(_collect_stream, llm_messages)
-        for token in tokens:
-            full_response += token
-            yield _sse({"type": "chunk", "text": token})
+        def _run_stream_in_thread() -> None:
+            try:
+                for token in llm_service.stream_sync(llm_messages):
+                    fut = asyncio.run_coroutine_threadsafe(token_queue.put(token), loop)
+                    fut.result()
+            except Exception as exc:
+                asyncio.run_coroutine_threadsafe(token_queue.put(exc), loop).result()
+            finally:
+                asyncio.run_coroutine_threadsafe(token_queue.put(None), loop).result()
+
+        threading.Thread(target=_run_stream_in_thread, daemon=True).start()
+        while True:
+            item = await token_queue.get()
+            if item is None:
+                break
+            if isinstance(item, Exception):
+                raise item
+            full_response += item
+            yield _sse({"type": "chunk", "text": item})
     except Exception as exc:
         logger.error("chat.stream_failed: %s", exc)
         yield _sse({"type": "chunk", "text": "[Error generating response]"})

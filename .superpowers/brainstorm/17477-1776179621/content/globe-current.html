@@ -1,0 +1,120 @@
+<h2>Globe Card — Current State</h2>
+<p class="subtitle">GlassCard with cobe globe + active pin info bar at bottom</p>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Serif:wght@400;600&display=swap');
+
+  :root {
+    --fg: #1a0f05; --fg-sec: #5a3e28; --fg-dim: rgba(90,62,40,0.55);
+    --accent: #F97316; --border: rgba(120,100,70,0.16);
+    --glass: rgba(255,255,255,0.44); --blur: blur(14px);
+    --sans: 'IBM Plex Sans', system-ui, sans-serif;
+    --serif: 'IBM Plex Serif', Georgia, serif;
+    --mono: 'IBM Plex Mono', monospace;
+    --red-bg: oklch(95.41% 0.0299 14.25); --red-fg: oklch(54.99% 0.232 25.29);
+    --amber-bg: oklch(96.81% 0.0495 90.24); --amber-fg: oklch(52.79% 0.1496 54.65);
+    --purple-bg: oklch(96.73% 0.0228 309.8); --purple-fg: oklch(47.18% 0.2579 304);
+    --yellow-bg: oklch(96.81% 0.0495 90.24); --yellow-fg: oklch(52.79% 0.1496 54.65);
+  }
+
+  .pill {
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 9999px; font-family: var(--sans); font-size: 10px; font-weight: 500;
+    white-space: nowrap; height: 18px; padding: 0 7px; flex-shrink: 0;
+  }
+  .pill-conflict { background: var(--red-bg); color: var(--red-fg); }
+  .pill-famine   { background: var(--amber-bg); color: var(--amber-fg); }
+  .pill-politics { background: var(--purple-bg); color: var(--purple-fg); }
+
+  .globe-card {
+    border-radius: 14px; overflow: hidden;
+    background: var(--glass);
+    backdrop-filter: var(--blur);
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    display: flex; flex-direction: column;
+    width: 100%; max-width: 480px;
+    font-family: var(--sans);
+  }
+
+  /* Globe placeholder */
+  .globe-area {
+    position: relative; flex: 1;
+    display: flex; align-items: center; justify-content: center;
+    padding: 10px 8px; min-height: 280px;
+    background: radial-gradient(ellipse 70% 70% at 50% 50%, rgba(249,115,22,0.06) 0%, transparent 70%);
+  }
+  .globe-circle {
+    width: 220px; height: 220px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #d4c9b5 0%, #b8a88a 40%, #8a7050 100%);
+    box-shadow: inset -20px -10px 40px rgba(0,0,0,0.25), 0 0 60px rgba(249,115,22,0.08);
+    position: relative; overflow: hidden;
+  }
+  /* Continent-like blobs */
+  .globe-circle::before {
+    content: '';
+    position: absolute; top: 20%; left: 25%;
+    width: 30%; height: 40%;
+    background: rgba(80,60,30,0.35);
+    border-radius: 40% 60% 55% 45% / 50% 40% 60% 50%;
+  }
+  .globe-circle::after {
+    content: '';
+    position: absolute; top: 45%; left: 52%;
+    width: 25%; height: 30%;
+    background: rgba(80,60,30,0.30);
+    border-radius: 55% 45% 40% 60% / 45% 55% 50% 50%;
+  }
+  /* Pins */
+  .globe-pin {
+    position: absolute; width: 8px; height: 8px; border-radius: 50%;
+    box-shadow: 0 0 6px currentColor;
+  }
+  .globe-pin::before {
+    content: ''; position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 16px; height: 16px; border-radius: 50%;
+    border: 1.5px solid currentColor; opacity: 0.4;
+    animation: pinPulse 2s ease-in-out infinite;
+  }
+  @keyframes pinPulse { 0%,100% { transform: translate(-50%,-50%) scale(1); opacity: 0.4; } 50% { transform: translate(-50%,-50%) scale(1.8); opacity: 0; } }
+
+  /* Pin info bar */
+  .pin-bar {
+    position: absolute; left: 12px; right: 12px; bottom: 10px;
+    border-radius: 9px;
+    border: 1px solid rgba(249,115,22,0.24);
+    background: rgba(255,255,255,0.80);
+    backdrop-filter: blur(8px);
+    padding: 8px 10px;
+  }
+  .pin-bar-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 3px; }
+  .pin-label { font-family: var(--serif); font-size: 0.86rem; font-weight: 600; color: var(--fg); }
+  .pin-type { font-family: var(--mono); font-size: 0.56rem; color: var(--fg-dim); text-transform: uppercase; }
+  .pin-desc { font-family: var(--sans); font-size: 0.67rem; color: var(--fg-dim); line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+</style>
+
+<div style="display:flex;justify-content:center;margin-top:20px;">
+  <div class="globe-card">
+    <div class="globe-area">
+
+      <!-- Globe -->
+      <div class="globe-circle">
+        <div class="globe-pin" style="color:#e24b4a;background:#e24b4a;top:41%;left:57%"></div>
+        <div class="globe-pin" style="color:#F97316;background:#F97316;top:28%;left:54%"></div>
+        <div class="globe-pin" style="color:#e24b4a;background:#e24b4a;top:47%;left:72%"></div>
+        <div class="globe-pin" style="color:#e24b4a;background:#e24b4a;top:46%;left:27%"></div>
+        <div class="globe-pin" style="color:#facc15;background:#facc15;top:50%;left:47%"></div>
+      </div>
+
+      <!-- Active pin bar -->
+      <div class="pin-bar">
+        <div class="pin-bar-top">
+          <span class="pin-label">Gaza</span>
+          <span class="pin-type">Conflict</span>
+        </div>
+        <div class="pin-desc">Ongoing airstrikes; humanitarian crisis escalating</div>
+      </div>
+    </div>
+  </div>
+</div>

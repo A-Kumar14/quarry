@@ -1,5 +1,21 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { BookMarked, Network, Search, X, Copy, Check, ExternalLink, SlidersHorizontal } from 'lucide-react';
+import {
+  BookMarked,
+  Network,
+  Search,
+  X,
+  Copy,
+  Check,
+  ExternalLink,
+  Clock,
+  ArrowDownWideNarrow,
+  ArrowDownAZ,
+  LayoutGrid,
+  ShieldCheck,
+  SignalMedium,
+  HelpCircle,
+  PenLine,
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ForceGraph2D from 'react-force-graph-2d';
 import { useDarkMode } from '../DarkModeContext';
@@ -7,6 +23,7 @@ import { getSourceLibrary, removeSourceFromLibrary } from '../utils/sourceLibrar
 import { getSourceQuality, QUALITY_COLOR } from '../utils/sourceQuality';
 import GlassCard, { glassCardStyle } from '../components/GlassCard';
 import PageShell from '../components/PageShell';
+import { GlassSegmentedNav } from '../components/ui/glass-segmented-nav';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 const DOCUMENTS_KEY = 'quarry_documents';
@@ -158,11 +175,13 @@ function SourceCard({ src, notes, noteSourceMap, onRemove, onOpenDoc }) {
                 border: '1px solid rgba(30,58,138,0.20)', color: 'var(--blue)',
                 cursor: onOpenDoc ? 'pointer' : 'default',
                 transition: 'background 0.12s',
+                display: 'inline-flex', alignItems: 'center',
               }}
               onMouseEnter={e => { if (onOpenDoc) e.currentTarget.style.background = 'rgba(30,58,138,0.18)'; }}
               onMouseLeave={e => { e.currentTarget.style.background = 'rgba(30,58,138,0.08)'; }}
             >
-              ✍️ {(note.title || 'Untitled').slice(0, 32)}
+              <PenLine size={10} style={{ flexShrink: 0, opacity: 0.85 }} aria-hidden />
+              <span style={{ marginLeft: 4 }}>{(note.title || 'Untitled').slice(0, 32)}</span>
             </span>
           ))}
         </div>
@@ -208,6 +227,29 @@ function LibraryModal({ onClose }) {
     removeSourceFromLibrary(url);
     setSources(prev => prev.filter(s => s.url !== url));
   };
+
+  const sortOrder = ['recent', 'quality', 'alpha'];
+  const sortIndex = Math.max(0, sortOrder.indexOf(sort));
+  const filterOrder = ['all', 'high', 'medium', 'unknown'];
+  const filterIndex = Math.max(0, filterOrder.indexOf(filter));
+
+  const sortNavItems = useMemo(
+    () => [
+      { id: 'recent', label: 'Sort by recency', icon: Clock, onClick: () => setSort('recent') },
+      { id: 'quality', label: 'Sort by source quality', icon: ArrowDownWideNarrow, onClick: () => setSort('quality') },
+      { id: 'alpha', label: 'Sort A–Z by domain', icon: ArrowDownAZ, onClick: () => setSort('alpha') },
+    ],
+    []
+  );
+  const filterNavItems = useMemo(
+    () => [
+      { id: 'all', label: 'All quality levels', icon: LayoutGrid, onClick: () => setFilter('all') },
+      { id: 'high', label: 'High quality only', icon: ShieldCheck, onClick: () => setFilter('high') },
+      { id: 'medium', label: 'Medium quality only', icon: SignalMedium, onClick: () => setFilter('medium') },
+      { id: 'unknown', label: 'Unknown quality', icon: HelpCircle, onClick: () => setFilter('unknown') },
+    ],
+    []
+  );
 
   const displayed = useMemo(() => {
     let list = [...sources];
@@ -280,11 +322,11 @@ function LibraryModal({ onClose }) {
         {/* Controls */}
         <div style={{
           padding: '12px 22px', borderBottom: '1px solid var(--border)',
-          display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', flexShrink: 0,
+          display: 'flex', flexDirection: 'column', gap: 12, flexShrink: 0,
         }}>
           {/* Search */}
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 180,
+            display: 'flex', alignItems: 'center', gap: 8, width: '100%',
             padding: '7px 12px', borderRadius: 9,
             border: '1px solid var(--border)',
             background: dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
@@ -298,33 +340,33 @@ function LibraryModal({ onClose }) {
             {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-dim)', display: 'flex', padding: 0 }}><X size={12} /></button>}
           </div>
 
-          {/* Sort */}
-          <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
-            <SlidersHorizontal size={12} style={{ color: 'var(--fg-dim)' }} />
-            {[['recent', 'Recent'], ['quality', 'Quality'], ['alpha', 'A–Z']].map(([id, label]) => (
-              <button key={id} onClick={() => setSort(id)} style={{
-                padding: '4px 10px', borderRadius: 99, cursor: 'pointer',
-                fontFamily: 'var(--font-family)', fontSize: '0.70rem', fontWeight: 500,
-                border: `1px solid ${sort === id ? 'var(--accent)' : 'var(--border)'}`,
-                background: sort === id ? 'rgba(249,115,22,0.10)' : 'transparent',
-                color: sort === id ? 'var(--accent)' : 'var(--fg-dim)',
-                transition: 'all 0.13s',
-              }}>{label}</button>
-            ))}
-          </div>
-
-          {/* Filter */}
-          <div style={{ display: 'flex', gap: 5 }}>
-            {[['all', 'All'], ['high', 'High'], ['medium', 'Medium'], ['unknown', '?']].map(([id, label]) => (
-              <button key={id} onClick={() => setFilter(id)} style={{
-                padding: '4px 10px', borderRadius: 99, cursor: 'pointer',
-                fontFamily: 'var(--font-family)', fontSize: '0.70rem', fontWeight: 500,
-                border: `1px solid ${filter === id ? 'var(--accent)' : 'var(--border)'}`,
-                background: filter === id ? 'rgba(249,115,22,0.10)' : 'transparent',
-                color: filter === id ? 'var(--accent)' : 'var(--fg-dim)',
-                transition: 'all 0.13s',
-              }}>{label}</button>
-            ))}
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 16, rowGap: 10 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6, flexShrink: 0 }}>
+              <span style={{
+                fontFamily: 'var(--font-mono)', fontSize: '0.58rem', fontWeight: 600,
+                letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--fg-dim)',
+              }}>
+                Sort
+              </span>
+              <GlassSegmentedNav
+                ariaLabel="Sort source list"
+                items={sortNavItems}
+                activeIndex={sortIndex}
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6, flexShrink: 0 }}>
+              <span style={{
+                fontFamily: 'var(--font-mono)', fontSize: '0.58rem', fontWeight: 600,
+                letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--fg-dim)',
+              }}>
+                Filter
+              </span>
+              <GlassSegmentedNav
+                ariaLabel="Filter by quality"
+                items={filterNavItems}
+                activeIndex={filterIndex}
+              />
+            </div>
           </div>
         </div>
 
@@ -1028,6 +1070,7 @@ function EntryCard({ icon, title, subtitle, stat, onClick, illustration: Illustr
 
 /* ── Stats bar ───────────────────────────────────────────────────────────── */
 function StatsBar({ sources, noteCount }) {
+  const [dark] = useDarkMode();
   const topDomains = useMemo(() => {
     const freq = {};
     for (const s of sources) { freq[s.domain] = (freq[s.domain] || 0) + 1; }
@@ -1039,19 +1082,27 @@ function StatsBar({ sources, noteCount }) {
   const unknownCount = useMemo(() => sources.filter(s => getSourceQuality(s.url) === 'unknown').length, [sources]);
   const domainCount  = useMemo(() => new Set(sources.map(s => s.domain)).size, [sources]);
 
-  // eslint-disable-next-line no-unused-vars
-  const total = sources.length || 1;
+  const n = sources.length;
   const credDist = [
     { label: 'High',    count: highCount,    color: '#22c55e' },
     { label: 'Medium',  count: mediumCount,  color: '#f59e0b' },
     { label: 'Unknown', count: unknownCount, color: 'var(--border)' },
   ];
 
+  const kpiNumStyle = {
+    fontFamily: 'var(--font-mono)',
+    fontSize: '2rem',
+    fontWeight: 700,
+    lineHeight: 1,
+    fontVariantNumeric: 'tabular-nums',
+    transition: 'color 0.25s ease',
+  };
+
   return (
     <div style={{ display: 'flex', gap: 12, marginBottom: 28, flexWrap: 'wrap' }}>
       {/* Sources */}
       <GlassCard style={{ flex: '1 1 100px', padding: '16px 20px', borderRadius: 14 }}>
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '2rem', fontWeight: 700, color: 'var(--accent)', lineHeight: 1 }}>
+        <div style={{ ...kpiNumStyle, color: 'var(--accent)' }}>
           {sources.length}
         </div>
         <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', color: 'var(--fg-dim)', marginTop: 5, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
@@ -1061,7 +1112,7 @@ function StatsBar({ sources, noteCount }) {
 
       {/* Domains */}
       <GlassCard style={{ flex: '1 1 100px', padding: '16px 20px', borderRadius: 14 }}>
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '2rem', fontWeight: 700, color: 'var(--fg-primary)', lineHeight: 1 }}>
+        <div style={{ ...kpiNumStyle, color: 'var(--fg-primary)' }}>
           {domainCount}
         </div>
         <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', color: 'var(--fg-dim)', marginTop: 5, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
@@ -1071,7 +1122,7 @@ function StatsBar({ sources, noteCount }) {
 
       {/* Notes */}
       <GlassCard style={{ flex: '1 1 100px', padding: '16px 20px', borderRadius: 14 }}>
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '2rem', fontWeight: 700, color: 'var(--fg-primary)', lineHeight: 1 }}>
+        <div style={{ ...kpiNumStyle, color: 'var(--fg-primary)' }}>
           {noteCount}
         </div>
         <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', color: 'var(--fg-dim)', marginTop: 5, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
@@ -1085,11 +1136,33 @@ function StatsBar({ sources, noteCount }) {
           Credibility Mix
         </div>
         {/* Segmented bar */}
-        <div style={{ display: 'flex', height: 6, borderRadius: 999, overflow: 'hidden', gap: 1, marginBottom: 10 }}>
-          {credDist.map(({ label, count, color }) => (
-            count > 0 && <div key={label} style={{ flex: count, background: color, transition: 'flex 0.4s ease' }} />
-          ))}
-          {sources.length === 0 && <div style={{ flex: 1, background: 'var(--border)' }} />}
+        <div style={{
+          display: 'flex', height: 7, borderRadius: 999, overflow: 'hidden', gap: 2,
+          marginBottom: 10,
+          background: dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+          transition: 'background 0.25s ease',
+        }}>
+          {n === 0 ? (
+            <div style={{ flex: 1, background: 'var(--border)', transition: 'opacity 0.3s ease' }} />
+          ) : (
+            credDist.map(({ label, count, color }) => {
+              if (count <= 0) return null;
+              const pct = (count / n) * 100;
+              return (
+                <div
+                  key={label}
+                  title={`${label}: ${count}`}
+                  style={{
+                    width: `${pct}%`,
+                    minWidth: count > 0 ? 6 : 0,
+                    flexShrink: 0,
+                    background: color,
+                    transition: 'width 0.55s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.3s ease',
+                  }}
+                />
+              );
+            })
+          )}
         </div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           {credDist.map(({ label, count, color }) => (

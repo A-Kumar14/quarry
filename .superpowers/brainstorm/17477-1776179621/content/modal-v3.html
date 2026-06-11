@@ -1,0 +1,295 @@
+<h2>Daily Briefing Modal — Full Layout</h2>
+<p class="subtitle">Summary block + 2-col card grid + PromptInputBox-style refine bar</p>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --fg: #F0E6D8; --fg-sec: #C9A882; --fg-dim: rgba(240,230,216,0.38);
+    --accent: #F97316; --border: rgba(255,255,255,0.08);
+    --bg: #120D07; --bg2: #1A1208; --bg3: rgba(255,255,255,0.03);
+    --sans: 'IBM Plex Sans', system-ui, sans-serif;
+    --mono: 'IBM Plex Mono', monospace;
+    --red-bg:    oklch(25.93% 0.0834 19.02);  --red-fg:    oklch(69.96% 0.2136 22.03);
+    --amber-bg:  oklch(24.95% 0.0642 64.78);  --amber-fg:  oklch(77.21% 0.1991 64.28);
+    --blue-bg:   oklch(25.45% 0.0811 255.8);  --blue-fg:   oklch(71.7%  0.1648 250.79);
+    --purple-bg: oklch(25.91% 0.0921 314.41); --purple-fg: oklch(69.87% 0.2037 309.51);
+    --green-bg:  oklch(27.12% 0.0895 150.09); --green-fg:  oklch(73.1%  0.2158 148.29);
+    --gray-bg:   hsla(0,0%,12%,1);            --gray-fg:   hsla(0,0%,93%,1);
+  }
+
+  .pill {
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 9999px; font-family: var(--sans); font-size: 10px; font-weight: 500;
+    white-space: nowrap; height: 18px; padding: 0 7px; flex-shrink: 0;
+  }
+  .pill-red    { background: var(--red-bg);    color: var(--red-fg); }
+  .pill-amber  { background: var(--amber-bg);  color: var(--amber-fg); }
+  .pill-blue   { background: var(--blue-bg);   color: var(--blue-fg); }
+  .pill-purple { background: var(--purple-bg); color: var(--purple-fg); }
+  .pill-green  { background: var(--green-bg);  color: var(--green-fg); }
+  .pill-gray   { background: var(--gray-bg);   color: var(--gray-fg); }
+
+  /* ── Modal shell ── */
+  .modal {
+    width: 100%; max-width: 680px; height: 640px; border-radius: 18px;
+    background: var(--bg); border: 1px solid rgba(255,255,255,0.09);
+    box-shadow: 0 32px 80px rgba(0,0,0,0.70);
+    display: flex; flex-direction: column; overflow: hidden;
+    font-family: var(--sans); margin: 0 auto;
+  }
+
+  /* Header */
+  .modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .modal-header-left { display: flex; align-items: center; gap: 10px; }
+  .zap-icon {
+    width: 32px; height: 32px; border-radius: 10px;
+    background: rgba(249,115,22,0.12); border: 1px solid rgba(249,115,22,0.28);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .modal-title { font-family: var(--sans); font-size: 1rem; font-weight: 600; color: var(--fg); line-height: 1.1; }
+  .modal-sub { font-family: var(--mono); font-size: 0.58rem; color: var(--fg-dim); margin-top: 2px; }
+  .header-btn {
+    border: 1px solid var(--border); border-radius: 8px; background: none; color: var(--fg-dim);
+    font-family: var(--sans); font-size: 0.70rem; padding: 5px 10px; cursor: pointer;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .close-btn {
+    border: 1px solid var(--border); border-radius: 8px; background: none;
+    width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; color: var(--fg-dim); font-size: 13px;
+  }
+
+  /* Body */
+  .modal-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .modal-scroll { flex: 1; overflow-y: auto; padding: 18px 20px 0; }
+
+  /* Summary block */
+  .summary-block {
+    border-left: 3px solid var(--accent);
+    padding: 4px 0 4px 14px;
+    margin-bottom: 18px;
+  }
+  .summary-label {
+    font-family: var(--mono); font-size: 0.56rem; font-weight: 600;
+    color: var(--fg-dim); letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 7px;
+  }
+  .summary-text {
+    font-family: var(--sans); font-size: 0.85rem; font-weight: 300;
+    color: var(--fg); line-height: 1.7; margin: 0 0 6px;
+  }
+  .summary-meta { font-family: var(--mono); font-size: 0.56rem; color: var(--fg-dim); }
+
+  /* Cards grid */
+  .cards-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding-bottom: 20px;
+  }
+  .topic-card {
+    border-radius: 12px; padding: 14px 15px; background: var(--bg2);
+    border: 1px solid rgba(175,150,105,0.14);
+    display: flex; flex-direction: column; gap: 9px;
+    transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+    cursor: default;
+  }
+  .topic-card:hover {
+    border-color: rgba(249,115,22,0.35);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.30);
+  }
+  .card-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .card-badges { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .track-btn {
+    border: 1px solid var(--border); border-radius: 6px; background: none; padding: 2px 8px;
+    display: flex; align-items: center; gap: 4px;
+    font-family: var(--sans); font-size: 0.60rem; color: var(--fg-dim); cursor: pointer; flex-shrink: 0;
+  }
+  .card-headline {
+    font-family: var(--sans); font-size: 0.90rem; font-weight: 600;
+    color: var(--fg); line-height: 1.3;
+  }
+  .card-summary {
+    font-family: var(--sans); font-size: 0.74rem; font-weight: 300;
+    color: var(--fg-sec); line-height: 1.55;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .card-hook {
+    border-left: 2px solid var(--accent); padding-left: 8px;
+    font-family: var(--sans); font-size: 0.68rem; color: var(--accent);
+    font-style: italic; line-height: 1.45;
+  }
+  .card-footer-row { display: flex; align-items: center; justify-content: space-between; }
+  .card-source {
+    font-family: var(--mono); font-size: 0.56rem; color: var(--fg-dim);
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .explore-btn {
+    background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    padding: 5px 12px; font-family: var(--sans); font-size: 0.70rem; font-weight: 500;
+    cursor: pointer; display: flex; align-items: center; gap: 4px;
+  }
+
+  /* ── PromptInputBox-style refine bar ── */
+  .refine-bar {
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+    background: rgba(255,255,255,0.015);
+    flex-shrink: 0;
+  }
+  .refine-inner {
+    display: flex; align-items: center; gap: 10px;
+    border-radius: 24px;
+    background: #1F2023;
+    border: 1px solid #444;
+    padding: 8px 14px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.24);
+    transition: border-color 0.2s;
+  }
+  .refine-inner:focus-within { border-color: rgba(249,115,22,0.55); }
+  .refine-input {
+    flex: 1; font-family: var(--sans); font-size: 0.80rem;
+    color: var(--fg); background: transparent; border: none; outline: none;
+  }
+  .refine-input::placeholder { color: rgba(240,230,216,0.28); }
+  .refine-send {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--accent); border: none;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; flex-shrink: 0; color: #fff; font-size: 13px;
+    transition: opacity 0.14s;
+  }
+</style>
+
+<div style="padding:8px 0;">
+  <div class="modal">
+
+    <!-- Header -->
+    <div class="modal-header">
+      <div class="modal-header-left">
+        <div class="zap-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="#F97316"><path d="M13 2L4.5 13.5H11L10 22L19.5 10H13L13 2Z"/></svg>
+        </div>
+        <div>
+          <div class="modal-title">Daily Briefing</div>
+          <div class="modal-sub">April 13, 2026 · Sports (Soccer)</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="header-btn">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6M3 12a9 9 0 0115-6.7L21 8M3 22v-6h6M21 12a9 9 0 01-15 6.7L3 16"/></svg>
+          Refresh
+        </button>
+        <button class="close-btn">✕</button>
+      </div>
+    </div>
+
+    <!-- Scrollable body -->
+    <div class="modal-body">
+      <div class="modal-scroll">
+
+        <!-- Summary -->
+        <div class="summary-block">
+          <div class="summary-label">Here's what's going on in the world</div>
+          <p class="summary-text">As the transfer market heats up, stay in the loop with the most crucial club-to-club news. And don't miss the buzz surrounding the Arsenal vs. Man City clash. Dive in for today's top insights!</p>
+          <div class="summary-meta">Based on 15 live sources · refreshes every 5 min</div>
+        </div>
+
+        <!-- Cards -->
+        <div class="cards-grid">
+
+          <div class="topic-card">
+            <div class="card-top">
+              <div class="card-badges">
+                <span class="pill pill-amber">Developing</span>
+                <span class="pill pill-green">High</span>
+              </div>
+              <button class="track-btn">
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+                Track
+              </button>
+            </div>
+            <div class="card-headline">Man City eyes Juventus' Paulo Dybala in summer move</div>
+            <div class="card-summary">Manchester City is reportedly targeting Juventus star Paulo Dybala in the upcoming transfer window. This potential acquisition could reshape the club's attacking lineup.</div>
+            <div class="card-hook">Could this move reshape the Premier League's title race next season?</div>
+            <div class="card-footer-row">
+              <span class="card-source">Sky Sports</span>
+              <button class="explore-btn">Explore Topic ›</button>
+            </div>
+          </div>
+
+          <div class="topic-card">
+            <div class="card-top">
+              <div class="card-badges">
+                <span class="pill pill-blue">Analysis</span>
+                <span class="pill pill-green">High</span>
+              </div>
+              <button class="track-btn">
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+                Track
+              </button>
+            </div>
+            <div class="card-headline">Mikel Arteta aims to outsmart Pep Guardiola</div>
+            <div class="card-summary">Arsenal manager Mikel Arteta is strategizing to outplay his former mentor, Pep Guardiola, in the upcoming clash against Manchester City.</div>
+            <div class="card-hook">Is Arteta ready to go toe-to-toe with Guardiola tactically?</div>
+            <div class="card-footer-row">
+              <span class="card-source">BBC Sport</span>
+              <button class="explore-btn">Explore Topic ›</button>
+            </div>
+          </div>
+
+          <div class="topic-card">
+            <div class="card-top">
+              <div class="card-badges">
+                <span class="pill pill-amber">Developing</span>
+                <span class="pill pill-amber">Medium</span>
+              </div>
+              <button class="track-btn">
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+                Track
+              </button>
+            </div>
+            <div class="card-headline">Chelsea close to signing top Bundesliga midfielder</div>
+            <div class="card-summary">Chelsea is on the verge of securing a deal with a leading midfielder from the Bundesliga. This acquisition is expected to strengthen their midfield considerably.</div>
+            <div class="card-hook">How will this addition impact Chelsea's ambitions next season?</div>
+            <div class="card-footer-row">
+              <span class="card-source">Transfermarkt</span>
+              <button class="explore-btn">Explore Topic ›</button>
+            </div>
+          </div>
+
+          <div class="topic-card">
+            <div class="card-top">
+              <div class="card-badges">
+                <span class="pill pill-red">Breaking</span>
+                <span class="pill pill-green">High</span>
+              </div>
+              <button class="track-btn">
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+                Track
+              </button>
+            </div>
+            <div class="card-headline">Arsenal vs Man City: Title race heats up</div>
+            <div class="card-summary">With an Arsenal and Manchester City face-off imminent, the stakes in the title race have never been higher. Both teams are prepping for the decisive encounter.</div>
+            <div class="card-hook">Will this match decide the momentum in the title race?</div>
+            <div class="card-footer-row">
+              <span class="card-source">Premier League</span>
+              <button class="explore-btn">Explore Topic ›</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Refine bar — PromptInputBox style -->
+      <div class="refine-bar">
+        <div class="refine-inner">
+          <input class="refine-input" placeholder='Refine: "show me more defence stories" or "anything on climate?"' />
+          <button class="refine-send">→</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>

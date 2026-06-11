@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef } from 'react';
 import { Box, Typography } from '@mui/material';
 
 export default function InputBar({ onSend, disabled }) {
@@ -40,13 +40,17 @@ export default function InputBar({ onSend, disabled }) {
         display: 'flex',
         alignItems: 'flex-end',
         gap: 1,
-        background: '#151310',
-        border: focused ? '1px solid rgba(249,115,22,0.45)' : '1px solid #242018',
+        background: 'rgba(21,19,16,0.78)',
+        backdropFilter: 'blur(22px) saturate(165%)',
+        WebkitBackdropFilter: 'blur(22px) saturate(165%)',
+        border: focused ? '1px solid rgba(249,115,22,0.5)' : '1px solid rgba(255,255,255,0.12)',
         borderRadius: '12px',
         px: 1.5,
         py: 1.25,
-        boxShadow: focused ? '0 0 0 3px rgba(249,115,22,0.08)' : 'none',
-        transition: 'border-color 0.15s, box-shadow 0.15s',
+        boxShadow: focused
+          ? '0 0 0 3px rgba(249,115,22,0.08), inset 0 1px 0 rgba(255,255,255,0.07), inset 0 -1px 0 rgba(0,0,0,0.35), inset 0 0 24px rgba(0,0,0,0.12)'
+          : 'inset 0 1px 0 rgba(255,255,255,0.05), inset 0 -1px 0 rgba(0,0,0,0.28), inset 0 0 20px rgba(0,0,0,0.1)',
+        transition: 'border-color 0.15s, box-shadow 0.15s, background 0.15s',
       }}>
         <Box
           ref={textareaRef}

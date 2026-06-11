@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
-  Sun, Moon, Zap, Trash2, RotateCcw, Key, Eye, EyeOff,
+  Sun, Moon, Trash2, Key, Eye, EyeOff,
   BookOpen, Search, FlaskConical, Cpu, History,
 } from 'lucide-react';
 import { useSettings } from '../SettingsContext';
 import { useDarkMode } from '../DarkModeContext';
 import { clearSourceLibrary } from '../utils/sourceLibrary';
 import PageShell from '../components/PageShell';
+import { glassCardStyle } from '../components/GlassCard';
 
 const DOCUMENTS_KEY = 'quarry_documents';
 
@@ -83,11 +84,8 @@ function SectionLabel({ children }) {
 function Card({ children, style }) {
   return (
     <div style={{
-      background: 'var(--glass-bg)',
-      backdropFilter: 'var(--glass-blur)',
-      WebkitBackdropFilter: 'var(--glass-blur)',
-      border: '1px solid var(--border)',
-      borderRadius: 14,
+      ...glassCardStyle,
+      borderRadius: 12,
       padding: '8px 20px',
       ...style,
     }}>
@@ -129,50 +127,123 @@ function DangerRow({ icon, label, description, onConfirm }) {
   );
 }
 
-/* Pill selector — for model and depth chooser */
-function PillSelect({ options, value, onChange }) {
+/* Pill selector — single frosted rail + list rows (reads as settings, not pricing tiers) */
+function PillSelect({ options, value, onChange, hint }) {
+  const [dark] = useDarkMode();
+  const shellBg = dark ? 'rgba(0,0,0,0.28)' : 'rgba(255,252,242,0.55)';
+  const shellBorder = dark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,248,0.85)';
+
   return (
-    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingBottom: 12 }}>
-      {options.map(opt => {
-        const active = value === opt.id;
-        return (
-          <button
-            key={opt.id}
-            onClick={() => onChange(opt.id)}
-            style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-              padding: '7px 13px', borderRadius: 10, cursor: 'pointer',
-              border: `1px solid ${active ? 'rgba(249,115,22,0.55)' : 'var(--border)'}`,
-              background: active ? 'rgba(249,115,22,0.09)' : 'transparent',
-              transition: 'all 0.15s',
-            }}
-          >
-            <span style={{
-              fontFamily: 'var(--font-family)', fontSize: '0.77rem', fontWeight: active ? 600 : 400,
-              color: active ? 'var(--accent)' : 'var(--fg-primary)',
-            }}>{opt.label}</span>
-            {opt.note && (
+    <div style={{ paddingBottom: 12 }}>
+      {hint && (
+        <div style={{
+          fontFamily: 'var(--font-family)', fontSize: '0.62rem', fontWeight: 500,
+          color: 'var(--fg-dim)', letterSpacing: '0.04em', marginBottom: 8, lineHeight: 1.35,
+        }}>
+          {hint}
+        </div>
+      )}
+      <div
+        role="radiogroup"
+        style={{
+          borderRadius: 10,
+          border: `1px solid ${shellBorder}`,
+          background: shellBg,
+          backdropFilter: 'var(--glass-blur)',
+          WebkitBackdropFilter: 'var(--glass-blur)',
+          overflow: 'hidden',
+          boxShadow: dark
+            ? 'inset 0 1px 0 rgba(255,255,255,0.04)'
+            : 'inset 0 1px 0 rgba(255,255,255,0.65)',
+        }}
+      >
+        {options.map((opt, i) => {
+          const active = value === opt.id;
+          const last = i === options.length - 1;
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => onChange(opt.id)}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                width: '100%', textAlign: 'left', cursor: 'pointer', border: 'none',
+                padding: '10px 12px 10px 14px',
+                borderBottom: last ? 'none' : '1px solid var(--border)',
+                background: active
+                  ? (dark ? 'rgba(249,115,22,0.14)' : 'rgba(249,115,22,0.10)')
+                  : 'transparent',
+                borderLeft: active ? '3px solid var(--accent)' : '3px solid transparent',
+                transition: 'background 0.15s ease, border-left-color 0.15s ease',
+              }}
+            >
               <span style={{
-                fontFamily: 'var(--font-mono)', fontSize: '0.60rem',
-                color: active ? 'rgba(249,115,22,0.7)' : 'var(--fg-dim)', marginTop: 1,
-              }}>{opt.note}</span>
-            )}
-          </button>
-        );
-      })}
+                fontFamily: 'var(--font-family)', fontSize: '0.77rem', fontWeight: active ? 600 : 500,
+                color: 'var(--fg-primary)',
+                lineHeight: 1.25,
+              }}>{opt.label}</span>
+              {opt.note && (
+                <span style={{
+                  fontFamily: 'var(--font-mono)', fontSize: '0.58rem', flexShrink: 0,
+                  color: active ? 'rgba(249,115,22,0.85)' : 'var(--fg-dim)',
+                }}>{opt.note}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
 /* ── Main page ───────────────────────────────────────────────────────────── */
+const ROW_ICON_SLOT = 15 + 14; /* icon width + Row gap — aligns stacked controls with row labels */
+
 export default function SettingsPage() {
   const { settings, set } = useSettings();
   const [dark, setDark] = useDarkMode();
-  const [toast, setToast] = useState('');
+  const [toastMsg, setToastMsg] = useState('');
+  const [toastVisible, setToastVisible] = useState(false);
+  const toastTimers = useRef({ dismiss: null, remove: null });
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('quarry_openrouter_key') || '');
 
-  const notify = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
+  useEffect(() => () => {
+    if (toastTimers.current.dismiss) clearTimeout(toastTimers.current.dismiss);
+    if (toastTimers.current.remove) clearTimeout(toastTimers.current.remove);
+  }, []);
+
+  useEffect(() => {
+    if (!toastMsg) {
+      setToastVisible(false);
+      return undefined;
+    }
+    setToastVisible(false);
+    let innerRaf = 0;
+    const outerRaf = requestAnimationFrame(() => {
+      innerRaf = requestAnimationFrame(() => setToastVisible(true));
+    });
+    return () => {
+      cancelAnimationFrame(outerRaf);
+      if (innerRaf) cancelAnimationFrame(innerRaf);
+    };
+  }, [toastMsg]);
+
+  const notify = (msg) => {
+    if (toastTimers.current.dismiss) clearTimeout(toastTimers.current.dismiss);
+    if (toastTimers.current.remove) clearTimeout(toastTimers.current.remove);
+    setToastMsg(msg);
+    toastTimers.current.dismiss = setTimeout(() => {
+      setToastVisible(false);
+      toastTimers.current.remove = setTimeout(() => {
+        setToastMsg('');
+        toastTimers.current.remove = null;
+      }, 240);
+      toastTimers.current.dismiss = null;
+    }, 3000);
+  };
 
   const saveApiKey = () => {
     localStorage.setItem('quarry_openrouter_key', apiKey.trim());
@@ -206,10 +277,6 @@ export default function SettingsPage() {
     notify('Source library cleared.');
   };
 
-  const resetWatchlist = () => {
-    try { localStorage.removeItem('quarry_watchlist'); } catch {}
-    notify('Watchlist reset to defaults.');
-  };
 
   return (
     <div style={{
@@ -239,13 +306,6 @@ export default function SettingsPage() {
           <SectionLabel>Search</SectionLabel>
           <Card>
             <Row
-              icon={<Zap size={15} />}
-              label="Finance Auto-Detection"
-              description="Show live price card when a stock ticker or company is detected in your query"
-              right={<Toggle checked={settings.financeAutoDetect} onChange={v => set('financeAutoDetect', v)} />}
-            />
-            <Divider />
-            <Row
               icon={<Search size={15} />}
               label="Deep Mode by Default"
               description="Always use multi-pass retrieval and sub-query decomposition"
@@ -259,29 +319,16 @@ export default function SettingsPage() {
           <SectionLabel>Deep Research</SectionLabel>
           <Card>
             <Row
-              icon={<FlaskConical size={15} />}
-              label="Deep Research by Default"
-              description="Automatically start autonomous research agent on every search"
-              right={<Toggle checked={settings.deepResearchDefault || false} onChange={v => set('deepResearchDefault', v)} />}
-            />
-            <Divider />
-            <Row
               icon={<FlaskConical size={15} style={{ opacity: 0 }} />}
               label="Research Depth"
               description="Number of sub-questions the agent explores per research run"
               right={null}
             />
             <PillSelect
+              hint="One option per run — choose how many sub-questions Deep Research explores."
               options={DEPTH_OPTIONS}
               value={settings.deepResearchDepth || 'standard'}
               onChange={v => set('deepResearchDepth', v)}
-            />
-            <Divider />
-            <Row
-              icon={<FlaskConical size={15} style={{ opacity: 0 }} />}
-              label="Show Live Progress Feed"
-              description="Display each search step as the research agent works"
-              right={<Toggle checked={settings.showResearchProgress !== false} onChange={v => set('showResearchProgress', v)} />}
             />
           </Card>
         </div>
@@ -297,6 +344,7 @@ export default function SettingsPage() {
               right={null}
             />
             <PillSelect
+              hint="One default for standard searches — Deep Research still uses GPT-4o."
               options={MODELS}
               value={settings.defaultModel || 'openai/gpt-4o'}
               onChange={v => {
@@ -324,34 +372,39 @@ export default function SettingsPage() {
                 </button>
               }
             />
-            <div style={{ paddingBottom: 12 }}>
-              <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ paddingBottom: 12, paddingLeft: ROW_ICON_SLOT, boxSizing: 'border-box' }}>
+              <div style={{ display: 'flex', alignItems: 'stretch', gap: 8, flexWrap: 'wrap' }}>
                 <input
                   type={apiKeyVisible ? 'text' : 'password'}
                   value={apiKey}
                   onChange={e => setApiKey(e.target.value)}
                   placeholder="sk-or-v1-..."
                   style={{
-                    flex: 1,
+                    flex: '1 1 160px',
+                    minWidth: 0,
+                    alignSelf: 'center',
                     background: dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
                     border: '1px solid var(--border)',
-                    borderRadius: 8, padding: '7px 12px',
+                    borderRadius: 8, padding: '8px 12px',
                     fontFamily: 'var(--font-mono)', fontSize: '0.74rem',
                     color: 'var(--fg-primary)',
                     outline: 'none',
                   }}
                 />
                 <button
+                  type="button"
                   onClick={saveApiKey}
                   style={{
-                    padding: '7px 16px', borderRadius: 8, cursor: 'pointer',
+                    padding: '8px 16px', borderRadius: 8, cursor: 'pointer',
                     background: 'var(--accent)', border: 'none',
                     fontFamily: 'var(--font-family)', fontSize: '0.76rem',
                     fontWeight: 600, color: '#fff',
                     transition: 'opacity 0.15s',
+                    flexShrink: 0,
+                    alignSelf: 'center',
                   }}
-                  onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
-                  onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                  onMouseEnter={e => { e.currentTarget.style.opacity = '0.85'; }}
+                  onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
                 >
                   Save
                 </button>
@@ -404,29 +457,27 @@ export default function SettingsPage() {
               description="Remove all sources saved from your searches"
               onConfirm={clearSources}
             />
-            <Divider />
-            <DangerRow
-              icon={<RotateCcw size={15} />}
-              label="Reset Finance Watchlist"
-              description="Restore the default ticker watchlist"
-              onConfirm={resetWatchlist}
-            />
           </Card>
         </div>
 
         {/* Toast */}
-        {toast && (
-          <div style={{
-            position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)',
-            padding: '9px 20px', borderRadius: 99,
-            background: dark ? 'rgba(22,163,74,0.18)' : 'rgba(22,163,74,0.12)',
-            border: '1px solid rgba(22,163,74,0.30)',
-            fontFamily: 'var(--font-family)', fontSize: '0.78rem',
-            color: '#16a34a', whiteSpace: 'nowrap',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
-            zIndex: 9999,
-          }}>
-            {toast}
+        {toastMsg && (
+          <div
+            style={{
+              position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)',
+              padding: '9px 20px', borderRadius: 99,
+              background: dark ? 'rgba(22,163,74,0.18)' : 'rgba(22,163,74,0.12)',
+              border: '1px solid rgba(22,163,74,0.30)',
+              fontFamily: 'var(--font-family)', fontSize: '0.78rem',
+              color: '#16a34a', whiteSpace: 'nowrap',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+              zIndex: 9999,
+              opacity: toastVisible ? 1 : 0,
+              transition: 'opacity 0.22s ease',
+              pointerEvents: 'none',
+            }}
+          >
+            {toastMsg}
           </div>
         )}
 

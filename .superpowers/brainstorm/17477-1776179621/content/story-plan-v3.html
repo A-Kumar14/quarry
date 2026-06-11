@@ -1,0 +1,212 @@
+<h2>Topic Detail Panel — Pill Source Labels</h2>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --fg: #F0E6D8; --fg-sec: #C9A882; --fg-dim: rgba(240,230,216,0.38);
+    --accent: #F97316; --border: rgba(255,255,255,0.08);
+    --bg: #120D07; --bg2: #1A1208; --bg3: rgba(255,255,255,0.03);
+    --sans: 'IBM Plex Sans', system-ui, sans-serif;
+    --mono: 'IBM Plex Mono', monospace;
+    --red-bg: oklch(25.93% 0.0834 19.02); --red-fg: oklch(69.96% 0.2136 22.03);
+    --amber-bg: oklch(24.95% 0.0642 64.78); --amber-fg: oklch(77.21% 0.1991 64.28);
+    --green-bg: oklch(27.12% 0.0895 150.09); --green-fg: oklch(73.1% 0.2158 148.29);
+    --gray-bg: hsla(0,0%,12%,1); --gray-fg: hsla(0,0%,93%,1);
+  }
+
+  .pill {
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 9999px; font-family: var(--sans); font-size: 10px; font-weight: 500;
+    white-space: nowrap; height: 18px; padding: 0 6px; flex-shrink: 0;
+  }
+  .pill-red    { background: var(--red-bg);   color: var(--red-fg); }
+  .pill-amber  { background: var(--amber-bg); color: var(--amber-fg); }
+  .pill-green  { background: var(--green-bg); color: var(--green-fg); }
+  .pill-gray   { background: var(--gray-bg);  color: var(--gray-fg); }
+  /* source pills slightly larger */
+  .pill-source { height: 20px; font-size: 11px; padding: 0 9px; background: var(--gray-bg); color: var(--gray-fg); }
+
+  .modal {
+    width: 100%; max-width: 900px; height: 560px; border-radius: 18px;
+    background: var(--bg); border: 1px solid rgba(255,255,255,0.09);
+    box-shadow: 0 32px 80px rgba(0,0,0,0.70);
+    display: flex; flex-direction: column; overflow: hidden;
+    font-family: var(--sans); margin: 0 auto;
+  }
+  .modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .modal-header-left { display: flex; align-items: center; gap: 10px; }
+  .zap-icon {
+    width: 30px; height: 30px; border-radius: 9px;
+    background: rgba(249,115,22,0.12); border: 1px solid rgba(249,115,22,0.28);
+    display: flex; align-items: center; justify-content: center; font-size: 14px;
+  }
+  .modal-title { font-family: var(--sans); font-size: 0.95rem; font-weight: 600; color: var(--fg); }
+  .modal-sub { font-family: var(--mono); font-size: 0.58rem; color: var(--fg-dim); margin-top: 2px; }
+  .header-btn {
+    border: 1px solid var(--border); border-radius: 7px; background: none; color: var(--fg-dim);
+    font-family: var(--sans); font-size: 0.68rem; padding: 4px 9px; cursor: pointer;
+  }
+  .close-btn {
+    border: 1px solid var(--border); border-radius: 7px; background: none;
+    width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; color: var(--fg-dim); font-size: 13px;
+  }
+  .modal-body { flex: 1; display: flex; overflow: hidden; }
+  .modal-left { flex: 1; display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid var(--border); }
+  .cards-grid {
+    flex: 1; overflow-y: auto; padding: 12px 14px;
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; align-content: start;
+  }
+  .topic-card {
+    border-radius: 10px; padding: 11px 12px; background: var(--bg2);
+    border: 1px solid rgba(175,150,105,0.14);
+    display: flex; flex-direction: column; gap: 6px; cursor: pointer;
+  }
+  .topic-card.active { border-color: rgba(249,115,22,0.45); background: rgba(249,115,22,0.05); }
+  .card-badges { display: flex; gap: 4px; flex-wrap: wrap; }
+  .card-headline { font-family: var(--sans); font-size: 0.78rem; font-weight: 600; color: var(--fg); line-height: 1.3; }
+  .card-source { font-family: var(--mono); font-size: 0.54rem; color: var(--fg-dim); text-transform: uppercase; }
+
+  .plan-panel { width: 420px; flex-shrink: 0; display: flex; flex-direction: column; }
+  .plan-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .back-btn {
+    border: 1px solid var(--border); border-radius: 7px; background: none;
+    padding: 4px 10px; cursor: pointer;
+    font-family: var(--sans); font-size: 0.70rem; color: var(--fg-dim);
+    display: flex; align-items: center; gap: 4px; flex-shrink: 0;
+  }
+  .plan-headline {
+    font-family: var(--sans); font-size: 0.86rem; font-weight: 600;
+    color: var(--fg); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .plan-body { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 16px; }
+  .info-block { display: flex; flex-direction: column; gap: 5px; }
+  .info-label {
+    font-family: var(--mono); font-size: 0.56rem; font-weight: 600;
+    color: var(--fg-dim); letter-spacing: 0.12em; text-transform: uppercase;
+    padding-bottom: 5px; border-bottom: 1px solid var(--border);
+  }
+  .info-text { font-family: var(--sans); font-size: 0.80rem; font-weight: 300; color: var(--fg-sec); line-height: 1.7; }
+  .info-row {
+    display: flex; align-items: baseline; gap: 8px;
+    font-family: var(--sans); font-size: 0.78rem; line-height: 1.6; color: var(--fg-sec);
+    padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row-key {
+    font-family: var(--mono); font-size: 0.58rem; color: var(--fg-dim);
+    text-transform: uppercase; letter-spacing: 0.06em; min-width: 68px; flex-shrink: 0; padding-top: 2px;
+  }
+  .plan-footer {
+    padding: 11px 18px; border-top: 1px solid var(--border);
+    display: flex; gap: 9px; flex-shrink: 0; background: var(--bg2);
+  }
+  .btn-primary {
+    flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+    background: var(--accent); color: #fff; border: none; border-radius: 10px;
+    padding: 9px 0; font-family: var(--sans); font-size: 0.80rem; font-weight: 500; cursor: pointer;
+  }
+  .btn-secondary {
+    flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+    background: transparent; color: var(--fg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 9px 0;
+    font-family: var(--sans); font-size: 0.80rem; font-weight: 500; cursor: pointer;
+  }
+</style>
+
+<div style="padding:8px 0;">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-header-left">
+        <div class="zap-icon">⚡</div>
+        <div>
+          <div class="modal-title">Daily Briefing</div>
+          <div class="modal-sub">April 14, 2026 · Conflict & Humanitarian</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="header-btn">↻ Refresh</button>
+        <button class="close-btn">✕</button>
+      </div>
+    </div>
+
+    <div class="modal-body">
+      <div class="modal-left">
+        <div class="cards-grid">
+          <div class="topic-card active">
+            <div class="card-badges"><span class="pill pill-red">Breaking</span><span class="pill pill-green">High</span></div>
+            <div class="card-headline">Gaza ceasefire talks collapse after prisoner swap fails</div>
+            <div class="card-source">Reuters</div>
+          </div>
+          <div class="topic-card">
+            <div class="card-badges"><span class="pill pill-amber">Developing</span></div>
+            <div class="card-headline">Ukraine: renewed shelling on Donetsk civilian areas</div>
+            <div class="card-source">AP News</div>
+          </div>
+          <div class="topic-card">
+            <div class="card-badges"><span class="pill pill-amber">Contested</span></div>
+            <div class="card-headline">Venezuela detains opposition leader ahead of press conference</div>
+            <div class="card-source">BBC World</div>
+          </div>
+          <div class="topic-card">
+            <div class="card-badges"><span class="pill pill-green">High</span></div>
+            <div class="card-headline">Sudan RSF advance cuts off humanitarian corridors</div>
+            <div class="card-source">Al Jazeera</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="plan-panel">
+        <div class="plan-header">
+          <button class="back-btn">← Back</button>
+          <div class="plan-headline">Gaza ceasefire talks collapse after prisoner swap fails</div>
+        </div>
+
+        <div class="plan-body">
+          <div class="info-block">
+            <div class="info-label">What happened</div>
+            <div class="info-text">Qatari-mediated negotiations between Israel and Hamas broke down on Tuesday after both sides failed to agree on a prisoner exchange. Israeli negotiators left Doha without a deal. Aid convoys have remained blocked at the Kerem Shalom crossing since Monday.</div>
+          </div>
+
+          <div class="info-block">
+            <div class="info-label">Background</div>
+            <div class="info-text">This is the third collapse of ceasefire talks in six weeks. Previous rounds broke down over disagreements on the number of hostages and the duration of a sustained pause in fighting.</div>
+          </div>
+
+          <div class="info-block">
+            <div class="info-label">Key facts</div>
+            <div>
+              <div class="info-row"><span class="info-row-key">Location</span>Doha, Qatar — negotiations; Gaza Strip — fighting</div>
+              <div class="info-row"><span class="info-row-key">Parties</span>Israel, Hamas, Qatar (mediator), Egypt (observer)</div>
+              <div class="info-row"><span class="info-row-key">Aid status</span>Kerem Shalom crossing closed since Monday</div>
+              <div class="info-row"><span class="info-row-key">Casualties</span>34 killed in airstrikes in the past 48 hours (Gaza MoH)</div>
+            </div>
+          </div>
+
+          <div class="info-block">
+            <div class="info-label">Sources reporting</div>
+            <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:4px">
+              <span class="pill pill-source">Reuters</span>
+              <span class="pill pill-source">Al Jazeera</span>
+              <span class="pill pill-source">BBC World</span>
+              <span class="pill pill-source">AP News</span>
+              <span class="pill pill-source">Haaretz</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="plan-footer">
+          <button class="btn-primary">🔍 Start Researching</button>
+          <button class="btn-secondary">✏ Open in Notes</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

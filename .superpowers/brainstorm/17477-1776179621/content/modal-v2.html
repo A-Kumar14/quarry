@@ -1,0 +1,241 @@
+<h2>Daily Briefing Modal — Pill Badges</h2>
+<p class="subtitle">badge-1 pill components replacing all urgency + relevance labels</p>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Serif:wght@400;600&display=swap');
+
+  :root {
+    --fg: #F0E6D8;
+    --fg-sec: #C9A882;
+    --fg-dim: rgba(240,230,216,0.38);
+    --accent: #F97316;
+    --border: rgba(255,255,255,0.08);
+    --bg: #120D07;
+    --bg2: #1A1208;
+    --bg3: rgba(255,255,255,0.03);
+    --sans: 'IBM Plex Sans', system-ui, sans-serif;
+    --serif: 'IBM Plex Serif', Georgia, serif;
+    --mono: 'IBM Plex Mono', monospace;
+
+    /* badge-1 dark mode tokens */
+    --red-bg:    oklch(25.93% 0.0834 19.02);  --red-fg:    oklch(69.96% 0.2136 22.03);
+    --amber-bg:  oklch(24.95% 0.0642 64.78);  --amber-fg:  oklch(77.21% 0.1991 64.28);
+    --blue-bg:   oklch(25.45% 0.0811 255.8);  --blue-fg:   oklch(71.7% 0.1648 250.79);
+    --purple-bg: oklch(25.91% 0.0921 314.41); --purple-fg: oklch(69.87% 0.2037 309.51);
+    --green-bg:  oklch(27.12% 0.0895 150.09); --green-fg:  oklch(73.1% 0.2158 148.29);
+    --gray-bg:   hsla(0,0%,12%,1);            --gray-fg:   hsla(0,0%,93%,1);
+  }
+
+  /* ── pill ── */
+  .pill {
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 9999px;
+    font-family: var(--sans); font-size: 11px; font-weight: 500;
+    white-space: nowrap; height: 20px; padding: 0 8px;
+    letter-spacing: 0.1px; flex-shrink: 0;
+  }
+  .pill-sm { height: 18px; font-size: 10px; padding: 0 6px; }
+  .pill-red    { background: var(--red-bg);    color: var(--red-fg); }
+  .pill-amber  { background: var(--amber-bg);  color: var(--amber-fg); }
+  .pill-blue   { background: var(--blue-bg);   color: var(--blue-fg); }
+  .pill-purple { background: var(--purple-bg); color: var(--purple-fg); }
+  .pill-green  { background: var(--green-bg);  color: var(--green-fg); }
+  .pill-gray   { background: var(--gray-bg);   color: var(--gray-fg); }
+
+  /* ── modal shell ── */
+  .modal {
+    width: 100%; max-width: 900px; height: 560px;
+    border-radius: 18px; background: var(--bg);
+    border: 1px solid rgba(255,255,255,0.09);
+    box-shadow: 0 32px 80px rgba(0,0,0,0.70);
+    display: flex; flex-direction: column;
+    overflow: hidden; font-family: var(--sans); margin: 0 auto;
+  }
+  .modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .modal-header-left { display: flex; align-items: center; gap: 10px; }
+  .zap-icon {
+    width: 30px; height: 30px; border-radius: 9px;
+    background: rgba(249,115,22,0.12); border: 1px solid rgba(249,115,22,0.28);
+    display: flex; align-items: center; justify-content: center; font-size: 14px;
+  }
+  .modal-title { font-family: var(--sans); font-size: 0.95rem; font-weight: 600; color: var(--fg); line-height: 1.1; }
+  .modal-sub { font-family: var(--mono); font-size: 0.58rem; color: var(--fg-dim); margin-top: 2px; }
+  .header-btn {
+    border: 1px solid var(--border); border-radius: 7px; background: none; color: var(--fg-dim);
+    font-family: var(--sans); font-size: 0.68rem; padding: 4px 9px; cursor: pointer;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .close-btn {
+    border: 1px solid var(--border); border-radius: 7px; background: none;
+    width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; color: var(--fg-dim); font-size: 13px;
+  }
+
+  .modal-body { flex: 1; display: flex; overflow: hidden; }
+  .modal-left { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  .summary-block {
+    margin: 16px 20px 12px; border-left: 3px solid var(--accent);
+    padding-left: 12px; flex-shrink: 0;
+  }
+  .summary-label {
+    font-family: var(--sans); font-size: 0.56rem; font-weight: 600;
+    color: var(--fg-dim); letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 5px;
+  }
+  .summary-text { font-family: var(--sans); font-size: 0.82rem; font-weight: 300; color: var(--fg-sec); line-height: 1.65; }
+  .summary-meta { font-family: var(--mono); font-size: 0.56rem; color: var(--fg-dim); margin-top: 4px; }
+
+  .cards-grid {
+    flex: 1; overflow-y: auto; padding: 0 20px 16px;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; align-content: start;
+  }
+  .topic-card {
+    border-radius: 12px; padding: 13px 14px; background: var(--bg2);
+    border: 1px solid rgba(175,150,105,0.14);
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .card-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap; }
+  .card-badges { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .track-btn {
+    border: 1px solid var(--border); border-radius: 5px; background: none; padding: 2px 7px;
+    display: flex; align-items: center; gap: 3px;
+    font-family: var(--sans); font-size: 0.55rem; color: var(--fg-dim); cursor: pointer; flex-shrink: 0;
+  }
+  .card-headline {
+    font-family: var(--sans); font-size: 0.86rem; font-weight: 600;
+    color: var(--fg); line-height: 1.3;
+  }
+  .card-summary {
+    font-family: var(--sans); font-size: 0.72rem; font-weight: 300;
+    color: var(--fg-sec); line-height: 1.5;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .card-hook {
+    border-left: 2px solid var(--accent); padding-left: 7px;
+    font-family: var(--sans); font-size: 0.67rem; color: var(--accent);
+    font-style: italic; line-height: 1.4;
+  }
+  .card-footer-row {
+    display: flex; align-items: center; justify-content: space-between; margin-top: 2px;
+  }
+  .card-source { font-family: var(--mono); font-size: 0.56rem; color: var(--fg-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+  .explore-btn {
+    background: var(--accent); color: #fff; border: none; border-radius: 7px;
+    padding: 4px 10px; font-family: var(--sans); font-size: 0.68rem; font-weight: 500;
+    cursor: pointer; display: flex; align-items: center; gap: 4px;
+  }
+
+  .chat-bar { padding: 9px 14px; border-top: 1px solid var(--border); background: var(--bg3); flex-shrink: 0; }
+  .chat-inner {
+    display: flex; align-items: center; gap: 8px;
+    border-radius: 9px; background: var(--bg3); border: 1px solid var(--border); padding: 5px 10px;
+  }
+  .chat-input {
+    flex: 1; font-family: var(--sans); font-size: 0.75rem;
+    color: var(--fg-dim); background: transparent; border: none; outline: none;
+  }
+  .chat-send {
+    width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--border);
+    background: none; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; color: var(--fg-dim); font-size: 11px;
+  }
+</style>
+
+<div style="padding:8px 0;">
+  <div class="modal">
+
+    <div class="modal-header">
+      <div class="modal-header-left">
+        <div class="zap-icon">⚡</div>
+        <div>
+          <div class="modal-title">Daily Briefing</div>
+          <div class="modal-sub">April 14, 2026 · Conflict & Humanitarian</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="header-btn">↻ Refresh</button>
+        <button class="close-btn">✕</button>
+      </div>
+    </div>
+
+    <div class="modal-body">
+      <div class="modal-left">
+
+        <div class="summary-block">
+          <div class="summary-label">Here's what's going on in the world</div>
+          <p class="summary-text">Ceasefire negotiations in Gaza have stalled after a failed prisoner exchange. Ukraine's eastern front saw renewed shelling overnight. Venezuela's opposition leader was detained hours before a planned press conference.</p>
+          <div class="summary-meta">Based on 42 live sources · refreshes every 5 min</div>
+        </div>
+
+        <div class="cards-grid">
+
+          <!-- Card 1: Breaking + High relevance + Contested -->
+          <div class="topic-card">
+            <div class="card-top">
+              <div class="card-badges">
+                <span class="pill pill-sm pill-red">Breaking</span>
+                <span class="pill pill-sm pill-green">High relevance</span>
+                <span class="pill pill-sm pill-amber">Contested</span>
+              </div>
+              <button class="track-btn">Track</button>
+            </div>
+            <div class="card-headline">Gaza ceasefire talks collapse after prisoner swap fails</div>
+            <div class="card-summary">Negotiations mediated by Qatar broke down late Tuesday. Aid convoys remain blocked at the Kerem Shalom crossing.</div>
+            <div class="card-hook">Key question: Will Egypt broker a new framework before the weekend?</div>
+            <div class="card-footer-row">
+              <span class="card-source">Reuters</span>
+              <button class="explore-btn">Explore Topic ›</button>
+            </div>
+          </div>
+
+          <!-- Card 2: Developing -->
+          <div class="topic-card">
+            <div class="card-top">
+              <div class="card-badges">
+                <span class="pill pill-sm pill-amber">Developing</span>
+                <span class="pill pill-sm pill-green">High relevance</span>
+              </div>
+              <button class="track-btn">Track</button>
+            </div>
+            <div class="card-headline">Ukraine: renewed shelling on Donetsk civilian areas</div>
+            <div class="card-summary">Russian forces fired artillery at residential districts overnight. 3 soldiers killed, 11 wounded along the eastern front in 24 hours.</div>
+            <div class="card-hook">Context: follows a week of relative quiet after Kharkiv ceasefire proposal.</div>
+            <div class="card-footer-row">
+              <span class="card-source">AP News</span>
+              <button class="explore-btn">Explore Topic ›</button>
+            </div>
+          </div>
+
+          <!-- Card 3: Feature + Contested -->
+          <div class="topic-card">
+            <div class="card-top">
+              <div class="card-badges">
+                <span class="pill pill-sm pill-purple">Feature</span>
+                <span class="pill pill-sm pill-amber">Contested</span>
+              </div>
+              <button class="track-btn">Track</button>
+            </div>
+            <div class="card-headline">Venezuela detains opposition leader ahead of press conference</div>
+            <div class="card-summary">Authorities arrested María Corina Machado's chief of staff hours before a scheduled briefing on election fraud evidence.</div>
+            <div class="card-footer-row">
+              <span class="card-source">BBC World</span>
+              <button class="explore-btn">Explore Topic ›</button>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="chat-bar">
+          <div class="chat-inner">
+            <input class="chat-input" placeholder='Refine: "show me more defence stories" or "anything on climate?"' />
+            <button class="chat-send">→</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>

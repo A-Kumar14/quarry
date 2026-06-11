@@ -26,6 +26,9 @@ The philosophical difference from Perplexity:
 - Glass-morphism: rgba(255,255,255,0.15), blur(12px), 1px solid rgba(255,255,255,0.25)
 - Hover: translateY(-1px) + shadow, 0.16-0.18s ease
 
+### Extended: Liquid Glass (additive)
+For layered chrome—modals, drawers, inputs, and motion-aware glass surfaces—see **`docs/design/liquid-glass-design-philosophy.md`**. It covers edge profiles, displacement/specular patterns, performance, and interaction cues; it **does not** replace the Modern Newspaper tokens above (glass is additive hierarchy, not a new palette).
+
 ## Critical Architecture Facts
 
 ### Backend Pipeline (ai_service.py)

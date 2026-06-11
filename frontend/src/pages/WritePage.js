@@ -3,7 +3,8 @@ import ReactDOM from 'react-dom';
 import {
   Upload, PanelRight, Download,
   Copy, Check, X, Search, FileText, Maximize2,
-  ChevronLeft, ChevronRight, FilePlus, Loader2, Sparkles
+  ChevronLeft, ChevronRight, FilePlus, Loader2, Sparkles,
+  Flag, AlertTriangle,
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useDarkMode } from '../DarkModeContext';
@@ -471,15 +472,21 @@ function CitationPicker({ claims, filter, setFilter, onInsert, onClose }) {
 
   return (
     <div style={{
-      position: 'absolute', left: 60, top: 8, width: 420, zIndex: 100,
+      position: 'absolute', left: 60, top: 8, width: 420, zIndex: 120,
       background: 'var(--glass-bg)',
-      backdropFilter: 'blur(28px) saturate(180%)',
-      WebkitBackdropFilter: 'blur(28px) saturate(180%)',
+      backdropFilter: 'var(--glass-blur)',
+      WebkitBackdropFilter: 'var(--glass-blur)',
       border: '1px solid var(--glass-border-t)',
-      borderRadius: 10,
-      boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
+      borderRadius: 12,
+      boxShadow: 'var(--glass-shadow), 0 16px 48px rgba(60,45,20,0.14)',
+      isolation: 'isolate',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px 8px', borderBottom: '1px solid var(--border)' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '11px 14px 10px',
+        borderBottom: '1px solid var(--border)',
+        boxShadow: '0 1px 0 rgba(255,254,235,0.55) inset',
+      }}>
         <FileText size={13} color="var(--accent)" />
         <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.75rem', fontWeight: 500, color: 'var(--fg-primary)', flex: 1 }}>
           Insert citation
@@ -489,9 +496,18 @@ function CitationPicker({ claims, filter, setFilter, onInsert, onClose }) {
         </button>
       </div>
 
-      <div style={{ padding: '8px 12px 6px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: dark ? 'rgba(255,255,255,0.04)' : 'rgba(255,252,240,0.70)', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 10px' }}>
-          <Search size={12} color="var(--fg-dim)" />
+      <div style={{ padding: '10px 14px 8px' }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          background: dark ? 'var(--gbtn-bg)' : 'var(--glass-card-bg)',
+          backdropFilter: dark ? 'blur(12px)' : 'var(--glass-card-blur)',
+          WebkitBackdropFilter: dark ? 'blur(12px)' : 'var(--glass-card-blur)',
+          border: `1px solid ${dark ? 'var(--gbtn-border-t)' : 'var(--glass-card-border-t)'}`,
+          borderRadius: 8,
+          padding: '7px 11px',
+          boxShadow: dark ? 'var(--gbtn-shadow)' : 'var(--glass-card-shadow)',
+        }}>
+          <Search size={12} color="var(--fg-dim)" strokeWidth={2} />
           <input
             autoFocus
             value={filter}
@@ -502,14 +518,14 @@ function CitationPicker({ claims, filter, setFilter, onInsert, onClose }) {
         </div>
       </div>
 
-      <div style={{ maxHeight: 280, overflowY: 'auto', padding: '4px 12px 10px' }}>
+      <div style={{ maxHeight: 280, overflowY: 'auto', padding: '4px 14px 12px' }}>
         {claims.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '16px 0' }}>
             <p style={{ fontFamily: 'var(--font-family)', fontSize: '0.75rem', color: 'var(--fg-secondary)', marginBottom: 10 }}>
               No verified claims loaded.<br />Search for your topic first.
             </p>
             <button
-              onClick={() => navigate('/search')}
+              onClick={() => navigate('/explore')}
               style={{ ...GLASS_BTN, fontSize: '0.72rem' }}
             >
               <Search size={11} /> Search now →
@@ -533,15 +549,16 @@ function CitationPicker({ claims, filter, setFilter, onInsert, onClose }) {
 function AIFormatterPopup({ onApply, onClose }) {
   return (
     <div style={{
-      position: 'fixed', right: 310, bottom: 120, width: 440, zIndex: 100,
+      position: 'fixed', right: 310, bottom: 120, width: 440, zIndex: 120,
       background: 'var(--glass-bg)',
-      backdropFilter: 'blur(30px) saturate(160%)',
-      WebkitBackdropFilter: 'blur(30px) saturate(160%)',
+      backdropFilter: 'var(--glass-blur)',
+      WebkitBackdropFilter: 'var(--glass-blur)',
       border: '1px solid var(--glass-border-t)',
       borderRadius: 12,
-      boxShadow: '0 10px 40px rgba(0,0,0,0.25)',
+      boxShadow: 'var(--glass-shadow), 0 20px 56px rgba(0,0,0,0.18)',
       animation: 'fadeInUp 0.25s ease-out',
       overflow: 'hidden',
+      isolation: 'isolate',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
         <Sparkles size={14} color="var(--accent)" />
@@ -691,6 +708,7 @@ function NotesSidebar({ open, onToggle, notes, currentDocId, onOpenNote, onNewNo
               return (
                 <div
                   key={note.id}
+                  className="notes-sidebar-row"
                   onClick={() => onOpenNote(note)}
                   onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, note }); }}
                   style={{
@@ -1400,6 +1418,23 @@ export default function WritePage() {
           50% { opacity: 0.4; }
         }
         .spin { animation: spin 1s linear infinite; }
+        @keyframes notesSidebarRowIn {
+          from { opacity: 0; transform: translateY(3px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .notes-sidebar-row {
+          animation: notesSidebarRowIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        .notes-sidebar-row:nth-child(1) { animation-delay: 0.02s; }
+        .notes-sidebar-row:nth-child(2) { animation-delay: 0.05s; }
+        .notes-sidebar-row:nth-child(3) { animation-delay: 0.08s; }
+        .notes-sidebar-row:nth-child(4) { animation-delay: 0.11s; }
+        .notes-sidebar-row:nth-child(5) { animation-delay: 0.14s; }
+        .notes-sidebar-row:nth-child(6) { animation-delay: 0.17s; }
+        .notes-sidebar-row:nth-child(7) { animation-delay: 0.20s; }
+        .notes-sidebar-row:nth-child(8) { animation-delay: 0.23s; }
+        .notes-sidebar-row:nth-child(9) { animation-delay: 0.26s; }
+        .notes-sidebar-row:nth-child(10) { animation-delay: 0.29s; }
       `}</style>
 
       {/* ── Header row (non-sticky; aligned under mast/navbar) ── */}
@@ -1596,10 +1631,19 @@ export default function WritePage() {
                   )
                 }
                 {languageFlags.length > 0 && (
-                  <span style={{ color: '#a16207' }} title={`${languageFlags.length} weasel word types found`}>⚑ {languageFlags.length} flags</span>
+                  <span
+                    style={{ color: '#a16207', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                    title={`${languageFlags.length} weasel word types found`}
+                  >
+                    <Flag size={12} strokeWidth={2} aria-hidden />
+                    {languageFlags.length} flags
+                  </span>
                 )}
                 {unsourcedCount > 0 && (
-                  <span style={{ color: '#a16207' }}>⚠ {unsourcedCount} unsourced</span>
+                  <span style={{ color: '#a16207', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <AlertTriangle size={12} strokeWidth={2} aria-hidden />
+                    {unsourcedCount} unsourced
+                  </span>
                 )}
               </div>
             </div>
