@@ -176,6 +176,15 @@ See [open issues](https://github.com/A-Kumar14/quarry/issues) for proposed featu
 
 ---
 
+## Deployment
+
+- **Frontend:** [Vercel](https://vercel.com) — `frontend/` (see `frontend/vercel.json`)
+- **Backend:** [Railway](https://railway.com) — root `Dockerfile` + `railway.toml`
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for env vars, volume setup (`/app/data`), and cutover checklist.
+
+---
+
 ## Contact
 
 **A-Kumar14** — [github.com/A-Kumar14](https://github.com/A-Kumar14)
