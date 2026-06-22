@@ -39,7 +39,7 @@ Without a volume at `/app/data`, redeploys wipe `users.json`, `conversations.jso
 | Setting | Value |
 |---------|-------|
 | Root directory | `frontend` |
-| Build | `npm run build` |
+| Build | `CI=false npm run build` |
 | Output | `build` |
 
 ### Required variables (Vercel dashboard)
