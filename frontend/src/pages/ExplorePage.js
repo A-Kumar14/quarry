@@ -5,6 +5,7 @@ import { useNavigate, useSearchParams, Navigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { motion, AnimatePresence } from 'framer-motion'; // eslint-disable-line no-unused-vars
 import GlassCard from '../components/GlassCard';
 import { saveContestedClaims, saveInvestigationHistory } from './HomePage';
@@ -34,6 +35,23 @@ function getSaved() {
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 const MAX_FOLLOW_UPS = 5;
+
+// Sanitize schema for brief markdown: rehypeRaw parses the raw HTML we inject
+// (confidence badges), then rehypeSanitize strips everything that isn't on this
+// allowlist — blocking <script>, event handlers, and any HTML smuggled in via
+// scraped source content or LLM output. Only the conf-* badge spans are added
+// on top of the safe defaults.
+const briefSanitizeSchema = {
+  ...defaultSchema,
+  tagNames: [...(defaultSchema.tagNames || []), 'span'],
+  attributes: {
+    ...defaultSchema.attributes,
+    span: [
+      ...((defaultSchema.attributes && defaultSchema.attributes.span) || []),
+      ['className', 'conf-v', 'conf-c', 'conf-s', 'conf-x'],
+    ],
+  },
+};
 
 function profileIdFromModel(modelId = '') {
   if (modelId === 'openai/gpt-4o-mini') return 'fast_scan';
@@ -1236,7 +1254,7 @@ function CollapsibleAnswer({ answer, streaming, sources, onNewSearch }) {
             <ReactMarkdown
               key={`text-${index}`}
               remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeRaw]}
+              rehypePlugins={[rehypeRaw, [rehypeSanitize, briefSanitizeSchema]]}
               components={{ a: ({ href, children }) => <CitationLink href={href} sources={sources}>{children}</CitationLink> }}
             >
               {part.content}
