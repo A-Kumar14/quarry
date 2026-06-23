@@ -38,6 +38,22 @@ def client(app):
         yield c
 
 
+@pytest.fixture(autouse=True)
+def _reset_auth_limiter():
+    """
+    The auth router shares one in-memory rate-limit counter keyed on the test
+    client IP. Clear it before each test so the /auth/register limit (5/hour)
+    doesn't bleed across tests that legitimately register a few users.
+    Tests that specifically assert the limit manage their own counter.
+    """
+    try:
+        import routers.auth as auth_mod
+        auth_mod.limiter._storage.storage.clear()
+    except Exception:
+        pass
+    yield
+
+
 # ── SSE helpers exposed as fixtures ──────────────────────────────────────────
 
 @pytest.fixture

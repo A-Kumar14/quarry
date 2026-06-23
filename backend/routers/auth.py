@@ -95,7 +95,8 @@ def _require_auth_enabled():
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/register", status_code=201)
-def register(body: RegisterBody):
+@limiter.limit("5/hour")
+def register(request: Request, body: RegisterBody):
     _require_auth_enabled()
     if get_user_by_username(body.username):
         raise HTTPException(status_code=409, detail="Username already taken")

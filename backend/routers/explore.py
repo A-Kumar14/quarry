@@ -962,11 +962,14 @@ async def image_proxy(
     url: str = Query(..., max_length=2000),
 ):
     """Proxy external news images to avoid CORS/hotlink issues."""
-    # Only allow http/https URLs
-    if not url.startswith(("http://", "https://")):
+    # SSRF guard: reject non-http(s) schemes, localhost, private/link-local IPs,
+    # and known cloud-metadata hostnames. Redirects are disabled so a public URL
+    # cannot bounce the request to an internal target.
+    from services.search_service import is_safe_url
+    if not is_safe_url(url):
         raise HTTPException(status_code=400, detail="Invalid URL")
     try:
-        async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=8, follow_redirects=False) as client:
             resp = await client.get(url, headers={
                 "User-Agent": "Mozilla/5.0 (compatible; Quarry/1.0)",
                 "Referer": "",
