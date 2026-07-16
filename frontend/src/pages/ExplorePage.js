@@ -1534,6 +1534,145 @@ function SearchingCard({ sources, isDeepSearch }) {
   );
 }
 
+// ── Outline panel (left column) ───────────────────────────────────────────────
+
+function getSearchHistory() {
+  try { return JSON.parse(localStorage.getItem('quarry_search_history') || '[]'); }
+  catch { return []; }
+}
+
+function parseOutlineItems(md) {
+  return md
+    .split('\n')
+    .filter(l => /^##\s+/.test(l))
+    .map(l => l.replace(/^##\s+/, '').replace(/^\d+\.\s*/, '').trim())
+    .filter(Boolean);
+}
+
+function OutlinePanel({ query, context, enabled }) {
+  const [items, setItems] = useState([]);
+  const [streamingOutline, setStreamingOutline] = useState(false);
+  const fetchedKeyRef = useRef('');
+
+  useEffect(() => {
+    const q = (query || '').trim();
+    if (!enabled || !q || fetchedKeyRef.current === q) return undefined;
+    fetchedKeyRef.current = q;
+
+    let cancelled = false;
+    const ctrl = new AbortController();
+    setItems([]);
+    setStreamingOutline(true);
+
+    (async () => {
+      try {
+        const res = await fetch(`${API}/explore/outline`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: q.slice(0, 490), context: (context || '').slice(0, 2900) }),
+          signal: ctrl.signal,
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        let full = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const parts = buf.split('\n\n');
+          buf = parts.pop();
+          for (const part of parts) {
+            const line = part.trim();
+            if (!line.startsWith('data: ')) continue;
+            const raw = line.slice(6).trim();
+            if (raw === '[DONE]') continue;
+            try {
+              const evt = JSON.parse(raw);
+              if (evt.type === 'chunk') {
+                full += evt.text;
+                if (!cancelled) setItems(parseOutlineItems(full));
+              }
+            } catch { /* ignore malformed sse */ }
+          }
+        }
+      } catch { /* silent — panel shows unavailable state */ }
+      finally { if (!cancelled) setStreamingOutline(false); }
+    })();
+
+    return () => { cancelled = true; ctrl.abort(); };
+  }, [query, context, enabled]);
+
+  return (
+    <GlassCard style={{ padding: '14px 14px 12px' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <span style={{
+          fontFamily: 'var(--font-mono)', fontSize: '0.62rem', fontWeight: 600,
+          letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--fg-dim)',
+        }}>
+          Outline
+        </span>
+        {streamingOutline && (
+          <span style={{
+            width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)',
+            animation: 'trendingPulse 1.4s ease-in-out infinite',
+            boxShadow: '0 0 6px rgba(249,115,22,0.5)',
+          }} />
+        )}
+      </div>
+
+      {/* Items */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {items.length === 0 && streamingOutline && (
+          [0, 1, 2, 3].map(i => (
+            <div key={i} style={{
+              height: 12, borderRadius: 5, margin: '6px 8px',
+              width: `${78 - (i % 3) * 14}%`,
+              background: 'var(--bg-tertiary)',
+              animation: 'trendingPulse 1.6s ease-in-out infinite',
+              animationDelay: `${i * 0.12}s`,
+            }} />
+          ))
+        )}
+        {items.length === 0 && !streamingOutline && (
+          <div style={{ padding: '6px 8px', fontSize: '0.72rem', color: 'var(--fg-dim)', fontStyle: 'italic' }}>
+            {enabled ? 'Outline unavailable.' : 'Outline builds after the brief completes.'}
+          </div>
+        )}
+        {items.map((item, i) => {
+          const isActive = i === 0;
+          const isPending = streamingOutline && i === items.length - 1;
+          return (
+            <div
+              key={i}
+              style={{
+                padding: '6px 8px', borderRadius: 7,
+                fontSize: '0.75rem', lineHeight: 1.35,
+                display: 'flex', alignItems: 'center', gap: 6,
+                fontWeight: isActive ? 500 : 400,
+                color: isPending ? 'var(--fg-dim)' : isActive ? 'var(--fg-primary)' : 'var(--fg-secondary)',
+                background: isActive ? 'rgba(249,115,22,0.08)' : 'transparent',
+                border: isActive ? '1px solid rgba(249,115,22,0.22)' : '1px solid transparent',
+              }}
+            >
+              {item}
+              {isPending && (
+                <span style={{
+                  display: 'inline-block', width: 6, height: 13,
+                  background: 'var(--accent)', borderRadius: 2, flexShrink: 0,
+                  animation: 'blinkPulse 1s step-end infinite',
+                }} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </GlassCard>
+  );
+}
+
 // ── Result block ──────────────────────────────────────────────────────────────
 
 function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowUp, onNewSearch, isDeepSearch, deepLabel, relatedSearches = [], loadingRelated = false, visualQuery = '', contradictions = null, stockData = null, claims = [], pipelineTrace = null, sourceBrief = null, onWrite, onInsertClaim, gaps = [], quotes = [], sessionContext = null, onPromptAsk }) {
@@ -2859,28 +2998,37 @@ export default function ExplorePage() {
           gap: '22px', alignItems: 'start',
         }}>
 
-          {/* ── LEFT COLUMN ── recent searches (Outline panel arrives in a later step) */}
+          {/* ── LEFT COLUMN ── outline + recent searches */}
           <Box sx={{ position: { lg: 'sticky' }, top: 12, display: { xs: 'none', lg: 'flex' }, flexDirection: 'column', gap: '14px' }}>
+            <OutlinePanel
+              query={submittedQueryRef.current || query}
+              context={answer ? answer.slice(0, 1500) : ''}
+              enabled={!streaming && !!answer}
+            />
+
             <Box sx={{ px: 0.5 }}>
               <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.56rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase', mb: 0.9 }}>
                 Recent
               </Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {getSaved().slice(0, 5).map((item, i) => (
-                  <Typography
-                    key={i}
-                    onClick={() => navigate(`/explore?q=${encodeURIComponent(item.query)}`)}
-                    sx={{
-                      fontFamily: 'var(--font-family)', fontSize: '0.72rem', color: 'var(--fg-secondary)',
-                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                      cursor: 'pointer', transition: 'color 0.12s',
-                      '&:hover': { color: 'var(--accent)' },
-                    }}
-                  >
-                    {item.query}
-                  </Typography>
-                ))}
-                {getSaved().length === 0 && (
+                {getSearchHistory()
+                  .filter(q => q !== (submittedQueryRef.current || query))
+                  .slice(0, 4)
+                  .map((q, i) => (
+                    <Typography
+                      key={i}
+                      onClick={() => navigate(`/explore?q=${encodeURIComponent(q)}`)}
+                      sx={{
+                        fontFamily: 'var(--font-family)', fontSize: '0.72rem', color: 'var(--fg-secondary)',
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                        cursor: 'pointer', transition: 'color 0.12s',
+                        '&:hover': { color: 'var(--accent)' },
+                      }}
+                    >
+                      {q}
+                    </Typography>
+                  ))}
+                {getSearchHistory().length <= 1 && (
                   <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', color: 'var(--fg-dim)', fontStyle: 'italic' }}>
                     No recent searches
                   </Typography>
