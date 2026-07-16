@@ -34,6 +34,26 @@ const CLAIM_COLOR = {
   uncertain:    '#f97316', // alias — backend may use this instead of single_source
 };
 
+// Editorial lean by outlet name — shared with ExplorePage's Claim Landscape
+export const OUTLET_LEAN_MAP = {
+  'Associated Press':   'center',
+  'Reuters':            'center',
+  'BBC':                'center',
+  'BBC News':           'center',
+  'Al Jazeera':         'center',
+  'Al Jazeera English': 'center',
+  'Haaretz':            'left',
+  'Guardian':           'center',
+  'The Guardian':       'center',
+  'IRNA':               'state_aligned',
+  'Press TV':           'state_aligned',
+  'RT':                 'state_aligned',
+  'Global Times':       'state_aligned',
+  'CGTN':               'state_aligned',
+  'Fox News':           'right',
+  'CNN':                'left',
+};
+
 // X-axis position (0–1) by editorial lean
 const LEAN_X = {
   state_aligned: 0.08,
@@ -99,28 +119,9 @@ function ClaimLandscapeCanvas({ claims, width, height, onNodeClick }) {
   const nodes = useMemo(() => {
     if (!claims || claims.length === 0) return [];
 
-    const leanMap = {
-      'Associated Press':   'center',
-      'Reuters':            'center',
-      'BBC':                'center',
-      'BBC News':           'center',
-      'Al Jazeera':         'center',
-      'Al Jazeera English': 'center',
-      'Haaretz':            'left',
-      'Guardian':           'center',
-      'The Guardian':       'center',
-      'IRNA':               'state_aligned',
-      'Press TV':           'state_aligned',
-      'RT':                 'state_aligned',
-      'Global Times':       'state_aligned',
-      'CGTN':               'state_aligned',
-      'Fox News':           'right',
-      'CNN':                'left',
-    };
-
     return claims.map((claim, i) => {
       const firstOutlet = (claim.source_outlets || [])[0] || '';
-      const lean   = leanMap[firstOutlet] ?? 'unknown';
+      const lean   = OUTLET_LEAN_MAP[firstOutlet] ?? 'unknown';
       const status = claim.status || 'single_source';
       const baseX  = (LEAN_X[lean] ?? 0.75) * width;
       const baseY  = (STATUS_Y[status] ?? 0.56) * height;

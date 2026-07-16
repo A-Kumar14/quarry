@@ -19,7 +19,7 @@ import { TIER_COLOR } from '../utils/sourceProfile';
 import FinanceCard from '../components/FinanceCard';
 import { useTopOffset } from '../SettingsContext';
 import { useDarkMode } from '../DarkModeContext';
-import KnowledgeGraph from '../components/KnowledgeGraph'; // eslint-disable-line no-unused-vars
+import KnowledgeGraph, { OUTLET_LEAN_MAP } from '../components/KnowledgeGraph'; // eslint-disable-line no-unused-vars
 import DiagramCard from '../components/DiagramCard';
 import OnboardingModal from '../components/OnboardingModal';
 import { useAuth } from '../contexts/AuthContext';
@@ -1534,6 +1534,101 @@ function SearchingCard({ sources, isDeepSearch }) {
   );
 }
 
+// ── Claim Landscape — hand-rolled SVG scatter (Result tab) ────────────────────
+
+const LANDSCAPE_STATUS_COLOR = {
+  verified:      '#22c55e',
+  corroborated:  '#eab308',
+  single_source: '#9ca3af',
+  contested:     '#ef4444',
+};
+
+const LANDSCAPE_LEAN_X = {
+  left:          0.14,
+  center:        0.32,
+  independent:   0.32,
+  unknown:       0.52,
+  right:         0.72,
+  state_aligned: 0.88,
+};
+
+function ClaimLandscape({ claims }) {
+  const W = 640, H = 170, PAD_L = 30, PAD_R = 20, TOP = 28, BASE = 140;
+
+  const nodes = useMemo(() => {
+    const counts = claims.map(c => (c.source_outlets || []).length || 1);
+    const maxC = Math.max(...counts, 2);
+    return claims.map((c, i) => {
+      const outlet = (c.source_outlets || [])[0] || '';
+      const lean = OUTLET_LEAN_MAP[outlet] ?? 'unknown';
+      const frac = LANDSCAPE_LEAN_X[lean] ?? 0.52;
+      const text = c.claim_text || c.claim || '';
+      // Deterministic jitter so positions are stable across re-renders
+      const jitterX = ((text.length * 7 + i * 53) % 90) - 45;
+      const jitterY = ((text.length * 13 + i * 29) % 26) - 13;
+      const x = Math.max(PAD_L + 8, Math.min(W - PAD_R - 8, PAD_L + frac * (W - PAD_L - PAD_R) + jitterX));
+      const count = counts[i];
+      const y = Math.max(TOP, Math.min(BASE - 6, BASE - (count / maxC) * (BASE - TOP) + jitterY));
+      const status = c.status === 'uncertain' ? 'single_source' : (c.status || 'single_source');
+      return {
+        x, y,
+        color: LANDSCAPE_STATUS_COLOR[status] || LANDSCAPE_STATUS_COLOR.single_source,
+        r: Math.min(7, 4.5 + count * 0.5),
+        label: `${text.slice(0, 120)}${outlet ? ` — ${outlet}` : ''} (${count} source${count !== 1 ? 's' : ''})`,
+      };
+    });
+  }, [claims]);
+
+  if (!claims.length) return null;
+
+  return (
+    <Box sx={{
+      border: '1px solid var(--border)', borderRadius: '10px',
+      background: 'var(--glass-bg)', p: '14px 16px 10px', mt: 2.25,
+    }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+        <Typography sx={{
+          fontFamily: 'var(--font-mono)', fontSize: '0.62rem', fontWeight: 600,
+          letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--fg-dim)',
+        }}>
+          Claim landscape
+        </Typography>
+        <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', color: 'var(--fg-dim)' }}>
+          {claims.length} claim{claims.length !== 1 ? 's' : ''} · by outlet lean
+        </Typography>
+      </Box>
+
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+        <line x1={PAD_L} y1={BASE} x2={W - PAD_R} y2={BASE} stroke="var(--border)" strokeWidth="1.5" />
+        <line x1={(W + PAD_L - PAD_R) / 2} y1={18} x2={(W + PAD_L - PAD_R) / 2} y2={BASE} stroke="var(--border)" strokeWidth="1" strokeDasharray="3 4" />
+        {nodes.map((n, i) => (
+          <circle key={i} cx={n.x} cy={n.y} r={n.r} fill={n.color} opacity="0.88">
+            <title>{n.label}</title>
+          </circle>
+        ))}
+        <text x={PAD_L} y={H - 14} fontFamily="var(--font-mono)" fontSize="9" fill="var(--fg-dim)" letterSpacing="1">LEFT / INDEPENDENT</text>
+        <text x={W - PAD_R} y={H - 14} fontFamily="var(--font-mono)" fontSize="9" fill="var(--fg-dim)" letterSpacing="1" textAnchor="end">RIGHT / STATE-ALIGNED</text>
+        <text x={(W + PAD_L - PAD_R) / 2} y={12} fontFamily="var(--font-mono)" fontSize="9" fill="var(--fg-dim)" letterSpacing="1" textAnchor="middle">↑ CORROBORATION</text>
+      </svg>
+
+      <Box sx={{ display: 'flex', gap: '14px', flexWrap: 'wrap', pt: '6px', px: '2px', pb: '2px' }}>
+        {[
+          ['verified', '#22c55e'], ['corroborated', '#eab308'],
+          ['single source', '#9ca3af'], ['contested', '#ef4444'],
+        ].map(([label, color]) => (
+          <span key={label} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+            fontFamily: 'var(--font-mono)', fontSize: '0.59rem', color: 'var(--fg-secondary)',
+          }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: color }} />
+            {label}
+          </span>
+        ))}
+      </Box>
+    </Box>
+  );
+}
+
 // ── Outline panel (left column) ───────────────────────────────────────────────
 
 function getSearchHistory() {
@@ -1999,6 +2094,11 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
                         </Box>
                       );
                     })()}
+
+                    {/* Claim Landscape scatter */}
+                    {!isFollowUp && !streaming && claims.length > 0 && (
+                      <ClaimLandscape claims={claims} />
+                    )}
                   </>
                 )}
                 {activeTab === 'perspectives'  && <PerspectivesTab query={question} isDeepMode={isDeepSearch} subQueries={pipelineTrace?.sub_queries || []} sources={sources} prefetchedData={perspectivesState} />}
