@@ -21,7 +21,6 @@ import { useTopOffset } from '../SettingsContext';
 import { useDarkMode } from '../DarkModeContext';
 import KnowledgeGraph from '../components/KnowledgeGraph'; // eslint-disable-line no-unused-vars
 import DiagramCard from '../components/DiagramCard';
-import EntityDossier from '../components/EntityDossier';
 import OnboardingModal from '../components/OnboardingModal';
 import { useAuth } from '../contexts/AuthContext';
 import DeepPanel from '../components/DeepPanel';
@@ -1368,43 +1367,62 @@ function FollowUpBar({ onSubmit, atMax, enabled = true }) {
 
 // ── Mini tab strip ────────────────────────────────────────────────────────────
 
-function MiniTabStrip({ active, onChange }) {
+function MiniTabStrip({ active, onChange, contradictionCount = 0, showContradictions = true }) {
   const tabs = [
-    { key: 'answer', label: 'Answer', title: 'AI-synthesised answer' },
-    { key: 'images', label: 'Images', title: 'Related images for this query' },
+    { key: 'answer',       label: 'Result',       title: 'AI-synthesised research brief' },
+    { key: 'perspectives', label: 'Perspectives', title: 'How outlet clusters frame this story' },
+    { key: 'citations',    label: 'Citations',    title: 'Numbered source citations' },
+    { key: 'images',       label: 'Images',       title: 'Related images for this query' },
+    ...(showContradictions
+      ? [{ key: 'contradictions', label: 'Contradictions', title: 'Where sources disagree', count: contradictionCount }]
+      : []),
   ];
 
   return (
-    <Box sx={{
-      display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'nowrap',
-      overflowX: 'auto', borderTop: '1px solid var(--border)', pt: 1.25, mt: 1.5,
-      '&::-webkit-scrollbar': { display: 'none' }, scrollbarWidth: 'none',
-    }}>
-      <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.56rem', color: 'var(--fg-dim)', letterSpacing: '0.10em', textTransform: 'uppercase', mr: 0.5, flexShrink: 0 }}>
-        View
-      </Typography>
-      {tabs.map(t => (
-        <Tooltip key={t.key} title={t.title} placement="top">
-          <Box
-            onClick={() => onChange(t.key)}
-            sx={{
-              px: 1.25, py: 0.45, borderRadius: 999, cursor: 'pointer', flexShrink: 0,
-              fontFamily: 'var(--font-family)', fontSize: '0.72rem',
-              fontWeight: active === t.key ? 500 : 400,
-              color: active === t.key ? '#fff' : 'var(--fg-secondary)',
-              background: active === t.key ? 'var(--accent)' : 'var(--gbtn-bg)',
-              border: '1px solid',
-              borderColor: active === t.key ? 'transparent' : 'var(--border)',
-              transition: 'all 0.14s',
-              display: 'flex', alignItems: 'center', gap: '4px',
-              '&:hover': { color: active === t.key ? '#fff' : 'var(--fg-primary)', borderColor: active === t.key ? 'transparent' : 'rgba(249,115,22,0.3)' },
-            }}
-          >
-            {t.label}
-          </Box>
-        </Tooltip>
-      ))}
-    </Box>
+    <>
+      <Box sx={{
+        display: 'flex', alignItems: 'center', gap: 0.6, flexWrap: 'nowrap',
+        overflowX: 'auto', pt: 1.25, pb: 0.5,
+        '&::-webkit-scrollbar': { display: 'none' }, scrollbarWidth: 'none',
+      }}>
+        <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.56rem', color: 'var(--fg-dim)', letterSpacing: '0.10em', textTransform: 'uppercase', mr: 0.5, flexShrink: 0 }}>
+          View
+        </Typography>
+        {tabs.map(t => (
+          <Tooltip key={t.key} title={t.title} placement="top">
+            <Box
+              onClick={() => onChange(t.key)}
+              sx={{
+                px: 1.5, py: 0.45, borderRadius: 999, cursor: 'pointer', flexShrink: 0,
+                fontFamily: 'var(--font-family)', fontSize: '0.72rem',
+                fontWeight: active === t.key ? 500 : 400,
+                color: active === t.key ? '#fff' : 'var(--fg-secondary)',
+                background: active === t.key ? 'var(--accent)' : 'var(--gbtn-bg)',
+                border: '1px solid',
+                borderColor: active === t.key ? 'transparent' : 'var(--border)',
+                transition: 'all 0.14s',
+                display: 'flex', alignItems: 'center', gap: '4px',
+                '&:hover': { color: active === t.key ? '#fff' : 'var(--fg-primary)', borderColor: active === t.key ? 'transparent' : 'rgba(249,115,22,0.3)' },
+              }}
+            >
+              {t.label}
+              {t.count > 0 && (
+                <Box component="span" sx={{
+                  fontFamily: 'var(--font-mono)', fontSize: '0.56rem', fontWeight: 700,
+                  borderRadius: '6px', px: '5px', py: '1px',
+                  background: active === t.key ? 'rgba(255,255,255,0.22)' : 'rgba(239,68,68,0.10)',
+                  color: active === t.key ? '#fff' : '#ef4444',
+                  border: active === t.key ? 'none' : '1px solid rgba(239,68,68,0.30)',
+                }}>
+                  {t.count}
+                </Box>
+              )}
+            </Box>
+          </Tooltip>
+        ))}
+      </Box>
+      <Box sx={{ height: '1px', background: 'var(--border)', mb: 2 }} />
+    </>
   );
 }
 
@@ -1522,15 +1540,12 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
   const [activeTab,       setActiveTab]       = useState('answer');
   const [copied,          setCopied]          = useState(false);
   const [processedAnswer, setProcessedAnswer] = useState('');
-  const [selectedSource,  setSelectedSource]  = useState(null);
-  const [signalPopup,          setSignalPopup]          = useState(null); // 'contradictions'|'perspectives'|'gaps'|'quotes'|'sources'
   const [perspectivesState, setPerspectivesState] = useState({
     status: 'idle',
     posts: [],
     opinionSummary: '',
     queryKey: '',
   });
-  const sourceMap = useSourcesForArticles(sources);
 
   // Buffer: keep SearchingCard visible until streaming is truly done.
   // `revealed` only flips to true after streaming ends and processedAnswer is set,
@@ -1672,30 +1687,8 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
       {/* Finance card — shown when a stock/ticker was detected */}
       {stockData && <FinanceCard data={stockData} />}
 
-      {/* Main Content + Right Sidebar Layout */}
-      <Box sx={{ display: 'flex', flexDirection: stockData ? 'column' : { xs: 'column', md: 'row' }, gap: 3, width: '100%', alignItems: 'flex-start' }}>
-
-        {/* Source Intelligence Modal */}
-        {selectedSource && (
-          <SourceModal
-            source={selectedSource}
-            sourceProfile={(() => {
-              try {
-                const domain = new URL(selectedSource.url).hostname.replace('www.', '');
-                return sourceMap[domain] || null;
-              } catch { return null; }
-            })()}
-            claims={claims}
-            onClose={() => setSelectedSource(null)}
-            onInsert={claim => {
-              if (onInsertClaim) onInsertClaim(claim);
-              setSelectedSource(null);
-            }}
-          />
-        )}
-
-        {/* ── MAIN CONTENT: AI Response ── */}
-        <Box sx={{ flex: 1, minWidth: 0, padding: { xs: '16px 0', md: '16px 0' } }}>
+      {/* ── MAIN CONTENT: research brief ── */}
+      <Box sx={{ width: '100%', minWidth: 0 }}>
 
           {!revealed ? (
             /* ── Loading state: SearchingCard until answer is fully ready ── */
@@ -1737,6 +1730,14 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
                   </Typography>
                 </Box>
               )}
+
+              {/* Tab strip — above content, full tab list */}
+              <MiniTabStrip
+                active={activeTab}
+                onChange={setActiveTab}
+                contradictionCount={contradictions?.contradictions?.length || 0}
+                showContradictions={!isFollowUp}
+              />
 
               {/* Active tab content */}
               <Box key={activeTab} sx={{ animation: 'tabFadeIn 0.15s ease' }}>
@@ -1801,14 +1802,8 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
                     ? <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.78rem', color: 'var(--fg-dim)', fontStyle: 'italic', py: 2 }}>Checking sources for contradictions…</Typography>
                     : <ContradictionsTab data={contradictions} sources={sources} />
                 )}
-                {activeTab === 'gaps'   && <GapsTab   gaps={gaps}     loading={streaming && gaps.length === 0}   onNewSearch={onNewSearch} />}
-                {activeTab === 'quotes' && <QuoteBankTab quotes={quotes} loading={streaming && quotes.length === 0} onInsertClaim={onInsertClaim} />}
-                {activeTab === 'dossier' && <EntityDossier sources={sources} claims={claims} loading={streaming && sources.length === 0} onInsert={onInsertClaim} />}
               </Box>
               <style>{`@keyframes tabFadeIn { from { opacity: 0; } to { opacity: 1; } }`}</style>
-
-              {/* Tab strip — Result + Images only */}
-              <MiniTabStrip active={activeTab} onChange={setActiveTab} />
 
               {/* Keyword chips (answer tab only) */}
               {activeTab === 'answer' && chips.length > 0 && !noSourceResultState && (
@@ -1950,267 +1945,7 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
               </Box>
             </Box>
           )}
-        </Box>
-
-        {/* ── RIGHT SIDEBAR ── Source Intelligence */}
-        {!stockData && (
-          <Box sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            width: { xs: '100%', md: '260px' },
-            flexShrink: 0,
-            gap: 2,
-            mt: '16px'
-          }}>
-            {/* Source Intelligence rail — always visible */}
-            <SourceIntelligenceRail
-              sources={sources}
-              pipelineTrace={pipelineTrace}
-              sourceMap={sourceMap}
-              onSelectSource={src => setSelectedSource(src)}
-            />
-
-            {/* ── Signal Cards ────────────────────────────────────────────── */}
-
-            {/* Contradictions signal card */}
-            {contradictions && contradictions.contradictions?.length > 0 && (
-              <Box
-                component="button"
-                onClick={() => setSignalPopup('contradictions')}
-                sx={{
-                  width: '100%', textAlign: 'left', borderRadius: '14px',
-                  padding: '14px', background: 'var(--bg-secondary)',
-                  border: '1px solid var(--border)', cursor: 'pointer',
-                  transition: 'all 0.16s ease',
-                  '&:hover': { borderColor: 'rgba(239,68,68,0.5)', transform: 'translateY(-1px)' },
-                }}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25 }}>
-                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.6rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-                    Contradictions
-                  </Typography>
-                  <Box sx={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', px: '6px', py: '2px' }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', fontWeight: 700, color: '#ef4444' }}>{contradictions.contradictions.length}</span>
-                  </Box>
-                </Box>
-                {contradictions.contradictions.slice(0, 2).map((c, i) => (
-                  <Box key={i} sx={{ mb: 0.75, display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
-                    <Box sx={{ width: 5, height: 5, borderRadius: '50%', background: '#ef4444', mt: '5px', flexShrink: 0 }} />
-                    <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.74rem', color: 'var(--fg-primary)', lineHeight: 1.45,
-                      overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                      {c.topic || c.summary}
-                    </Typography>
-                  </Box>
-                ))}
-                <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', color: 'rgba(249,115,22,0.8)', mt: 1 }}>
-                  View all →
-                </Typography>
-              </Box>
-            )}
-
-            {/* Perspectives signal card */}
-            {sources.length > 0 && (
-              <Box
-                component="button"
-                onClick={() => setSignalPopup('perspectives')}
-                sx={{
-                  width: '100%', textAlign: 'left', borderRadius: '14px',
-                  padding: '14px', background: 'var(--bg-secondary)',
-                  border: '1px solid var(--border)', cursor: 'pointer',
-                  transition: 'all 0.16s ease',
-                  '&:hover': { borderColor: 'rgba(249,115,22,0.45)', transform: 'translateY(-1px)' },
-                }}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25 }}>
-                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.6rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-                    Perspectives
-                  </Typography>
-                  <Box sx={{ background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.3)', borderRadius: '6px', px: '6px', py: '2px' }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', fontWeight: 700, color: 'var(--accent)' }}>{sources.length}</span>
-                  </Box>
-                </Box>
-                {sources.slice(0, 3).map((s, i) => (
-                  <Box key={i} sx={{ mb: 0.6, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Box sx={{ width: 5, height: 5, borderRadius: '50%', background: 'rgba(249,115,22,0.5)', flexShrink: 0 }} />
-                    <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.73rem', color: 'var(--fg-secondary)',
-                      overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-                      {(() => { try { return new URL(s.url).hostname.replace('www.', ''); } catch { return s.title || s.url; } })()}
-                    </Typography>
-                  </Box>
-                ))}
-                <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', color: 'rgba(249,115,22,0.8)', mt: 1 }}>
-                  View all →
-                </Typography>
-              </Box>
-            )}
-
-            {/* Gaps signal card */}
-            {gaps.length > 0 && (
-              <Box
-                component="button"
-                onClick={() => setSignalPopup('gaps')}
-                sx={{
-                  width: '100%', textAlign: 'left', borderRadius: '14px',
-                  padding: '14px', background: 'var(--bg-secondary)',
-                  border: '1px solid var(--border)', cursor: 'pointer',
-                  transition: 'all 0.16s ease',
-                  '&:hover': { borderColor: 'rgba(234,179,8,0.45)', transform: 'translateY(-1px)' },
-                }}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25 }}>
-                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.6rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-                    Gaps
-                  </Typography>
-                  <Box sx={{ background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.3)', borderRadius: '6px', px: '6px', py: '2px' }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', fontWeight: 700, color: '#ca8a04' }}>{gaps.length}</span>
-                  </Box>
-                </Box>
-                {gaps.slice(0, 2).map((g, i) => (
-                  <Box key={i} sx={{ mb: 0.75, display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
-                    <Box sx={{ width: 5, height: 5, borderRadius: '50%', background: '#ca8a04', mt: '5px', flexShrink: 0 }} />
-                    <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.74rem', color: 'var(--fg-primary)', lineHeight: 1.45,
-                      overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                      {g}
-                    </Typography>
-                  </Box>
-                ))}
-                <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', color: 'rgba(249,115,22,0.8)', mt: 1 }}>
-                  View all →
-                </Typography>
-              </Box>
-            )}
-
-            {/* Quotes signal card */}
-            {quotes.length > 0 && (
-              <Box
-                component="button"
-                onClick={() => setSignalPopup('quotes')}
-                sx={{
-                  width: '100%', textAlign: 'left', borderRadius: '14px',
-                  padding: '14px', background: 'var(--bg-secondary)',
-                  border: '1px solid var(--border)', cursor: 'pointer',
-                  transition: 'all 0.16s ease',
-                  '&:hover': { borderColor: 'rgba(99,102,241,0.45)', transform: 'translateY(-1px)' },
-                }}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25 }}>
-                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.6rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-                    Quotes
-                  </Typography>
-                  <Box sx={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '6px', px: '6px', py: '2px' }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', fontWeight: 700, color: '#6366f1' }}>{quotes.length}</span>
-                  </Box>
-                </Box>
-                {quotes.slice(0, 2).map((q, i) => (
-                  <Box key={i} sx={{ mb: 0.75, borderLeft: '2px solid rgba(99,102,241,0.4)', pl: '8px' }}>
-                    <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.73rem', color: 'var(--fg-primary)', lineHeight: 1.4, fontStyle: 'italic',
-                      overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                      "{q.quote}"
-                    </Typography>
-                    <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--fg-dim)', mt: '3px' }}>
-                      — {q.speaker}
-                    </Typography>
-                  </Box>
-                ))}
-                <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', color: 'rgba(249,115,22,0.8)', mt: 1 }}>
-                  View all →
-                </Typography>
-              </Box>
-            )}
-
-            {/* Deep Analysis panel — shown only in Deep mode, after search completes */}
-            {isDeepSearch && !streaming && answer && (
-              <DeepPanel
-                query={question}
-                sessionContext={sessionContext || { sources: sources.map(s => ({ title: s.title || '', url: s.url || '', snippet: s.snippet || '' })) }}
-                onPromptAsk={q => { if (onPromptAsk) onPromptAsk(q); else onNewSearch(q); }}
-              />
-            )}
-
-          </Box>
-        )}
       </Box>
-
-      {/* Outline builder removed per user request */}
-
-      {/* ── Signal popup modal ───────────────────────────────────────────────── */}
-      {signalPopup && (
-        <Box
-          onClick={() => setSignalPopup(null)}
-          sx={{
-            position: 'fixed', inset: 0, zIndex: 1400,
-            background: 'rgba(0,0,0,0.48)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            p: 2,
-          }}
-        >
-          <Box
-            onClick={e => e.stopPropagation()}
-            sx={{
-              width: '100%', maxWidth: 700,
-              maxHeight: '82vh',
-              background: 'var(--bg-primary)',
-              border: '1px solid var(--border)',
-              borderRadius: '18px',
-              display: 'flex', flexDirection: 'column',
-              boxShadow: '0 24px 64px rgba(0,0,0,0.28)',
-              overflow: 'hidden',
-            }}
-          >
-            {/* Modal header */}
-            <Box sx={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              px: 3, py: 2,
-              borderBottom: '1px solid var(--border)',
-              flexShrink: 0,
-            }}>
-              <Typography sx={{
-                fontFamily: 'var(--font-serif)', fontSize: '1.05rem', fontWeight: 600,
-                color: 'var(--fg-primary)',
-              }}>
-                {{ contradictions: 'Contradictions', perspectives: 'Perspectives', gaps: 'Research Gaps', quotes: 'Quote Bank', sources: 'Sources' }[signalPopup]}
-              </Typography>
-              <Box
-                component="button"
-                onClick={() => setSignalPopup(null)}
-                sx={{
-                  background: 'none', border: '1px solid var(--border)', borderRadius: '8px',
-                  width: 30, height: 30, cursor: 'pointer', display: 'flex',
-                  alignItems: 'center', justifyContent: 'center',
-                  color: 'var(--fg-dim)', fontSize: '1rem', lineHeight: 1,
-                  transition: 'all 0.14s',
-                  '&:hover': { background: 'var(--bg-secondary)', color: 'var(--fg-primary)' },
-                }}
-              >
-                ✕
-              </Box>
-            </Box>
-
-            {/* Modal body — scrollable */}
-            <Box sx={{ flex: 1, overflowY: 'auto', p: 3 }}>
-              {signalPopup === 'contradictions' && (
-                contradictionsLoading
-                  ? <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.82rem', color: 'var(--fg-dim)', fontStyle: 'italic' }}>Checking sources for contradictions…</Typography>
-                  : <ContradictionsTab data={contradictions} sources={sources} />
-              )}
-              {signalPopup === 'perspectives' && (
-                <PerspectivesTab query={question} isDeepMode={isDeepSearch} subQueries={pipelineTrace?.sub_queries || []} sources={sources} prefetchedData={perspectivesState} />
-              )}
-              {signalPopup === 'gaps' && (
-                <GapsTab gaps={gaps} loading={streaming && gaps.length === 0} onNewSearch={(q) => { setSignalPopup(null); onNewSearch(q); }} />
-              )}
-              {signalPopup === 'quotes' && (
-                <QuoteBankTab quotes={quotes} loading={streaming && quotes.length === 0} onInsertClaim={(q) => { setSignalPopup(null); onInsertClaim(q); }} />
-              )}
-              {signalPopup === 'sources' && (
-                <CitationsPanel sources={sources} query={question} />
-              )}
-            </Box>
-          </Box>
-        </Box>
-      )}
-
     </Box>
   );
 }
@@ -2228,7 +1963,7 @@ function TopBar({ query, setQuery, onSubmit, deepMode, onToggleDeep, onReset, na
       borderBottom: '1px solid var(--border)',
       px: { xs: 1.25, md: 2 }, py: 0.9,
     }}>
-      <Box sx={{ maxWidth: 1180, mx: 'auto', display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+      <Box sx={{ maxWidth: 1380, mx: 'auto', display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
 
         {/* Quarry wordmark — clicking redirects to home */}
         <Box onClick={() => { onReset(); navigate('/'); }} sx={{ cursor: 'pointer', flexShrink: 0, mr: 0.5, userSelect: 'none' }}>
@@ -2583,7 +2318,10 @@ export default function ExplorePage() {
   const lastBlockRef      = useRef(null);
   const submittedQueryRef = useRef('');
 
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Right-rail / modal state (page level — single rail for the whole session)
+  const [selectedSource, setSelectedSource] = useState(null);
+  const [signalPopup,    setSignalPopup]    = useState(null); // 'gaps' | 'quotes'
+  const sourceMap = useSourcesForArticles(sources);
 
   // Onboarding: show modal for new users who haven't completed the tour
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -3111,119 +2849,255 @@ export default function ExplorePage() {
         onReset={resetSearch} navigate={navigate} streaming={streaming}
       />
 
-      {/* Scrollable content */}
-      <Box sx={{ flex: 1, overflowY: 'auto', display: 'flex' }}>
-
-        {/* ── Session sidebar ── */}
-        <div style={{
-          width: sidebarOpen ? 200 : 0,
-          minWidth: sidebarOpen ? 200 : 0,
-          overflow: 'hidden',
-          transition: 'width 0.25s ease, min-width 0.25s ease',
-          borderRight: '1px solid var(--border)',
-          flexShrink: 0,
-          position: 'relative',
-          display: 'flex',
-          flexDirection: 'column',
+      {/* Scrollable content — three-column newspaper grid */}
+      <Box sx={{ flex: 1, overflowY: 'auto' }}>
+        <Box sx={{
+          maxWidth: 1380, width: '100%', mx: 'auto',
+          px: 2.5, pt: 2.5, pb: 6, boxSizing: 'border-box',
+          display: 'grid',
+          gridTemplateColumns: { xs: 'minmax(0,1fr)', lg: '212px minmax(0,1fr) 276px' },
+          gap: '22px', alignItems: 'start',
         }}>
-          <div style={{ width: 200, padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
-            {/* Active session — breadcrumb style */}
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '6px 8px', borderRadius: 6,
-              border: '1px solid rgba(249,115,22,0.22)',
-              background: 'rgba(249,115,22,0.04)',
-            }}>
-              <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
-              <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.72rem', fontWeight: 400, color: 'var(--fg-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {(submittedQueryRef.current || query).slice(0, 38)}
-              </div>
-            </div>
 
-            {/* Past sessions */}
-            <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.57rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase', marginTop: 8 }}>
-              Recent
-            </div>
-            {getSaved().slice(0, 4).map((item, i) => (
-              <div
-                key={i}
-                onClick={() => navigate(`/explore?q=${encodeURIComponent(item.query)}`)}
-                style={{
-                  padding: '5px 8px', borderRadius: 6, cursor: 'pointer',
-                  transition: 'background 0.12s',
-                }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-              >
-                <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.70rem', fontWeight: 400, color: 'var(--fg-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {item.query}
-                </div>
-              </div>
+          {/* ── LEFT COLUMN ── recent searches (Outline panel arrives in a later step) */}
+          <Box sx={{ position: { lg: 'sticky' }, top: 12, display: { xs: 'none', lg: 'flex' }, flexDirection: 'column', gap: '14px' }}>
+            <Box sx={{ px: 0.5 }}>
+              <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.56rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase', mb: 0.9 }}>
+                Recent
+              </Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {getSaved().slice(0, 5).map((item, i) => (
+                  <Typography
+                    key={i}
+                    onClick={() => navigate(`/explore?q=${encodeURIComponent(item.query)}`)}
+                    sx={{
+                      fontFamily: 'var(--font-family)', fontSize: '0.72rem', color: 'var(--fg-secondary)',
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                      cursor: 'pointer', transition: 'color 0.12s',
+                      '&:hover': { color: 'var(--accent)' },
+                    }}
+                  >
+                    {item.query}
+                  </Typography>
+                ))}
+                {getSaved().length === 0 && (
+                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', color: 'var(--fg-dim)', fontStyle: 'italic' }}>
+                    No recent searches
+                  </Typography>
+                )}
+              </Box>
+            </Box>
+          </Box>
+
+          {/* ── CENTER COLUMN ── research brief + follow-ups */}
+          <Box sx={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+            <ResultBlock
+              key={submittedQueryRef.current}
+              question={submittedQueryRef.current || query} sources={sources} answer={answer}
+              streaming={streaming} errorMsg={errorMsg}
+              isFollowUp={false} onNewSearch={newSearch}
+              isDeepSearch={isDeepSearch} deepLabel={deepLabel}
+              relatedSearches={relatedSearches} loadingRelated={loadingRelated}
+              visualQuery={visualQuery} contradictions={contradictions}
+              stockData={stockData}
+              claims={claimsData} pipelineTrace={pipelineTrace} sourceBrief={sourceBrief}
+              onWrite={handleWrite}
+              onInsertClaim={handleInsertClaim}
+              gaps={gapsData} quotes={quotesData}
+              sessionContext={{ sources: sources.map(s => ({ title: s.title || '', url: s.url || '', snippet: s.snippet || '' })) }}
+              onPromptAsk={newSearch}
+            />
+
+            {followUpBlocks.map((block, i) => (
+              <Box key={block.id} ref={i === followUpBlocks.length - 1 ? lastBlockRef : null}>
+                <ThreadDivider />
+                <ResultBlock
+                  question={block.question} sources={block.sources}
+                  answer={block.answer} streaming={block.streaming}
+                  errorMsg={block.errorMsg} isFollowUp={true} onNewSearch={newSearch}
+                  relatedSearches={block.relatedSearches || []}
+                  loadingRelated={block.loadingRelated || false}
+                  visualQuery={block.visualQuery || ''}
+                  sourceBrief={block.sourceBrief || null}
+                />
+              </Box>
             ))}
-            {getSaved().length === 0 && (
-              <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.68rem', color: 'var(--fg-dim)', fontStyle: 'italic', padding: '4px 8px' }}>
-                No recent searches
-              </div>
+          </Box>
+
+          {/* ── RIGHT COLUMN ── Source Intelligence rail */}
+          <Box sx={{ position: { lg: 'sticky' }, top: 12, display: stockData ? 'none' : 'flex', flexDirection: 'column', gap: '12px', minWidth: 0 }}>
+            <SourceIntelligenceRail
+              sources={sources}
+              pipelineTrace={pipelineTrace}
+              sourceMap={sourceMap}
+              onSelectSource={setSelectedSource}
+            />
+
+            {/* Gaps signal card */}
+            {gapsData.length > 0 && (
+              <Box
+                component="button"
+                onClick={() => setSignalPopup('gaps')}
+                sx={{
+                  width: '100%', textAlign: 'left', borderRadius: '14px',
+                  padding: '14px', background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border)', cursor: 'pointer',
+                  transition: 'all 0.16s ease',
+                  '&:hover': { borderColor: 'rgba(234,179,8,0.45)', transform: 'translateY(-1px)' },
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25 }}>
+                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.6rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                    Gaps
+                  </Typography>
+                  <Box sx={{ background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.3)', borderRadius: '6px', px: '6px', py: '2px' }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', fontWeight: 700, color: '#ca8a04' }}>{gapsData.length}</span>
+                  </Box>
+                </Box>
+                {gapsData.slice(0, 2).map((g, i) => (
+                  <Box key={i} sx={{ mb: 0.75, display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                    <Box sx={{ width: 5, height: 5, borderRadius: '50%', background: '#ca8a04', mt: '5px', flexShrink: 0 }} />
+                    <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.74rem', color: 'var(--fg-primary)', lineHeight: 1.45,
+                      overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                      {g}
+                    </Typography>
+                  </Box>
+                ))}
+                <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', color: 'rgba(249,115,22,0.8)', mt: 1 }}>
+                  View all →
+                </Typography>
+              </Box>
             )}
 
-            <div style={{ marginTop: 'auto' }} />
-          </div>
-        </div>
+            {/* Quotes signal card */}
+            {quotesData.length > 0 && (
+              <Box
+                component="button"
+                onClick={() => setSignalPopup('quotes')}
+                sx={{
+                  width: '100%', textAlign: 'left', borderRadius: '14px',
+                  padding: '14px', background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border)', cursor: 'pointer',
+                  transition: 'all 0.16s ease',
+                  '&:hover': { borderColor: 'rgba(99,102,241,0.45)', transform: 'translateY(-1px)' },
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25 }}>
+                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.6rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                    Quotes
+                  </Typography>
+                  <Box sx={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '6px', px: '6px', py: '2px' }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', fontWeight: 700, color: '#6366f1' }}>{quotesData.length}</span>
+                  </Box>
+                </Box>
+                {quotesData.slice(0, 2).map((q, i) => (
+                  <Box key={i} sx={{ mb: 0.75, borderLeft: '2px solid rgba(99,102,241,0.4)', pl: '8px' }}>
+                    <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.73rem', color: 'var(--fg-primary)', lineHeight: 1.4, fontStyle: 'italic',
+                      overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                      "{q.quote}"
+                    </Typography>
+                    <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--fg-dim)', mt: '3px' }}>
+                      — {q.speaker}
+                    </Typography>
+                  </Box>
+                ))}
+                <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', color: 'rgba(249,115,22,0.8)', mt: 1 }}>
+                  View all →
+                </Typography>
+              </Box>
+            )}
 
-        {/* Sidebar toggle */}
-        <button
-          onClick={() => setSidebarOpen(o => !o)}
-          style={{
-            position: 'absolute', left: sidebarOpen ? 196 : 0, top: '50%',
-            transform: 'translateY(-50%)',
-            zIndex: 'var(--z-sidebar)', width: 18, height: 36,
-            background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-            borderRadius: sidebarOpen ? '0 6px 6px 0' : '0 6px 6px 0',
-            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--fg-dim)',
-            transition: 'left 0.25s ease',
-            padding: 0,
+            {/* Deep Analysis panel — shown only in Deep mode, after search completes */}
+            {isDeepSearch && !streaming && answer && (
+              <DeepPanel
+                query={submittedQueryRef.current || query}
+                sessionContext={{ sources: sources.map(s => ({ title: s.title || '', url: s.url || '', snippet: s.snippet || '' })) }}
+                onPromptAsk={newSearch}
+              />
+            )}
+          </Box>
+        </Box>
+      </Box>
+
+      {/* Source profile modal */}
+      {selectedSource && (
+        <SourceModal
+          source={selectedSource}
+          sourceProfile={(() => {
+            try {
+              const domain = new URL(selectedSource.url).hostname.replace('www.', '');
+              return sourceMap[domain] || null;
+            } catch { return null; }
+          })()}
+          claims={claimsData}
+          onClose={() => setSelectedSource(null)}
+          onInsert={claim => { handleInsertClaim(claim); setSelectedSource(null); }}
+        />
+      )}
+
+      {/* Signal popup modal (gaps / quotes) */}
+      {signalPopup && (
+        <Box
+          onClick={() => setSignalPopup(null)}
+          sx={{
+            position: 'fixed', inset: 0, zIndex: 1400,
+            background: 'rgba(0,0,0,0.48)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            p: 2,
           }}
         >
-          {sidebarOpen ? '‹' : '›'}
-        </button>
-
-        <Box sx={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
-        <Box sx={{ maxWidth: 1100, mx: 'auto', px: 3, pt: 3, pb: 6, display: 'flex', flexDirection: 'column' }}>
-          <ResultBlock
-            key={submittedQueryRef.current}
-            question={submittedQueryRef.current || query} sources={sources} answer={answer}
-            streaming={streaming} errorMsg={errorMsg}
-            isFollowUp={false} onNewSearch={newSearch}
-            isDeepSearch={isDeepSearch} deepLabel={deepLabel}
-            relatedSearches={relatedSearches} loadingRelated={loadingRelated}
-            visualQuery={visualQuery} contradictions={contradictions}
-            stockData={stockData}
-            claims={claimsData} pipelineTrace={pipelineTrace} sourceBrief={sourceBrief}
-            onWrite={handleWrite}
-            onInsertClaim={handleInsertClaim}
-            gaps={gapsData} quotes={quotesData}
-            sessionContext={{ sources: sources.map(s => ({ title: s.title || '', url: s.url || '', snippet: s.snippet || '' })) }}
-            onPromptAsk={newSearch}
-          />
-
-          {followUpBlocks.map((block, i) => (
-            <Box key={block.id} ref={i === followUpBlocks.length - 1 ? lastBlockRef : null}>
-              <ThreadDivider />
-              <ResultBlock
-                question={block.question} sources={block.sources}
-                answer={block.answer} streaming={block.streaming}
-                errorMsg={block.errorMsg} isFollowUp={true} onNewSearch={newSearch}
-                relatedSearches={block.relatedSearches || []}
-                loadingRelated={block.loadingRelated || false}
-                visualQuery={block.visualQuery || ''}
-                sourceBrief={block.sourceBrief || null}
-              />
+          <Box
+            onClick={e => e.stopPropagation()}
+            sx={{
+              width: '100%', maxWidth: 700,
+              maxHeight: '82vh',
+              background: 'var(--bg-primary)',
+              border: '1px solid var(--border)',
+              borderRadius: '18px',
+              display: 'flex', flexDirection: 'column',
+              boxShadow: '0 24px 64px rgba(0,0,0,0.28)',
+              overflow: 'hidden',
+            }}
+          >
+            <Box sx={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              px: 3, py: 2,
+              borderBottom: '1px solid var(--border)',
+              flexShrink: 0,
+            }}>
+              <Typography sx={{
+                fontFamily: 'var(--font-serif)', fontSize: '1.05rem', fontWeight: 600,
+                color: 'var(--fg-primary)',
+              }}>
+                {{ gaps: 'Research Gaps', quotes: 'Quote Bank' }[signalPopup]}
+              </Typography>
+              <Box
+                component="button"
+                onClick={() => setSignalPopup(null)}
+                sx={{
+                  background: 'none', border: '1px solid var(--border)', borderRadius: '8px',
+                  width: 30, height: 30, cursor: 'pointer', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center',
+                  color: 'var(--fg-dim)', fontSize: '1rem', lineHeight: 1,
+                  transition: 'all 0.14s',
+                  '&:hover': { background: 'var(--bg-secondary)', color: 'var(--fg-primary)' },
+                }}
+              >
+                ✕
+              </Box>
             </Box>
-          ))}
+            <Box sx={{ flex: 1, overflowY: 'auto', p: 3 }}>
+              {signalPopup === 'gaps' && (
+                <GapsTab gaps={gapsData} loading={streaming && gapsData.length === 0} onNewSearch={(q) => { setSignalPopup(null); newSearch(q); }} />
+              )}
+              {signalPopup === 'quotes' && (
+                <QuoteBankTab quotes={quotesData} loading={streaming && quotesData.length === 0} onInsertClaim={(q) => { setSignalPopup(null); handleInsertClaim(q); }} />
+              )}
+            </Box>
+          </Box>
         </Box>
-        </Box>{/* end inner scrollable */}
-      </Box>{/* end sidebar+content flex row */}
+      )}
 
       {/* Sticky follow-up bar — always visible */}
       <Box sx={{
