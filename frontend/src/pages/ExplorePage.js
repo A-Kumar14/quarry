@@ -1716,6 +1716,30 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
 
   const contradictionsLoading = contradictions === null;
   const chips    = answer ? extractKeywordChips(answer) : [];
+
+  // Headline hoisted from the answer's first H1 (fallback: the query itself)
+  const answerH1 = useMemo(() => {
+    const m = (answer || '').match(/^#\s+(.+)$/m);
+    return m ? m[1].replace(/[*_`]/g, '').trim() : '';
+  }, [answer]);
+  const headline = useMemo(() => {
+    if (answerH1) return answerH1;
+    const q = (question || '').trim();
+    return q ? q.charAt(0).toUpperCase() + q.slice(1) : '';
+  }, [answerH1, question]);
+  const briefTimestamp = useMemo(() => {
+    const d = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} · ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
+    // Recomputed when the stream finishes so it reflects completion time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streaming]);
+  const datelineText = useMemo(() => {
+    const parts = [`Synthesised from ${pipelineTrace?.sources_retrieved ?? sources.length} sources`];
+    if (pipelineTrace?.claims_extracted != null) parts.push(`${pipelineTrace.claims_extracted} claims extracted`);
+    if (pipelineTrace?.claims_contested) parts.push(`${pipelineTrace.claims_contested} contested`);
+    return parts.join(' · ');
+  }, [pipelineTrace, sources.length]);
   const sourcesCount = sources.length;
   const answerForState = (processedAnswer || answer || '').trim();
   const noSourceResultState = !streaming && sourcesCount === 0 && (
@@ -1838,27 +1862,66 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
             >
-            <GlassCard style={{ padding: '24px 28px' }}>
+            <GlassCard style={{ padding: '26px 30px 20px' }}>
 
-              {/* Copy button — floating top-right */}
-              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-                <Tooltip title={copied ? 'Copied!' : 'Copy answer'} placement="top">
-                  <Box
-                    component="button"
-                    onClick={handleCopy}
-                    sx={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      width: 28, height: 28, borderRadius: '8px', border: '1px solid var(--border)',
-                      background: copied ? 'rgba(34,197,94,0.10)' : 'transparent',
-                      borderColor: copied ? 'rgba(34,197,94,0.35)' : 'var(--border)',
-                      cursor: 'pointer', transition: 'all 0.14s ease', padding: 0,
-                      '&:hover': { background: 'rgba(0,0,0,0.05)', borderColor: 'var(--fg-dim)' },
-                    }}
-                  >
-                    {copied ? <Check size={12} color="#22c55e" /> : <Copy size={12} color="var(--fg-dim)" />}
-                  </Box>
-                </Tooltip>
+              {/* Kicker row */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mb: isFollowUp ? 1 : 1.25 }}>
+                <Typography sx={{
+                  fontFamily: 'var(--font-mono)', fontSize: '0.62rem', fontWeight: 600,
+                  letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--accent)',
+                }}>
+                  {isFollowUp ? 'Follow-up' : 'Research brief'}
+                </Typography>
+                {isDeepSearch && (
+                  <Typography sx={{
+                    fontFamily: 'var(--font-mono)', fontSize: '0.59rem', color: 'var(--fg-dim)',
+                    background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.22)',
+                    borderRadius: '5px', px: '7px', py: '2px',
+                  }}>
+                    Deep mode
+                  </Typography>
+                )}
+                <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', color: 'var(--fg-dim)' }}>
+                    {briefTimestamp}
+                  </Typography>
+                  <Tooltip title={copied ? 'Copied!' : 'Copy answer'} placement="top">
+                    <Box
+                      component="button"
+                      onClick={handleCopy}
+                      sx={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        width: 26, height: 26, borderRadius: '8px', border: '1px solid var(--border)',
+                        background: copied ? 'rgba(34,197,94,0.10)' : 'transparent',
+                        borderColor: copied ? 'rgba(34,197,94,0.35)' : 'var(--border)',
+                        cursor: 'pointer', transition: 'all 0.14s ease', padding: 0,
+                        '&:hover': { background: 'rgba(0,0,0,0.05)', borderColor: 'var(--fg-dim)' },
+                      }}
+                    >
+                      {copied ? <Check size={12} color="#22c55e" /> : <Copy size={12} color="var(--fg-dim)" />}
+                    </Box>
+                  </Tooltip>
+                </Box>
               </Box>
+
+              {/* Headline + dateline */}
+              {!isFollowUp && headline && (
+                <>
+                  <Typography component="h1" sx={{
+                    fontFamily: 'var(--font-serif)', fontSize: '1.625rem', fontWeight: 600,
+                    color: 'var(--fg-primary)', lineHeight: 1.25, letterSpacing: '-0.01em', mb: 0.75,
+                  }}>
+                    {headline}
+                  </Typography>
+                  <Typography sx={{
+                    fontFamily: 'var(--font-family)', fontSize: '0.78rem', fontStyle: 'italic',
+                    color: 'var(--fg-secondary)', borderBottom: '1px solid var(--border)',
+                    pb: 1.75, mb: 1,
+                  }}>
+                    {datelineText}
+                  </Typography>
+                </>
+              )}
 
               {/* Deep search status banner */}
               {deepLabel === '2/2' && streaming && (
@@ -1882,7 +1945,12 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
               <Box key={activeTab} sx={{ animation: 'tabFadeIn 0.15s ease' }}>
                 {activeTab === 'answer' && (
                   <>
-                    <CollapsibleAnswer answer={processedAnswer || answer} streaming={streaming} sources={sources} onNewSearch={onNewSearch} />
+                    <CollapsibleAnswer
+                      answer={(!isFollowUp && answerH1)
+                        ? (processedAnswer || answer).replace(/^#\s+.+$\n?/m, '')
+                        : (processedAnswer || answer)}
+                      streaming={streaming} sources={sources} onNewSearch={onNewSearch}
+                    />
                     {!streaming && evidenceActions.length > 0 && !noSourceResultState && (
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1.2 }}>
                         {evidenceActions.map((action) => (
