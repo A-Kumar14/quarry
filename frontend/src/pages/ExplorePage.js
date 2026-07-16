@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { Box, Typography, Skeleton, Tooltip, CircularProgress } from '@mui/material';
-import { Search, BookmarkPlus, ExternalLink, Zap, CornerDownRight, TrendingUp, RefreshCw, Copy, Check, Edit3 } from 'lucide-react';
+import { Search, BookmarkPlus, Zap, CornerDownRight, TrendingUp, RefreshCw, Copy, Check, Edit3 } from 'lucide-react';
 import { useNavigate, useSearchParams, Navigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -237,27 +237,6 @@ function extractKeywordChips(answer) {
   return boldTerms.slice(0, 6);
 }
 
-function normalizeSourceBrief(sourceBrief, hasSources = false) {
-  const fallback = hasSources
-    ? {
-        summary: 'Source mix analysis is unavailable for this run. Review domain diversity and outlet types in the source list.',
-        tags: ['analysis_unavailable', 'review_source_mix'],
-      }
-    : {
-        summary: 'No sources retrieved yet, so source composition cannot be assessed.',
-        tags: ['no_sources_yet', 'insufficient_signal'],
-      };
-
-  if (!sourceBrief || typeof sourceBrief !== 'object') return fallback;
-  const summary = typeof sourceBrief.summary === 'string' ? sourceBrief.summary.trim() : '';
-  const tags = Array.isArray(sourceBrief.tags)
-    ? sourceBrief.tags.map(t => String(t).trim()).filter(Boolean).slice(0, 4)
-    : [];
-  return {
-    summary: summary || fallback.summary,
-    tags: tags.length ? tags : fallback.tags,
-  };
-}
 
 function linkifyCitations(text, sources) {
   return text.replace(/\[(\d+)\]/g, (match, num) => {
@@ -687,146 +666,164 @@ function SourceModal({ source, sourceProfile, claims, onClose, onInsert }) {
   );
 }
 
-function SourceIntelligencePopup({
-  sources,
-  pipelineTrace,
-  sourceBrief,
-  isDeepSearch,
-  selectedSource,
-  onSelectSource,
-  onClose,
-}) {
-  const brief = normalizeSourceBrief(sourceBrief, sources.length > 0);
+// ── Source Intelligence rail (always visible, right column) ───────────────────
+
+function provenanceColor(profile, url) {
+  if (profile) {
+    const stateAffiliated = profile.state_affiliation && profile.state_affiliation !== false && profile.state_affiliation !== null;
+    if (stateAffiliated) return TIER_COLOR[3];
+    return TIER_COLOR[profile.credibility_tier] ?? TIER_COLOR[2];
+  }
+  return QUALITY_COLOR[getSourceQuality(url)];
+}
+
+function ProvenanceLegend({ size = 7, fontSize = '0.56rem' }) {
+  const items = [
+    { color: TIER_COLOR[1], label: 'Tier 1 · independent' },
+    { color: TIER_COLOR[2], label: 'Tier 2 · mixed funding' },
+    { color: TIER_COLOR[3], label: 'Tier 3 · state-affiliated' },
+  ];
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.35)',
-        zIndex: 1000,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 16,
-      }}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          width: 560,
-          maxWidth: '92vw',
-          maxHeight: '84vh',
-          overflowY: 'auto',
-          background: 'var(--bg-primary)',
-          border: '1px solid var(--border)',
-          borderRadius: 16,
-          zIndex: 1001,
-        }}
-      >
-        {/* Header */}
-        <div style={{ padding: '18px 18px 0' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontFamily: 'var(--font-family)', fontSize: '0.70rem', fontWeight: 700, color: 'var(--fg-dim)', letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 6 }}>
-                Source Intelligence
-              </div>
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <div style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', padding: '6px 10px', borderRadius: 10 }}>
-                  <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.82rem', fontWeight: 800, color: 'var(--fg-primary)' }}>{sources.length}</span>
-                  <span style={{ fontFamily: 'var(--font-family)', fontSize: '0.62rem', color: 'var(--fg-dim)', marginLeft: 6 }}>sources</span>
-                </div>
-              </div>
-              <div style={{ marginTop: 10, fontFamily: 'var(--font-family)', fontSize: '0.76rem', color: 'var(--fg-secondary)', lineHeight: 1.55 }}>
-                {brief.summary}
-              </div>
-            </div>
-
-            <button
-              onClick={onClose}
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: '50%',
-                flexShrink: 0,
-                background: 'rgba(0,0,0,0.10)',
-                border: 'none',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                fontSize: '1rem',
-                color: 'var(--fg-secondary)',
-                lineHeight: 1,
-              }}
-            >
-              ×
-            </button>
-          </div>
-        </div>
-
-        <div style={{ padding: '0 18px 18px' }}>
-          {/* Deep-mode transparency: show which sub-queries were executed */}
-          {pipelineTrace?.sub_queries && isDeepSearch && Array.isArray(pipelineTrace.sub_queries) && (
-            <div style={{
-              marginTop: 10,
-              marginBottom: 14,
-              padding: '10px 12px',
-              background: 'var(--bg-secondary)',
-              border: '1px solid var(--border)',
-              borderRadius: 8,
-            }}>
-              <div style={{
-                fontSize: '0.65rem',
-                fontWeight: 500,
-                color: 'var(--fg-dim)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.07em',
-                marginBottom: 7,
-              }}>
-                Sub-queries run
-              </div>
-              {pipelineTrace.sub_queries.map((q, i) => (
-                <div
-                  key={i}
-                  style={{
-                    fontSize: '0.72rem',
-                    color: 'var(--fg-secondary)',
-                    lineHeight: 1.5,
-                    paddingLeft: 8,
-                    borderLeft: '2px solid rgba(249,115,22,0.3)',
-                    marginBottom: 5,
-                  }}
-                >
-                  {q}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Sources list */}
-          {sources.length > 0 && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-              {sources.map((src, i) => (
-                <SourceCard
-                  key={i}
-                  src={src}
-                  index={i}
-                  isSelected={selectedSource === src}
-                  onClick={() => onSelectSource(src)}
-                />
-              ))}
-            </Box>
-          )}
-
-          {sources.length === 0 && (
-            <div style={{ padding: '14px 0', fontSize: '0.8rem', color: 'var(--fg-dim)', fontStyle: 'italic' }}>
-              No sources retrieved yet.
-            </div>
-          )}
-        </div>
-      </div>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+      {items.map(({ color, label }) => (
+        <span key={label} style={{
+          display: 'inline-flex', alignItems: 'center', gap: 5,
+          fontFamily: 'var(--font-mono)', fontSize, color: 'var(--fg-secondary)',
+        }}>
+          <span style={{ width: size, height: size, borderRadius: '50%', background: color, flexShrink: 0 }} />
+          {label}
+        </span>
+      ))}
     </div>
+  );
+}
+
+function SourceIntelligenceRail({ sources, pipelineTrace, sourceMap, onSelectSource }) {
+  const isLiveQuery = pipelineTrace?.pipeline_mode === 'pass_through';
+
+  const cells = [
+    { label: 'sources',   value: pipelineTrace?.sources_retrieved ?? sources.length,
+      bg: 'var(--gbtn-bg)', border: 'var(--border)', color: 'var(--fg-primary)' },
+    { label: 'claims',    value: pipelineTrace?.claims_extracted ?? 0,
+      bg: 'var(--gbtn-bg)', border: 'var(--border)', color: 'var(--fg-primary)' },
+    { label: 'verified',  value: pipelineTrace?.claims_verified ?? 0,
+      bg: 'rgba(34,197,94,0.06)', border: 'rgba(34,197,94,0.20)', color: '#15803d' },
+    { label: 'contested', value: pipelineTrace?.claims_contested ?? 0,
+      bg: 'rgba(239,68,68,0.06)', border: 'rgba(239,68,68,0.20)', color: '#dc2626' },
+  ];
+
+  return (
+    <GlassCard style={{ padding: 14 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <span style={{
+          fontFamily: 'var(--font-mono)', fontSize: '0.62rem', fontWeight: 600,
+          letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--fg-dim)',
+        }}>
+          Source intelligence
+        </span>
+        {isLiveQuery && (
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            fontFamily: 'var(--font-mono)', fontSize: '0.56rem', fontWeight: 600,
+            color: 'var(--accent)', background: 'rgba(249,115,22,0.10)',
+            border: '1px solid rgba(249,115,22,0.28)', borderRadius: 5,
+            padding: '2px 7px', textTransform: 'uppercase', letterSpacing: '0.06em',
+          }}>
+            <span style={{
+              width: 5, height: 5, borderRadius: '50%', background: 'var(--accent)',
+              animation: 'trendingPulse 1.4s ease-in-out infinite',
+            }} />
+            Live query
+          </span>
+        )}
+      </div>
+
+      {/* Pipeline trace grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 14 }}>
+        {cells.map(({ label, value, bg, border, color }) => (
+          <div key={label} style={{
+            textAlign: 'center', padding: '8px 2px', borderRadius: 8,
+            background: bg, border: `1px solid ${border}`,
+          }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem', fontWeight: 700, color, lineHeight: 1 }}>
+              {value}
+            </div>
+            <div style={{
+              fontFamily: 'var(--font-mono)', fontSize: '0.5rem', letterSpacing: '0.06em',
+              textTransform: 'uppercase', color: 'var(--fg-dim)', marginTop: 4,
+            }}>
+              {label}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Source list */}
+      {sources.length === 0 ? (
+        <div style={{ padding: '10px 0', fontSize: '0.78rem', color: 'var(--fg-dim)', fontStyle: 'italic' }}>
+          No sources retrieved yet.
+        </div>
+      ) : (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          {sources.map((src, i) => {
+            const domain = (() => {
+              try { return new URL(src.url).hostname.replace(/^www\./i, ''); }
+              catch { return src.url || ''; }
+            })();
+            const profile = sourceMap[domain] || null;
+            const dotColor = provenanceColor(profile, src.url);
+            const outletName = profile?.outlet_name || src.outlet_name || domain;
+            const stateAffiliated = profile?.state_affiliation && profile.state_affiliation !== false && profile.state_affiliation !== null;
+            const meta = [profile?.funding_type, profile?.editorial_lean, profile?.country]
+              .filter(v => v && v !== 'unknown')
+              .map(v => String(v).replace(/_/g, ' '))
+              .join(' · ');
+            return (
+              <Box
+                key={i}
+                onClick={() => onSelectSource(src)}
+                sx={{
+                  display: 'flex', alignItems: 'flex-start', gap: '9px',
+                  padding: '9px 10px', borderRadius: '12px',
+                  background: 'var(--gbtn-bg)', border: '1px solid var(--border)',
+                  cursor: 'pointer', transition: 'all 0.16s ease',
+                  '&:hover': {
+                    borderColor: 'rgba(249,115,22,0.5)',
+                    transform: 'translateY(-1px)',
+                    boxShadow: '0 4px 12px rgba(140,110,60,0.10)',
+                  },
+                }}
+              >
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: dotColor, flexShrink: 0, marginTop: 4 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{
+                      fontFamily: 'var(--font-family)', fontSize: '0.75rem', fontWeight: 500,
+                      color: 'var(--fg-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {outletName}
+                    </span>
+                    <TierBadge tier={profile?.credibility_tier} stateAffiliated={stateAffiliated} />
+                  </div>
+                  <div style={{
+                    fontFamily: 'var(--font-mono)', fontSize: '0.59rem', color: 'var(--fg-dim)', marginTop: 2,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {meta || domain}
+                  </div>
+                </div>
+              </Box>
+            );
+          })}
+        </Box>
+      )}
+
+      {/* Provenance legend */}
+      <div style={{ borderTop: '1px solid var(--border)', marginTop: 12, paddingTop: 10 }}>
+        <ProvenanceLegend />
+      </div>
+    </GlassCard>
   );
 }
 
@@ -1010,76 +1007,6 @@ function ClaimLandscapeModal({ graphData, claims, onInsertClaim, onClose }) {
   );
 }
 
-function SourceCard({ src, index, onClick, isSelected }) {
-  const dotColor = src.credibility_tier
-    ? TIER_COLOR[src.credibility_tier] ?? QUALITY_COLOR['medium']
-    : QUALITY_COLOR[getSourceQuality(src.url)];
-  const domain   = (() => {
-    try { return new URL(src.url).hostname.replace('www.', ''); }
-    catch { return src.url; }
-  })().toUpperCase();
-
-  return (
-    <Box
-      onClick={onClick}
-      sx={{
-        display: 'flex', alignItems: 'flex-start', gap: 1.5,
-        px: 1.5, py: 1.25, borderRadius: '12px',
-        background: isSelected ? 'rgba(255,255,255,0.42)' : 'var(--gbtn-bg)',
-        border: isSelected ? '1px solid rgba(249,115,22,0.7)' : '1px solid var(--border)',
-        transition: 'all 0.16s ease',
-        cursor: 'pointer',
-        '&:hover': {
-          background: 'var(--glass-bg)',
-          borderColor: 'rgba(249,115,22,0.5)',
-          transform: 'translateY(-1px)',
-          boxShadow: '0 4px 12px rgba(140,110,60,0.10)',
-        },
-      }}
-    >
-      {/* Number badge */}
-      <Box sx={{
-        width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'rgba(249,115,22,0.10)', border: '1px solid rgba(249,115,22,0.20)',
-        fontFamily: 'var(--font-family)', fontSize: '0.72rem', fontWeight: 600,
-        color: 'var(--accent)',
-      }}>
-        {index + 1}
-      </Box>
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        {/* Row 1: dot + favicon + domain */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.4 }}>
-          <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: dotColor, flexShrink: 0 }} />
-          {src.favicon && (
-            <img src={src.favicon} alt="" width={13} height={13}
-              style={{ borderRadius: 2, opacity: 0.8 }}
-              onError={e => { e.target.style.display = 'none'; }} />
-          )}
-          <Typography sx={{
-            fontFamily: 'var(--font-family)', fontSize: '0.64rem', fontWeight: 600,
-            color: 'var(--blue)', letterSpacing: '0.07em', lineHeight: 1,
-          }}>
-            {domain}
-          </Typography>
-        </Box>
-        <Typography sx={{
-          fontFamily: 'var(--font-family)', fontSize: '0.83rem', fontWeight: 400,
-          color: 'var(--fg-primary)', lineHeight: 1.4,
-          display: '-webkit-box', WebkitLineClamp: 2,
-          WebkitBoxOrient: 'vertical', overflow: 'hidden',
-        }}>
-          {src.title || src.url}
-        </Typography>
-      </Box>
-      <ExternalLink
-        size={13}
-        style={{ color: 'var(--fg-dim)', flexShrink: 0, marginTop: 4, cursor: 'pointer' }}
-        onClick={e => { e.stopPropagation(); window.open(src.url, '_blank', 'noopener,noreferrer'); }}
-      />
-    </Box>
-  );
-}
 
 // ── Trending chips ────────────────────────────────────────────────────────────
 
@@ -1596,7 +1523,6 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
   const [copied,          setCopied]          = useState(false);
   const [processedAnswer, setProcessedAnswer] = useState('');
   const [selectedSource,  setSelectedSource]  = useState(null);
-  const [showSourceIntelPopup, setShowSourceIntelPopup] = useState(false);
   const [signalPopup,          setSignalPopup]          = useState(null); // 'contradictions'|'perspectives'|'gaps'|'quotes'|'sources'
   const [perspectivesState, setPerspectivesState] = useState({
     status: 'idle',
@@ -1644,15 +1570,6 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
     /no (relevant |search )?results/i.test(answerForState) ||
     /no summary could be generated/i.test(answerForState)
   );
-  const blockScore = (() => {
-    const srcScore = Math.min(sources.length / 5, 1) * 30;
-    const verified = claims.filter(c => ['verified', 'corroborated'].includes(c.status)).length;
-    const verifyScore = claims.length > 0 ? (verified / claims.length) * 35 : 0;
-    const claimScore = Math.min(claims.length / 8, 1) * 20;
-    const penalty = Math.min((contradictions?.contradictions ?? []).filter(x => x).length * 5, 15);
-    return Math.round(Math.max(0, Math.min(100, srcScore + verifyScore + claimScore - penalty)));
-  })();
-  const sourceBriefData = normalizeSourceBrief(sourceBrief, sources.length > 0);
   const evidenceActions = useMemo(() => {
     const actions = [];
     const topContested = (claims || []).find((c) => c.status === 'contested' && (c.claim_text || c.claim));
@@ -1757,18 +1674,6 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
 
       {/* Main Content + Right Sidebar Layout */}
       <Box sx={{ display: 'flex', flexDirection: stockData ? 'column' : { xs: 'column', md: 'row' }, gap: 3, width: '100%', alignItems: 'flex-start' }}>
-
-        {showSourceIntelPopup && (
-          <SourceIntelligencePopup
-            sources={sources}
-            pipelineTrace={pipelineTrace}
-            sourceBrief={sourceBriefData}
-            isDeepSearch={isDeepSearch}
-            selectedSource={selectedSource}
-            onSelectSource={src => { setSelectedSource(src); setShowSourceIntelPopup(false); }}
-            onClose={() => setShowSourceIntelPopup(false)}
-          />
-        )}
 
         {/* Source Intelligence Modal */}
         {selectedSource && (
@@ -1925,6 +1830,31 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
                   ))}
                 </Box>
               )}
+
+              {/* Deep transparency panel — sub-queries run */}
+              {isDeepSearch && Array.isArray(pipelineTrace?.sub_queries) && pipelineTrace.sub_queries.length > 0 && (
+                <Box sx={{
+                  mt: 2.25, p: '12px 14px', borderRadius: '10px',
+                  border: '1px solid var(--border)', background: 'var(--bg-secondary)',
+                }}>
+                  <Typography sx={{
+                    fontFamily: 'var(--font-mono)', fontSize: '0.59rem', fontWeight: 600,
+                    letterSpacing: '0.10em', textTransform: 'uppercase', color: 'var(--fg-dim)', mb: 1,
+                  }}>
+                    Deep mode · sub-queries run
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {pipelineTrace.sub_queries.map((q, i) => (
+                      <Typography key={i} sx={{
+                        fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--fg-secondary)',
+                        lineHeight: 1.5, pl: '9px', borderLeft: '2px solid rgba(249,115,22,0.3)',
+                      }}>
+                        {q}
+                      </Typography>
+                    ))}
+                  </Box>
+                </Box>
+              )}
             </GlassCard>
             </motion.div>
 
@@ -2032,60 +1962,13 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
             gap: 2,
             mt: '16px'
           }}>
-            {/* Source Intelligence Card — quiet annotation */}
-            <Box
-              component="button"
-              onClick={() => setShowSourceIntelPopup(true)}
-              sx={{
-                width: '100%',
-                textAlign: 'left',
-                borderRadius: '12px',
-                padding: '12px 14px',
-                background: 'var(--bg-secondary)',
-                border: '1px solid var(--border)',
-                cursor: 'pointer',
-                transition: 'all 0.16s ease',
-                '&:hover': {
-                  borderColor: 'rgba(249,115,22,0.35)',
-                  transform: 'translateY(-1px)',
-                },
-              }}
-            >
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                <Typography sx={{
-                  fontFamily: 'var(--font-family)',
-                  fontSize: '0.60rem',
-                  fontWeight: 600,
-                  color: 'var(--fg-dim)',
-                  letterSpacing: '0.12em',
-                  textTransform: 'uppercase',
-                }}>
-                  Sources
-                </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', fontWeight: 600, color: 'var(--fg-secondary)' }}>
-                    {sourcesCount}
-                  </Typography>
-                  {sourcesCount > 0 && (
-                    <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.58rem', color: 'var(--fg-dim)' }}>
-                      · {blockScore}/100
-                    </Typography>
-                  )}
-                </Box>
-              </Box>
-              <Typography sx={{
-                fontFamily: 'var(--font-family)',
-                fontSize: '0.68rem',
-                color: 'var(--fg-secondary)',
-                lineHeight: 1.5,
-                overflow: 'hidden',
-                display: '-webkit-box',
-                WebkitLineClamp: 1,
-                WebkitBoxOrient: 'vertical',
-              }}>
-                {sourceBriefData.summary}
-              </Typography>
-            </Box>
+            {/* Source Intelligence rail — always visible */}
+            <SourceIntelligenceRail
+              sources={sources}
+              pipelineTrace={pipelineTrace}
+              sourceMap={sourceMap}
+              onSelectSource={src => setSelectedSource(src)}
+            />
 
             {/* ── Signal Cards ────────────────────────────────────────────── */}
 
@@ -2226,42 +2109,6 @@ function ResultBlock({ question, sources, answer, streaming, errorMsg, isFollowU
                     </Typography>
                     <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', color: 'var(--fg-dim)', mt: '3px' }}>
                       — {q.speaker}
-                    </Typography>
-                  </Box>
-                ))}
-                <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', color: 'rgba(249,115,22,0.8)', mt: 1 }}>
-                  View all →
-                </Typography>
-              </Box>
-            )}
-
-            {/* Sources signal card */}
-            {sources.length > 0 && (
-              <Box
-                component="button"
-                onClick={() => setSignalPopup('sources')}
-                sx={{
-                  width: '100%', textAlign: 'left', borderRadius: '14px',
-                  padding: '14px', background: 'var(--bg-secondary)',
-                  border: '1px solid var(--border)', cursor: 'pointer',
-                  transition: 'all 0.16s ease',
-                  '&:hover': { borderColor: 'rgba(34,197,94,0.45)', transform: 'translateY(-1px)' },
-                }}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25 }}>
-                  <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.6rem', fontWeight: 600, color: 'var(--fg-dim)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-                    Sources
-                  </Typography>
-                  <Box sx={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '6px', px: '6px', py: '2px' }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', fontWeight: 700, color: '#16a34a' }}>{sources.length}</span>
-                  </Box>
-                </Box>
-                {sources.slice(0, 3).map((s, i) => (
-                  <Box key={i} sx={{ mb: 0.6, display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
-                    <Box sx={{ width: 5, height: 5, borderRadius: '50%', background: '#22c55e', mt: '5px', flexShrink: 0 }} />
-                    <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.73rem', color: 'var(--fg-primary)', lineHeight: 1.4,
-                      overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                      {s.title || s.url}
                     </Typography>
                   </Box>
                 ))}
