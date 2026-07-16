@@ -29,6 +29,12 @@
   --doc-fg:         #1a1a1a;
   --doc-fg-dim:     #555555;
 
+  /* WritePage dark document card — same values in BOTH themes */
+  --doc-surface-dark: #1E1C18;
+  --doc-shadow-dark:  0 2px 24px rgba(0,0,0,0.20);
+  --doc-fg-dark:      #ddd8d0;
+  --doc-fg-dim-dark:  #8a8278;
+
   /* Glass surface tokens (large hero panels, search surface) */
   --glass-bg:       rgba(255,250,235,0.18);
   --glass-border:   rgba(255,255,245,0.92);
@@ -294,28 +300,28 @@ html.dark #root {
   font-weight: 700;
   line-height: 1.3;
   margin: 1.2rem 0 0.4rem;
-  color: var(--doc-fg);
+  color: var(--doc-fg-dark);
 }
 .quarry-editor h2 {
   font-family: var(--font-serif);
   font-size: 1.35rem;
   font-weight: 600;
   margin: 1rem 0 0.3rem;
-  color: var(--doc-fg);
+  color: var(--doc-fg-dark);
 }
 .quarry-editor h3 {
   font-family: var(--font-serif);
   font-size: 1.1rem;
   font-weight: 600;
   margin: 0.8rem 0 0.25rem;
-  color: var(--doc-fg);
+  color: var(--doc-fg-dark);
 }
 .quarry-editor blockquote {
   border-left: 3px solid var(--accent);
   border-radius: 0;
   margin: 0.8rem 0;
   padding: 0.3rem 0 0.3rem 1rem;
-  color: var(--doc-fg-dim);
+  color: var(--doc-fg-dim-dark);
   font-style: italic;
 }
 .quarry-editor ul, .quarry-editor ol {
@@ -324,7 +330,7 @@ html.dark #root {
 }
 .quarry-editor li {
   line-height: 1.75;
-  color: var(--doc-fg);
+  color: var(--doc-fg-dark);
 }
 .quarry-editor strong { font-weight: 700; }
 .quarry-editor em    { font-style: italic; }

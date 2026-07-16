@@ -1372,6 +1372,24 @@ export default function WritePage() {
     setTimeout(() => setSaveIndicator(false), 2000);
   }, [title, content, sessionSources, researchSources, selectedResearchSources, aiSummaries]);
 
+  // Append a formatted bibliography (APA / MLA) to the end of the document
+  const handleAppendBibliography = useCallback((style) => {
+    const editor = editorRef.current;
+    if (!editor || sessionSources.length === 0) return;
+    const year = new Date().getFullYear();
+    const entries = sessionSources.map(src => {
+      const outlet = src.outlet_name || getDomain(src.url);
+      const t = src.title || src.url;
+      return style === 'apa'
+        ? `${outlet}. (${year}). ${t}. Retrieved from ${src.url}`
+        : `"${t}." ${outlet}, ${year}, ${src.url}.`;
+    });
+    const heading = style === 'apa' ? 'Bibliography (APA)' : 'Bibliography (MLA)';
+    const html = `<h2>${escapeHtml(heading)}</h2>` + entries.map(e => `<p>${escapeHtml(e)}</p>`).join('');
+    editor.insertAdjacentHTML('beforeend', html);
+    handleEditorInput();
+  }, [sessionSources, handleEditorInput]);
+
   const handleDeleteNote = useCallback((note) => {
     try {
       const docs = JSON.parse(localStorage.getItem(DOCUMENTS_KEY) || '[]');
@@ -1650,16 +1668,16 @@ export default function WritePage() {
           )}
 
           {/* Editor scroll area */}
-          <div style={{ flex: 1, overflowY: 'auto', background: dark ? '#131313' : '#f5f5f5', position: 'relative', transition: 'background 0.3s ease' }}>
+          <div style={{ flex: 1, overflowY: 'auto', background: dark ? '#131313' : '#f0ece3', position: 'relative', transition: 'background 0.3s ease' }}>
             <div style={{
               maxWidth: focusMode ? 680 : 820,
               margin: '40px auto',
               padding: '72px 80px',
-              background: 'var(--doc-surface)',
-              color: 'var(--doc-fg)',
+              background: 'var(--doc-surface-dark)',
+              color: 'var(--doc-fg-dark)',
               boxShadow: focusMode
-                ? 'var(--doc-shadow), inset 0 0 60px rgba(0,0,0,0.04), inset 0 2px 8px rgba(0,0,0,0.03)'
-                : 'var(--doc-shadow)',
+                ? 'var(--doc-shadow-dark), inset 0 0 60px rgba(0,0,0,0.10), inset 0 2px 8px rgba(0,0,0,0.06)'
+                : 'var(--doc-shadow-dark)',
               borderRadius: 2,
               minHeight: '1056px',
               transition: 'max-width 0.3s ease, box-shadow 0.3s ease',
@@ -1676,7 +1694,7 @@ export default function WritePage() {
                   display: 'block', width: '100%',
                   background: 'transparent', border: 'none', outline: 'none',
                   fontFamily: 'var(--font-family)', fontSize: '2.4rem', fontWeight: 600,
-                  color: 'var(--doc-fg)', letterSpacing: '-0.01em',
+                  color: 'var(--doc-fg-dark)', letterSpacing: '-0.01em',
                   lineHeight: 1.2, marginBottom: 8, padding: 0,
                   resize: 'none', overflow: 'hidden',
                 }}
@@ -1686,7 +1704,7 @@ export default function WritePage() {
               {sessionSources.length > 0 && (
                 <div style={{
                   fontFamily: 'var(--font-family)', fontSize: '0.82rem',
-                  fontStyle: 'italic', color: 'var(--doc-fg-dim)',
+                  fontStyle: 'italic', color: 'var(--doc-fg-dim-dark)',
                   marginBottom: 20,
                 }}>
                   {sessionSources.length} source{sessionSources.length !== 1 ? 's' : ''} · {dateStr}
@@ -1712,7 +1730,7 @@ export default function WritePage() {
                     fontFamily: 'var(--font-serif)',
                     fontSize: '1rem',
                     lineHeight: '1.85',
-                    color: 'var(--doc-fg)',
+                    color: 'var(--doc-fg-dark)',
                     caretColor: 'var(--accent)',
                     wordBreak: 'break-word',
                   }}
@@ -2179,6 +2197,31 @@ export default function WritePage() {
                     {copied ? <Check size={11} color="#22c55e" /> : <Copy size={11} />}
                     {copied ? 'Copied' : 'Copy'}
                   </button>
+                </div>
+
+                {/* Bibliography append buttons */}
+                <div style={{ display: 'flex', gap: 5 }}>
+                  {[['apa', '+ APA bibliography'], ['mla', '+ MLA bibliography']].map(([style, label]) => (
+                    <button
+                      key={style}
+                      onClick={() => handleAppendBibliography(style)}
+                      disabled={sessionSources.length === 0}
+                      title={sessionSources.length === 0 ? 'Search a topic on Explore to collect sources first' : `Append a formatted ${style.toUpperCase()} bibliography to the document`}
+                      style={{
+                        flex: 1, textAlign: 'center', fontSize: '0.66rem', fontWeight: 600,
+                        padding: '7px 0', borderRadius: 6,
+                        background: 'rgba(249,115,22,0.10)',
+                        border: '1px solid rgba(249,115,22,0.30)',
+                        color: 'var(--accent)',
+                        cursor: sessionSources.length === 0 ? 'not-allowed' : 'pointer',
+                        opacity: sessionSources.length === 0 ? 0.55 : 1,
+                        fontFamily: 'var(--font-family)',
+                        transition: 'all 0.14s',
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
               </div>
 
