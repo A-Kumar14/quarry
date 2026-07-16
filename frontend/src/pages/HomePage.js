@@ -1,21 +1,16 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import createGlobe from 'cobe';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Zap } from 'lucide-react';
-import { getBeats, incrementBeatActivity } from '../utils/beats';
+import { Search, Zap, TrendingUp, RefreshCw } from 'lucide-react';
+import { incrementBeatActivity } from '../utils/beats';
 import { useDarkMode } from '../DarkModeContext';
-import DailyTopicsModal from '../components/DailyTopicsModal';
-import NotesModal from '../components/NotesModal';
 import { useAuth } from '../contexts/AuthContext';
 import OnboardingModal from '../components/OnboardingModal';
 import GlassCard from '../components/GlassCard';
-import { useNotes } from '../hooks/useNotes';
-import { buildDailyDigestSignature, getCachedDailyDigest, setCachedDailyDigest } from '../utils/dailyDigestCache';
-import { PromptInputBox } from '../components/ui/ai-prompt-box';
-import BorderGlow from '../components/ui/BorderGlow';
+import HomeSearchBar from '../components/HomeSearchBar';
+import WatchlistGrid from '../components/WatchlistGrid';
+import { useTrendingNews, FALLBACK_SUGGESTIONS } from '../hooks/useTrendingNews';
+import { getSourceProfile, TIER_COLOR } from '../utils/sourceProfile';
 import { Waves } from '../components/ui/wave-background';
-
-const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 /* ── Design tokens ───────────────────────────────────────────────────────── */
 const T = {
@@ -111,25 +106,6 @@ function ago(ts) {
 }
 
 /* ── Globe pins hook — live GDELT data, falls back to WORLD_PINS ─────────── */
-function useGlobePins(topicHint = '') {
-  const [pins, setPins] = useState(WORLD_PINS);
-
-  useEffect(() => {
-    const q = (topicHint || '').trim();
-    const url = q
-      ? `${API}/explore/globe-pins?topic=${encodeURIComponent(q)}`
-      : `${API}/explore/globe-pins`;
-    fetch(url)
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then(data => {
-        const live = (data.pins || []).filter(p => p.lat != null && p.lng != null);
-        if (live.length > 0) setPins(live);
-      })
-      .catch(() => {}); // keep WORLD_PINS on any error
-  }, [topicHint]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return pins;
-}
 
 /* ── SearchSurface (shared between logged-in and logged-out) ─────────────── */
 function SearchSurface({ query, setQuery, isDeep, setIsDeep, selectedProfileId, setSelectedProfileId, onSubmit, flat = false }) {
@@ -565,1070 +541,320 @@ function LoggedOutHome({ query, setQuery, isDeep, setIsDeep, selectedProfileId, 
 }
 
 /* ── Daily Topics Card ───────────────────────────────────────────────────── */
-const CATEGORY_COLOR = {
-  Conflict:     '#e24b4a',
-  Humanitarian: '#f59e0b',
-  Economics:    '#7f77dd',
-  Politics:     '#3b82f6',
-  Climate:      '#22c55e',
-  Focus:        '#22c55e',
-};
 
-function DailyTopicsCard({ onOpen, profile, userId }) {
-  const [dark] = useDarkMode();
-  const [hovered, setHovered] = useState(false);
-  const [digest, setDigest] = useState(null);
-  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    const beatNames = getBeats().map(b => b.name);
-    const signature = buildDailyDigestSignature(profile || {}, beatNames);
-    const cached = getCachedDailyDigest(userId, signature);
-    if (cached) {
-      setDigest(cached);
-      return;
-    }
 
-    setLoading(true);
-    fetch(`${API}/explore/daily-digest`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ beats: beatNames, profile: profile || {} }),
-    })
-      .then(r => { if (!r.ok) throw new Error('daily brief failed'); return r.json(); })
-      .then(data => {
-        if (cancelled) return;
-        setDigest(data);
-        setCachedDailyDigest(userId, signature, data);
-      })
-      .catch(() => {
-        // Keep card quiet if fetch fails; modal can still retry.
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
 
-    return () => { cancelled = true; };
-  }, [profile, userId]);
 
-  const bg        = 'rgba(20,14,8,0.92)';
-  const border    = dark ? 'rgba(249,115,22,0.22)' : 'rgba(249,115,22,0.18)';
-  const shimmerBg = dark ? 'rgba(249,115,22,0.07)' : 'rgba(249,115,22,0.05)';
-  const topics = (digest?.topics || []).slice(0, 5);
-  const fallbackTopics = (profile?.topics_of_focus || []).slice(0, 5).map(label => ({ label, category: 'Focus' }));
-  const hasRealTopics = topics.length > 0;
+/* ── Inline globe map (cobe) ────────────────────────────────────────────── */
 
-  const URGENCY_BADGE = (raw = '') => {
-    const u = raw.toLowerCase();
-    if (u.includes('break')) return { label: 'Breaking',   bg: 'rgba(239,68,68,0.18)',  color: '#fca5a5', border: 'rgba(239,68,68,0.28)'  };
-    if (u.includes('develop'))return { label: 'Developing', bg: 'rgba(245,158,11,0.18)', color: '#fcd34d', border: 'rgba(245,158,11,0.28)' };
-    if (u.includes('analy'))  return { label: 'Analysis',   bg: 'rgba(59,130,246,0.18)', color: '#93c5fd', border: 'rgba(59,130,246,0.28)' };
-    return null;
-  };
 
+
+/* ── Home prompt bar ─────────────────────────────────────────────────────── */
+
+/* ── Logged-in homepage — newspaper desk ─────────────────────────────────── */
+
+function domainOf(url) {
+  try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; }
+}
+
+function trendingDot(profile) {
+  if (!profile) return TIER_COLOR[2];
+  const stateAffiliated = profile.state_affiliation && profile.state_affiliation !== false && profile.state_affiliation !== null;
+  if (stateAffiliated) return TIER_COLOR[3];
+  return TIER_COLOR[profile.credibility_tier] ?? TIER_COLOR[2];
+}
+
+function TrendingLegend() {
   return (
-    <div
-      onClick={onOpen}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        borderRadius: 14, overflow: 'hidden',
-        display: 'flex', flexDirection: 'column',
-        height: '100%',
-        minHeight: 0,
-        cursor: 'pointer',
-        background: bg,
-        backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
-        border: `1px solid ${hovered ? 'rgba(249,115,22,0.45)' : border}`,
-        boxShadow: hovered
-          ? '0 8px 32px rgba(249,115,22,0.14), 0 2px 8px rgba(0,0,0,0.08)'
-          : '0 2px 8px rgba(0,0,0,0.05)',
-        transition: 'box-shadow 0.22s ease, border-color 0.22s ease, transform 0.22s ease',
-        transform: hovered ? 'translateY(-2px)' : 'translateY(0)',
-      }}
-    >
-      {/* Header — accent-tinted stripe */}
-      <div style={{
-        padding: '10px 14px 9px',
-        borderBottom: `1px solid ${border}`,
-        background: shimmerBg,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      }}>
-        <div style={{ fontFamily: T.sans, fontSize: '0.92rem', fontWeight: 600, color: 'rgba(240,230,216,0.90)' }}>
-          Today's topics
-        </div>
-      </div>
-
-      {/* Topic list */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
-        {loading && topics.length === 0 && (
-          <div style={{ padding: '12px 14px', fontFamily: T.sans, fontSize: '0.76rem', color: 'rgba(200,190,175,0.45)' }}>
-            Loading your digest…
-          </div>
-        )}
-        {!loading && topics.length === 0 && fallbackTopics.length === 0 && (
-          <div style={{ padding: '12px 14px', fontFamily: T.sans, fontSize: '0.76rem', color: 'rgba(200,190,175,0.45)' }}>
-            Add focus areas in your profile to personalise this digest.
-          </div>
-        )}
-        {(hasRealTopics ? topics : fallbackTopics.map(f => ({ headline: f.label, urgency: f.category }))).map((topic, i, arr) => {
-          const badge = URGENCY_BADGE(topic.urgency || topic.beat || '');
-          const catColor = CATEGORY_COLOR[topic.beat] || T.accent;
-          const headline = topic.headline || topic.label || 'Untitled topic';
-          const summary = topic.summary && topic.summary !== headline ? topic.summary : null;
-          return (
-            <div
-              key={i}
-              style={{
-                padding: '10px 14px',
-                borderBottom: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
-                transition: 'background 0.12s',
-                cursor: 'pointer',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(249,115,22,0.04)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-            >
-              {/* Badges row */}
-              <div style={{ display: 'flex', gap: 5, marginBottom: 6, flexWrap: 'wrap' }}>
-                {badge ? (
-                  <span style={{
-                    fontFamily: T.mono, fontSize: '0.58rem', fontWeight: 500,
-                    textTransform: 'uppercase', letterSpacing: '0.03em',
-                    padding: '2px 7px', borderRadius: 9999,
-                    background: badge.bg, color: badge.color, border: `1px solid ${badge.border}`,
-                  }}>{badge.label}</span>
-                ) : (
-                  <span style={{
-                    fontFamily: T.mono, fontSize: '0.58rem', fontWeight: 500,
-                    textTransform: 'uppercase', letterSpacing: '0.03em',
-                    padding: '2px 7px', borderRadius: 9999,
-                    background: `${catColor}18`, color: catColor, border: `1px solid ${catColor}28`,
-                  }}>{topic.beat || 'Topic'}</span>
-                )}
-              </div>
-              {/* Headline */}
-              <div style={{
-                fontFamily: T.sans, fontSize: '0.80rem', fontWeight: 600,
-                color: 'rgba(240,230,216,0.88)', lineHeight: 1.35, marginBottom: summary ? 5 : 8,
-              }}>
-                {headline}
-              </div>
-              {/* Summary */}
-              {summary && (
-                <div style={{
-                  fontFamily: T.sans, fontSize: '0.70rem', fontWeight: 300,
-                  color: 'rgba(200,190,175,0.50)', lineHeight: 1.55, marginBottom: 8,
-                  display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-                }}>
-                  {summary}
-                </div>
-              )}
-              {/* Footer */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontFamily: T.mono, fontSize: '0.60rem', color: 'rgba(200,190,175,0.30)' }}>
-                  {(topic.sources || []).slice(0, 2).join(' · ')}
-                </span>
-                <button
-                  onClick={e => { e.stopPropagation(); onOpen?.(); }}
-                  style={{
-                    background: 'rgba(249,115,22,0.12)', border: '1px solid rgba(249,115,22,0.28)',
-                    borderRadius: 6, padding: '3px 9px',
-                    fontFamily: T.sans, fontSize: '0.68rem', fontWeight: 600,
-                    color: '#F97316', cursor: 'pointer',
-                  }}
-                >
-                  Explore ›
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Footer CTA */}
-      <div style={{
-        padding: '10px 14px',
-        borderTop: `1px solid ${border}`,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        background: shimmerBg,
-      }}>
-        <span style={{ fontFamily: T.mono, fontSize: '0.57rem', color: T.fgDim }}>
-          Personalized to your tracked topics
-        </span>
-        <span style={{
-          fontFamily: T.sans, fontSize: '0.72rem', fontWeight: 600,
-          color: T.accent,
-          display: 'flex', alignItems: 'center', gap: 4,
-          opacity: hovered ? 1 : 0.75,
-          transition: 'opacity 0.15s',
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, padding: '9px 8px 0' }}>
+      {[
+        [TIER_COLOR[1], 'independent'],
+        [TIER_COLOR[2], 'mixed / state-funded'],
+        [TIER_COLOR[3], 'state-affiliated'],
+      ].map(([color, label]) => (
+        <span key={label} style={{
+          display: 'inline-flex', alignItems: 'center', gap: 4,
+          fontFamily: T.mono, fontSize: '0.53rem', color: T.fgSec,
         }}>
-          Open full brief →
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: color }} />
+          {label}
         </span>
-      </div>
+      ))}
     </div>
   );
 }
 
-function formatAgoFromISO(iso) {
-  const ts = Date.parse(iso || '');
-  if (!ts) return 'just now';
-  return ago(ts);
-}
-
-function HomeNotesCard({ notes = [], onOpen, onNewNote }) {
-  const [hovered, setHovered] = useState(false);
-  const sorted = [...notes].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
-  const recent = sorted.slice(0, 2);
-  const lastUpdated = sorted[0]?.updatedAt ? formatAgoFromISO(sorted[0].updatedAt) : 'just now';
+function FeaturedCard({ article, profile, onResearch }) {
+  const dot = trendingDot(profile);
+  const outlet = article.source?.name || domainOf(article.url) || 'Source';
+  const tier = profile?.credibility_tier;
+  const age = article.publishedAt ? ago(Date.parse(article.publishedAt)) : '';
+  const stripe = 'repeating-linear-gradient(45deg, rgba(175,150,105,0.10), rgba(175,150,105,0.10) 8px, rgba(175,150,105,0.18) 8px, rgba(175,150,105,0.18) 16px)';
 
   return (
     <GlassCard
-      onClick={onOpen}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        borderRadius: 14,
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        minHeight: 0,
-        cursor: 'pointer',
-        border: `1px solid ${hovered ? 'rgba(249,115,22,0.45)' : 'var(--glass-border)'}`,
-        boxShadow: hovered
-          ? '0 8px 32px rgba(249,115,22,0.14), 0 2px 8px rgba(0,0,0,0.08)'
-          : '0 2px 8px rgba(0,0,0,0.05)',
-        transition: 'box-shadow 0.22s ease, border-color 0.22s ease, transform 0.22s ease',
-        transform: hovered ? 'translateY(-2px)' : 'translateY(0)',
-      }}
+      onClick={onResearch}
+      style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', cursor: 'pointer' }}
     >
-      <div style={{ padding: '10px 14px 8px', borderBottom: `1px solid var(--border)`, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{
-          width: 28, height: 28, borderRadius: 7, flexShrink: 0,
-          background: 'rgba(249,115,22,0.12)', border: '1px solid rgba(249,115,22,0.20)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
-          </svg>
-        </div>
-        <div style={{ fontFamily: T.sans, fontSize: '0.92rem', fontWeight: 600, color: T.fg, flex: 1 }}>
-          Notes
-        </div>
-        <button
-          onClick={(e) => { e.stopPropagation(); onOpen?.(); }}
-          style={{
-            border: 'none', background: 'none', color: T.accent, cursor: 'pointer',
-            fontFamily: T.sans, fontSize: '0.72rem', fontWeight: 500, padding: 0,
-          }}
-        >
-          View all →
-        </button>
+      {/* Lead image — og:image with striped placeholder */}
+      <div style={{ height: 150, background: stripe, position: 'relative', overflow: 'hidden' }}>
+        {article.image && (
+          <img
+            src={article.image}
+            alt=""
+            onError={e => { e.target.style.display = 'none'; }}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          />
+        )}
       </div>
 
-      {recent.length === 0 ? (
-        <div style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minHeight: 0, overflowY: 'auto' }}>
-          <div style={{ fontFamily: T.serif, fontSize: '0.94rem', color: T.fg, lineHeight: 1.4 }}>
-            Start a note. We&apos;ll keep it close to your research.
-          </div>
-          <div style={{ fontFamily: T.sans, fontSize: '0.74rem', color: T.fgDim, lineHeight: 1.55 }}>
-            Draft outlines, timelines, and leads — Quarry keeps them tied to your topics.
-          </div>
-          <button
-            onClick={(e) => { e.stopPropagation(); onNewNote?.(); }}
-            style={{
-              marginTop: 4, alignSelf: 'flex-start', border: 'none', borderRadius: 8,
-              background: T.accent, color: '#fff', fontFamily: T.sans, fontSize: '0.70rem',
-              fontWeight: 600, padding: '7px 12px', cursor: 'pointer',
-            }}
-          >
-            New note
-          </button>
+      <div style={{ padding: '14px 18px 16px', display: 'flex', flexDirection: 'column', gap: 7 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: dot, flexShrink: 0 }} />
+          <span style={{
+            fontFamily: T.mono, fontSize: '0.59rem', fontWeight: 600, color: T.accent,
+            letterSpacing: '0.12em', textTransform: 'uppercase',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
+            {outlet}{tier ? ` · Tier ${tier}` : ''}
+          </span>
+          {age && (
+            <span style={{ fontFamily: T.mono, fontSize: '0.59rem', color: T.fgDim, marginLeft: 'auto', flexShrink: 0 }}>
+              {age}
+            </span>
+          )}
         </div>
-      ) : (
-        <div style={{ padding: '10px 14px 12px', display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minHeight: 0, overflowY: 'auto' }}>
-          <div style={{ fontFamily: T.mono, fontSize: '0.59rem', color: T.fgDim, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            {notes.length} notes · last updated {lastUpdated}
-          </div>
 
-          {recent.map((note) => (
-            <div key={note.id} style={{ borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', padding: '9px 11px' }}>
-              <div style={{ fontFamily: T.sans, fontSize: '0.76rem', color: T.fg, fontWeight: 600, marginBottom: 4 }}>
-                {note.title || 'Untitled note'}
-              </div>
-              {note.body && (() => {
-                // Strip YAML frontmatter, markdown syntax, blank lines → clean preview
-                const clean = note.body
-                  .replace(/^---[\s\S]*?---\n?/, '')        // YAML frontmatter
-                  .split('\n')
-                  .filter(l => !/^\s*[\w\s]{1,20}:\s+\S/.test(l)) // skip "Key: value" metadata lines
-                  .join('\n')
-                  .replace(/^#{1,6}\s+/gm, '')              // headings
-                  .replace(/\*\*|__|~~|`{1,3}/g, '')        // bold/italic/code
-                  .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')  // links → label
-                  .replace(/^[-*>]\s+/gm, '')               // list/quote markers
-                  .replace(/\n{2,}/g, ' ')
-                  .trim();
-                if (!clean) return null;
-                return (
-                  <div style={{
-                    fontFamily: T.sans, fontSize: '0.70rem', color: T.fgSec,
-                    lineHeight: 1.5, marginBottom: 5,
-                    display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-                  }}>
-                    {clean}
-                  </div>
-                );
-              })()}
-              <div style={{ fontFamily: T.mono, fontSize: '0.57rem', color: T.fgDim }}>
-                {formatAgoFromISO(note.updatedAt)}
-              </div>
-            </div>
-          ))}
-
-          <button
-            onClick={(e) => { e.stopPropagation(); onNewNote?.(); }}
-            style={{
-              alignSelf: 'flex-start', border: 'none', borderRadius: 8,
-              background: T.accent, color: '#fff',
-              fontFamily: T.sans, fontSize: '0.70rem', fontWeight: 600,
-              padding: '6px 12px', cursor: 'pointer',
-            }}
-          >
-            + New note
-          </button>
+        <div style={{
+          fontFamily: T.serif, fontSize: '1.19rem', fontWeight: 600,
+          color: T.fg, lineHeight: 1.3, letterSpacing: '-0.01em',
+        }}>
+          {article.title}
         </div>
-      )}
+
+        {article.description && (
+          <div style={{
+            fontFamily: T.sans, fontSize: '0.78rem', fontWeight: 300,
+            color: T.fgSec, lineHeight: 1.6,
+            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+          }}>
+            {article.description}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+          <span style={{ fontFamily: T.sans, fontSize: '0.72rem', fontWeight: 600, color: T.accent }}>
+            Research this →
+          </span>
+        </div>
+      </div>
     </GlassCard>
   );
 }
 
-function IntelligenceGrid({ onOpenDailyTopics, onOpenNotes, onCreateNote, notes, profile, userId, onSearch, userName }) {
-  const [beats, setBeats] = useState([]);
-  const [showGlobeModal, setShowGlobeModal] = useState(false);
-  const globeTopicHint = profile?.focus_area || profile?.beat || profile?.topics_of_focus?.[0] || beats[0]?.name || '';
-  const globePins = useGlobePins(globeTopicHint);
+function LoggedInHome({ user }) {
+  const navigate = useNavigate();
+  const [dark] = useDarkMode();
+  const [query, setQuery] = useState('');
+  const [isDeep, setIsDeep] = useState(false);
+  const { articles, trending, spinning, refetch } = useTrendingNews();
+  const [profiles, setProfiles] = useState({});
 
-  useEffect(() => { setBeats(getBeats()); }, []);
+  // Hydrate source profiles for provenance dots as articles arrive
+  useEffect(() => {
+    let cancelled = false;
+    (articles || []).forEach(a => {
+      const link = a.url || a.source?.url;
+      const domain = domainOf(link || '');
+      if (!domain) return;
+      getSourceProfile(link).then(p => {
+        if (cancelled || !p) return;
+        setProfiles(prev => (prev[domain] ? prev : { ...prev, [domain]: p }));
+      });
+    });
+    return () => { cancelled = true; };
+  }, [articles]);
 
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-  const firstName = userName ? userName.split(/[\s@]/)[0] : '';
+  const runSearch = useCallback((text, deep = isDeep) => {
+    const t = (text || '').trim();
+    if (!t) return;
+    incrementBeatActivity(t);
+    let profile = ANALYSIS_PROFILES[1];
+    try {
+      const id = localStorage.getItem('quarry_analysis_profile') || 'careful_analysis';
+      profile = ANALYSIS_PROFILES.find(p => p.id === id) || ANALYSIS_PROFILES[1];
+    } catch {}
+    const params = new URLSearchParams({ q: t, model: profile.model, ap: profile.id });
+    if (deep) params.set('d', 'true');
+    navigate(`/explore?${params.toString()}`);
+  }, [isDeep, navigate]);
+
+  const featured = articles[0] || null;
+  const rows = articles.slice(0, 6);
+  const chips = (trending ? articles : FALLBACK_SUGGESTIONS).slice(trending ? 1 : 0, trending ? 5 : 4);
+  const monoLabel = {
+    fontFamily: T.sans, fontSize: '0.56rem', fontWeight: 500,
+    color: T.fgDim, letterSpacing: '0.10em', textTransform: 'uppercase',
+  };
 
   return (
     <div style={{
-      width: '100%',
-      display: 'flex',
-      alignItems: 'flex-start',
-      justifyContent: 'center',
-      minHeight: '100vh',
-      padding: '100px 24px 48px',
+      maxWidth: 1120, margin: '0 auto', padding: '96px 24px 64px',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 22,
       boxSizing: 'border-box',
     }}>
-      <div style={{
-        width: '100%',
-        maxWidth: 1220,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 16,
-        margin: '0 auto',
-      }}>
-        {/* Greeting */}
-        <div style={{ textAlign: 'center', marginBottom: 4 }}>
-          <h1 style={{
-            fontFamily: T.serif,
-            fontSize: 'clamp(1.5rem, 3vw, 1.9rem)',
-            fontWeight: 600,
-            color: T.fg,
-            letterSpacing: '-0.01em',
-          }}>
-            {greeting}{firstName ? `, ${firstName}` : ''}.
-          </h1>
+
+      {/* ── Masthead ── */}
+      <div style={{ width: '100%', maxWidth: 660, textAlign: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 10 }}>
+          <div style={{ flex: 1, height: 1, background: 'var(--fg-primary)', opacity: 0.12 }} />
+          <span style={monoLabel}>AI Research Engine</span>
+          <div style={{ flex: 1, height: 1, background: 'var(--fg-primary)', opacity: 0.12 }} />
         </div>
-
-        {/* 3-column grid */}
         <div style={{
-          display: 'grid',
-          gridTemplateColumns: '260px 1fr 290px',
-          gap: 16,
-          alignItems: 'start',
-          width: '100%',
+          fontFamily: T.serif, fontSize: '2.125rem', fontWeight: 600,
+          color: T.fg, letterSpacing: '-0.02em', lineHeight: 1, marginBottom: 9,
         }}>
-          {/* Left: Notes */}
-          <HomeNotesCard notes={notes} onOpen={onOpenNotes} onNewNote={onCreateNote} />
-
-          {/* Centre: Prompt bar + Globe */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
-            <HomePromptBar onSearch={onSearch} />
-            <InlineGlobeMap pins={globePins} onOpenMap={() => setShowGlobeModal(true)} />
-          </div>
-
-          {/* Right: Today's Topics */}
-          <DailyTopicsCard onOpen={onOpenDailyTopics} profile={profile} userId={userId} />
+          Quarry
+        </div>
+        <div style={{ height: 1, background: 'var(--fg-primary)', opacity: 0.12, marginBottom: 9 }} />
+        <div style={{ fontFamily: T.sans, fontSize: '0.82rem', fontStyle: 'italic', color: T.fgSec, letterSpacing: '0.02em' }}>
+          Search the web. Synthesise sources. Cite with confidence.
         </div>
       </div>
-      <GlobeMapModal open={showGlobeModal} onClose={() => setShowGlobeModal(false)} pins={globePins} />
-    </div>
-  );
-}
 
-/* ── Inline globe map (cobe) ────────────────────────────────────────────── */
-function InlineGlobeMap({ pins = WORLD_PINS, onOpenMap, showSignalsList = false, modalLayout = false }) {
-  const [dark] = useDarkMode();
-  const [activePinIndex, setActivePinIndex] = useState(0);
-  const canvasRef = useRef(null);
-  const phiRef = useRef(0);
-  const pointerRef = useRef(null);
-  const phiOffsetRef = useRef(0);
-  const dragRef = useRef(0);
-  const isPausedRef = useRef(false);
-
-  useEffect(() => {
-    const onMove = (e) => {
-      if (pointerRef.current !== null)
-        dragRef.current = (e.clientX - pointerRef.current) / 300;
-    };
-    const onUp = () => {
-      if (pointerRef.current !== null) {
-        phiOffsetRef.current += dragRef.current;
-        dragRef.current = 0;
-      }
-      pointerRef.current = null;
-      isPausedRef.current = false;
-      if (canvasRef.current) canvasRef.current.style.cursor = 'grab';
-    };
-    window.addEventListener('pointermove', onMove, { passive: true });
-    window.addEventListener('pointerup', onUp, { passive: true });
-    return () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!pins.length || showSignalsList) return;
-    const t = setInterval(() => setActivePinIndex((i) => (i + 1) % pins.length), 2800);
-    return () => clearInterval(t);
-  }, [pins, showSignalsList]);
-
-  useEffect(() => {
-    if (!canvasRef.current) return;
-    const canvas = canvasRef.current;
-    let globe, animId;
-    let ro = null;
-    let cancelled = false;
-
-    const init = () => {
-      if (cancelled) return;
-      const w = canvas.offsetWidth;
-      if (!w) return;
-      globe = createGlobe(canvas, {
-        devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2),
-        width: w, height: w,
-        phi: 0, theta: 0.25,
-        dark: dark ? 1 : 0,
-        diffuse: dark ? 1.05 : 1.35,
-        mapSamples: 16000,
-        mapBrightness: dark ? 4 : 6,
-        baseColor: dark ? [0.10, 0.12, 0.15] : [0.90, 0.88, 0.84],
-        markerColor: [0.98, 0.45, 0.09],
-        glowColor: dark ? [0.05, 0.06, 0.09] : [0.88, 0.84, 0.78],
-        markers: pins.filter(p => p.lat != null && p.lng != null)
-          .map(p => ({ location: [p.lat, p.lng], size: 0.042 })),
-      });
-      const animate = () => {
-        if (!isPausedRef.current) phiRef.current += 0.003;
-        globe.update({ phi: phiRef.current + phiOffsetRef.current + dragRef.current, theta: 0.25 });
-        animId = requestAnimationFrame(animate);
-      };
-      animate();
-      setTimeout(() => { canvas.style.opacity = '1'; });
-    };
-
-    if (canvas.offsetWidth > 0) {
-      init();
-    } else {
-      ro = new ResizeObserver(entries => {
-        if (entries[0]?.contentRect.width > 0) { ro.disconnect(); init(); }
-      });
-      ro.observe(canvas);
-    }
-
-    return () => {
-      cancelled = true;
-      if (ro) ro.disconnect();
-      if (animId) cancelAnimationFrame(animId);
-      if (globe) globe.destroy();
-    };
-  }, [dark, pins]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const borderC = dark ? 'rgba(255,255,255,0.08)' : 'rgba(120,100,70,0.16)';
-  const fgDim   = dark ? 'rgba(200,195,185,0.55)' : 'rgba(90,70,40,0.55)';
-  return (
-    <GlassCard
-      onClick={onOpenMap}
-      style={{
-        borderRadius: 14,
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: showSignalsList ? 'row' : 'column',
-        minHeight: showSignalsList ? 520 : 0,
-        cursor: onOpenMap ? 'pointer' : 'default',
-      }}
-    >
-
-      {/* Globe */}
-      <div style={{
-        flex: showSignalsList ? 0.95 : 'none',
-        height: showSignalsList ? 'auto' : (modalLayout ? 460 : 300),
-        minHeight: modalLayout ? 420 : undefined,
-        position: 'relative',
-        overflow: 'hidden',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: showSignalsList ? '14px 12px' : (modalLayout ? '18px 14px' : '12px 8px'),
-      }}>
-        <div style={{
-          width: '100%',
-          maxWidth: showSignalsList ? 560 : (modalLayout ? 560 : 280),
-          aspectRatio: '1 / 1',
-          position: 'relative',
-        }}>
-          <canvas
-            ref={canvasRef}
-            onPointerDown={e => {
-              pointerRef.current = e.clientX;
-              isPausedRef.current = true;
-              e.currentTarget.style.cursor = 'grabbing';
-            }}
-            style={{
-              width: '100%',
-              height: '100%',
-              cursor: 'grab',
-              opacity: 0,
-              transition: 'opacity 1.2s ease',
-              filter: dark ? 'saturate(0.86) contrast(0.92)' : 'saturate(0.88) contrast(0.9)',
-              touchAction: 'none',
-            }}
-          />
-        </div>
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            pointerEvents: 'none',
-            background: dark
-              ? 'linear-gradient(to right, rgba(18,14,10,0.10) 0%, rgba(18,14,10,0.02) 40%, rgba(18,14,10,0.08) 100%)'
-              : 'linear-gradient(to right, rgba(237,232,223,0.20) 0%, rgba(237,232,223,0.04) 38%, rgba(237,232,223,0.16) 100%)',
-          }}
+      {/* ── Search surface + suggestion chips ── */}
+      <div style={{ width: '100%', maxWidth: 660, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <HomeSearchBar
+          query={query} setQuery={setQuery}
+          onSubmit={() => runSearch(query)}
+          deepMode={isDeep} onToggleDeep={() => setIsDeep(d => !d)}
         />
-      </div>
-
-      {/* Horizontal pin bar (inline mode only) */}
-      {!showSignalsList && (
-        <div style={{
-          background: dark ? 'rgba(10,8,5,0.95)' : 'rgba(250,248,244,0.90)',
-          borderTop: `1px solid ${dark ? 'rgba(255,255,255,0.06)' : 'rgba(120,100,70,0.12)'}`,
-          padding: '6px 10px',
-          display: 'flex',
-          alignItems: 'center',
-          overflowX: 'auto',
-          scrollbarWidth: 'none',
-          flexShrink: 0,
-        }}>
-          {pins.map((pin, i) => (
-            <React.Fragment key={i}>
-              {i > 0 && <div style={{ width: 1, height: 24, background: dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.08)', flexShrink: 0, margin: '0 2px' }} />}
-              <div
-                onMouseEnter={e => { e.currentTarget.style.background = dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0, padding: '4px 9px', borderRadius: 7, background: 'transparent', transition: 'background 0.13s' }}
-              >
-                <div style={{ width: 7, height: 7, borderRadius: '50%', background: pin.color, boxShadow: `0 0 5px ${pin.color}80`, flexShrink: 0 }} />
-                <div>
-                  <div style={{ fontFamily: T.sans, fontSize: '0.78rem', fontWeight: 600, color: dark ? 'rgba(240,230,216,0.85)' : T.fg, lineHeight: 1.2, whiteSpace: 'nowrap' }}>
-                    {pin.label}
-                  </div>
-                  <div style={{ fontFamily: T.mono, fontSize: '0.56rem', color: fgDim, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    {pin.type}
-                  </div>
-                </div>
-              </div>
-            </React.Fragment>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 7, marginTop: 12 }}>
+          {chips.map((c, i) => (
+            <button
+              key={i}
+              onClick={() => runSearch(c.title)}
+              style={{
+                fontFamily: T.sans, fontSize: '0.72rem', color: T.fgSec,
+                padding: '4px 11px', borderRadius: 999,
+                background: 'var(--gbtn-bg)', border: '1px solid var(--border)',
+                cursor: 'pointer', transition: 'all 0.14s',
+                maxWidth: 280, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.color = T.accent; e.currentTarget.style.borderColor = 'rgba(249,115,22,0.3)'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = ''; e.currentTarget.style.borderColor = ''; }}
+            >
+              {c.title}
+            </button>
           ))}
         </div>
-      )}
-
-      {/* Signal list (modal-only) */}
-      {showSignalsList && (
-      <div style={{ width: 286, flexShrink: 0, borderLeft: `1px solid ${borderC}`, overflowY: 'auto' }}>
-        <div style={{
-          padding: '8px 12px',
-          borderBottom: `1px solid ${dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          background: dark ? 'rgba(255,255,255,0.015)' : 'rgba(0,0,0,0.01)',
-        }}>
-          <span style={{ fontFamily: T.mono, fontSize: '0.56rem', color: T.fgDim, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-            On-globe signals
-          </span>
-          <span style={{ fontFamily: T.mono, fontSize: '0.53rem', color: T.fgDim }}>
-            {pins.length}
-          </span>
-        </div>
-        {pins.map((pin, i) => (
-          <div
-            key={i}
-            onMouseEnter={() => setActivePinIndex(i)}
-            onMouseLeave={() => setActivePinIndex(-1)}
-            style={{
-              padding: '10px 14px',
-              borderBottom: `1px solid ${dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.045)'}`,
-              background: activePinIndex === i
-                ? (dark ? 'rgba(249,115,22,0.08)' : 'rgba(249,115,22,0.06)')
-                : 'transparent',
-              transition: 'background 0.12s ease',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 2 }}>
-              <span style={{
-                width: 16, height: 16, borderRadius: 999,
-                background: activePinIndex === i ? 'rgba(249,115,22,0.22)' : 'rgba(249,115,22,0.14)',
-                border: '1px solid rgba(249,115,22,0.35)',
-                flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                fontFamily: T.mono, fontSize: '0.52rem', color: dark ? '#f3ded2' : '#9a3412',
-              }}>
-                {i + 1}
-              </span>
-              <span style={{ fontFamily: T.sans, fontSize: '0.80rem', fontWeight: 600, color: dark ? '#ece2d6' : '#1f1408', flex: 1 }}>
-                {pin.label.replace(new RegExp(`\\s*${pin.type}$`, 'i'), '')}
-              </span>
-            </div>
-            <div style={{
-              fontFamily: T.sans, fontSize: '0.68rem', color: fgDim,
-              paddingLeft: 23, lineHeight: 1.42,
-              display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-            }}>
-              {pin.desc}
-            </div>
-          </div>
-        ))}
       </div>
-      )}
 
-    </GlassCard>
-  );
-}
-
-function DetailSection({ title, children }) {
-  return (
-    <div style={{ marginBottom: 14 }}>
+      {/* ── Featured | Trending ── */}
       <div style={{
-        fontFamily: T.mono, fontSize: '0.58rem', color: 'rgba(240,230,216,0.35)',
-        textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 5,
+        width: '100%', maxWidth: 960,
+        display: 'grid', gridTemplateColumns: 'minmax(0,1.15fr) 1px minmax(0,1fr)',
+        gap: 0, alignItems: 'stretch',
       }}>
-        {title}
-      </div>
-      <div style={{ fontFamily: T.sans, fontSize: '0.74rem', color: 'rgba(200,195,185,0.72)', lineHeight: 1.55 }}>
-        {children}
-      </div>
-    </div>
-  );
-}
 
-function GlobeMapModal({ open, onClose, pins }) {
-  const [activePin, setActivePin] = React.useState(null);
-  const [hoveredRow, setHoveredRow] = React.useState(-1);
-
-  React.useEffect(() => {
-    if (!open) { setActivePin(null); setHoveredRow(-1); }
-  }, [open]);
-
-  if (!open) return null;
-
-  const modalW = activePin ? 'min(1240px,98vw)' : 'min(980px,98vw)';
-
-  const typePillColor = (type = '') => {
-    const t = type.toLowerCase();
-    if (t.includes('conflict') || t.includes('crisis') || t.includes('war')) return { bg: 'rgba(220,38,38,0.18)', color: '#ef4444', border: 'rgba(220,38,38,0.30)' };
-    if (t.includes('famine') || t.includes('food') || t.includes('health')) return { bg: 'rgba(217,119,6,0.18)', color: '#f59e0b', border: 'rgba(217,119,6,0.30)' };
-    if (t.includes('politics') || t.includes('election') || t.includes('diplomatic')) return { bg: 'rgba(124,58,237,0.18)', color: '#a78bfa', border: 'rgba(124,58,237,0.30)' };
-    return { bg: 'rgba(249,115,22,0.12)', color: '#f97316', border: 'rgba(249,115,22,0.25)' };
-  };
-
-  return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1200,
-        background: 'rgba(0,0,0,0.68)',
-        backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12,
-      }}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          width: modalW,
-          background: 'rgba(14,10,6,0.97)',
-          border: '1px solid rgba(249,115,22,0.22)',
-          borderRadius: 18,
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          maxHeight: '94vh',
-          transition: 'width 0.28s cubic-bezier(0.4,0,0.2,1)',
-          boxShadow: '0 24px 80px rgba(0,0,0,0.60)',
-        }}
-      >
-        {/* Header */}
-        <div style={{
-          padding: '14px 18px 12px',
-          borderBottom: '1px solid rgba(249,115,22,0.12)',
-          display: 'flex', alignItems: 'center', gap: 8,
-          flexShrink: 0,
-        }}>
-          <span style={{ fontSize: '1.1rem' }}>🌐</span>
-          <span style={{ fontFamily: T.sans, fontSize: '0.94rem', fontWeight: 600, color: 'rgba(240,230,216,0.92)', flex: 1 }}>
-            World Signals
-          </span>
-          <span style={{
-            fontFamily: T.mono, fontSize: '0.60rem', color: 'rgba(240,230,216,0.38)',
-            background: 'rgba(249,115,22,0.10)', border: '1px solid rgba(249,115,22,0.18)',
-            borderRadius: 5, padding: '2px 6px',
-          }}>
-            {pins.length} signals
-          </span>
-          <button
-            onClick={onClose}
-            style={{
-              border: '1px solid rgba(255,255,255,0.10)', borderRadius: 999,
-              background: 'rgba(255,255,255,0.05)', color: 'rgba(240,230,216,0.55)',
-              fontFamily: T.sans, fontSize: '0.70rem', padding: '4px 10px', cursor: 'pointer',
-              transition: 'all 0.14s',
-            }}
-          >
-            Close
-          </button>
+        {/* Featured story */}
+        <div style={{ paddingRight: 20, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            <span style={{ width: 5, height: 5, borderRadius: '50%', background: T.accent }} />
+            <span style={monoLabel}>Featured story</span>
+          </div>
+          {featured ? (
+            <FeaturedCard
+              article={featured}
+              profile={profiles[domainOf(featured.url || '')]}
+              onResearch={() => runSearch(featured.title)}
+            />
+          ) : (
+            <GlassCard style={{ flex: 1, minHeight: 260 }} />
+          )}
         </div>
 
-        {/* Body */}
-        <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        <div style={{ background: dark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)' }} />
 
-          {/* Globe pane */}
-          <div style={{ flex: 1, minWidth: 0, minHeight: 460 }}>
-            <InlineGlobeMap pins={pins} showSignalsList={false} modalLayout />
+        {/* Trending panel */}
+        <div style={{ paddingLeft: 20, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            <span style={{
+              width: 5, height: 5, borderRadius: '50%', background: T.accent,
+              animation: trending ? 'trendingPulse 1.4s ease-in-out infinite' : 'none',
+            }} />
+            <span style={monoLabel}>{trending ? 'Trending' : 'Suggested'}</span>
+            <span onClick={refetch} style={{ cursor: 'pointer', opacity: 0.5, display: 'inline-flex', marginLeft: 2 }}>
+              <RefreshCw size={10} color="var(--fg-dim)" style={{ animation: spinning ? 'spin 1s linear infinite' : 'none' }} />
+            </span>
           </div>
 
-          {/* Signal list */}
-          <div style={{
-            width: 300, flexShrink: 0,
-            borderLeft: '1px solid rgba(255,255,255,0.06)',
-            overflowY: 'auto',
-          }}>
-            {pins.map((pin, i) => {
-              const pill = typePillColor(pin.type);
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {rows.map((art, i) => {
+              const age = art.publishedAt ? ago(Date.parse(art.publishedAt)) : '';
               return (
                 <div
                   key={i}
-                  onMouseEnter={() => setHoveredRow(i)}
-                  onMouseLeave={() => setHoveredRow(-1)}
+                  onClick={() => runSearch(art.title)}
                   style={{
-                    padding: '10px 14px',
-                    borderBottom: '1px solid rgba(255,255,255,0.04)',
-                    background: hoveredRow === i ? 'rgba(249,115,22,0.07)' : 'transparent',
-                    transition: 'background 0.12s',
-                    cursor: 'default',
-                    position: 'relative',
+                    display: 'flex', alignItems: 'flex-start', gap: 8,
+                    padding: '7px 8px', cursor: 'pointer', borderRadius: 8,
+                    borderBottom: i < rows.length - 1 ? (dark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.06)') : 'none',
+                    transition: 'background 0.14s ease',
                   }}
+                  onMouseEnter={e => { e.currentTarget.style.background = dark ? 'rgba(255,255,255,0.05)' : 'rgba(249,115,22,0.05)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                    <span style={{
-                      width: 18, height: 18, borderRadius: 999, flexShrink: 0,
-                      background: 'rgba(249,115,22,0.14)', border: '1px solid rgba(249,115,22,0.30)',
-                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      fontFamily: T.mono, fontSize: '0.52rem', color: '#f3ded2', marginTop: 1,
-                    }}>
-                      {i + 1}
-                    </span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3, flexWrap: 'wrap' }}>
-                        <span style={{ fontFamily: T.sans, fontSize: '0.78rem', fontWeight: 600, color: 'rgba(240,230,216,0.88)' }}>
-                          {pin.label}
-                        </span>
-                        <span style={{
-                          fontFamily: T.mono, fontSize: '0.54rem', textTransform: 'uppercase',
-                          background: pill.bg, border: `1px solid ${pill.border}`, color: pill.color,
-                          borderRadius: 4, padding: '1px 5px',
-                        }}>
-                          {pin.type}
-                        </span>
-                      </div>
+                  <span style={{
+                    width: 7, height: 7, borderRadius: '50%', flexShrink: 0, marginTop: 3,
+                    background: trendingDot(profiles[domainOf(art.url || '')]),
+                  }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {art.source?.name && (
                       <div style={{
-                        fontFamily: T.sans, fontSize: '0.67rem', color: 'rgba(200,195,185,0.50)',
-                        lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box',
-                        WebkitLineClamp: 1, WebkitBoxOrient: 'vertical',
+                        fontFamily: T.sans, fontSize: '0.53rem', fontWeight: 600, color: T.accent,
+                        letterSpacing: '0.12em', textTransform: 'uppercase', lineHeight: 1, marginBottom: 3,
                       }}>
-                        {pin.desc}
+                        {art.source.name}
                       </div>
-                      {hoveredRow === i && (
-                        <button
-                          onClick={() => setActivePin(pin)}
-                          style={{
-                            marginTop: 6, background: 'none', border: 'none', padding: 0,
-                            fontFamily: T.sans, fontSize: '0.70rem', fontWeight: 600,
-                            color: '#F97316', cursor: 'pointer',
-                          }}
-                        >
-                          Explore ›
-                        </button>
-                      )}
+                    )}
+                    <div style={{
+                      fontFamily: T.sans, fontSize: '0.75rem', fontWeight: 500, color: T.fg, lineHeight: 1.35,
+                      display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                    }}>
+                      {art.title}
                     </div>
                   </div>
+                  {age && (
+                    <span style={{ fontFamily: T.mono, fontSize: '0.56rem', color: T.fgDim, flexShrink: 0 }}>
+                      {age}
+                    </span>
+                  )}
                 </div>
               );
             })}
           </div>
 
-          {/* Detail panel */}
-          <div style={{
-            width: activePin ? 360 : 0,
-            overflow: 'hidden',
-            flexShrink: 0,
-            borderLeft: activePin ? '1px solid rgba(249,115,22,0.15)' : 'none',
-            transition: 'width 0.28s cubic-bezier(0.4,0,0.2,1)',
-            display: 'flex', flexDirection: 'column',
-          }}>
-            {activePin && (
-              <div style={{ width: 360, display: 'flex', flexDirection: 'column', height: '100%' }}>
-                {/* Panel header */}
-                <div style={{
-                  padding: '12px 14px 10px',
-                  borderBottom: '1px solid rgba(249,115,22,0.10)',
-                  flexShrink: 0,
-                }}>
-                  <button
-                    onClick={() => setActivePin(null)}
-                    style={{
-                      background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                      fontFamily: T.sans, fontSize: '0.70rem', color: 'rgba(240,230,216,0.45)',
-                      display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8,
-                    }}
-                  >
-                    ← Back
-                  </button>
-                  <div style={{ fontFamily: T.sans, fontSize: '0.88rem', fontWeight: 600, color: 'rgba(240,230,216,0.92)', lineHeight: 1.3 }}>
-                    {activePin.label}
-                  </div>
-                </div>
-
-                {/* Panel body */}
-                <div style={{ flex: 1, overflowY: 'auto', padding: '14px' }}>
-                  <DetailSection title="What happened">
-                    {activePin.desc}
-                  </DetailSection>
-                  <DetailSection title="Background">
-                    {`${activePin.type} activity in the ${activePin.label} region. This signal is being tracked across multiple international news sources.`}
-                  </DetailSection>
-                  <DetailSection title="Key facts">
-                    <div style={{ fontFamily: T.sans, fontSize: '0.72rem', color: 'rgba(200,195,185,0.70)', lineHeight: 1.5 }}>
-                      <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
-                        <span style={{ color: 'rgba(200,195,185,0.40)', minWidth: 70 }}>Region</span>
-                        <span>{activePin.label}</span>
-                      </div>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <span style={{ color: 'rgba(200,195,185,0.40)', minWidth: 70 }}>Category</span>
-                        <span>{activePin.type}</span>
-                      </div>
-                    </div>
-                  </DetailSection>
-                  <DetailSection title="Sources reporting">
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                      {['Reuters', 'AP News', 'BBC', 'Al Jazeera'].map(s => (
-                        <span key={s} style={{
-                          fontFamily: T.mono, fontSize: '0.62rem', color: 'rgba(200,195,185,0.55)',
-                          background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
-                          borderRadius: 5, padding: '2px 7px',
-                        }}>
-                          {s}
-                        </span>
-                      ))}
-                    </div>
-                  </DetailSection>
-                </div>
-
-                {/* Panel footer */}
-                <div style={{
-                  padding: '12px 14px',
-                  borderTop: '1px solid rgba(255,255,255,0.06)',
-                  display: 'flex', gap: 8, flexShrink: 0,
-                }}>
-                  <button style={{
-                    flex: 1, background: '#F97316', border: 'none', borderRadius: 10,
-                    color: '#fff', fontFamily: T.sans, fontSize: '0.74rem', fontWeight: 600,
-                    padding: '9px 0', cursor: 'pointer',
-                  }}>
-                    Start Researching
-                  </button>
-                  <button style={{
-                    flex: 1, background: 'none', border: '1px solid rgba(249,115,22,0.35)',
-                    borderRadius: 10, color: '#F97316', fontFamily: T.sans, fontSize: '0.74rem',
-                    fontWeight: 500, padding: '9px 0', cursor: 'pointer',
-                  }}>
-                    Open in Notes
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
+          <TrendingLegend />
         </div>
       </div>
-    </div>
-  );
-}
 
-/* ── Home prompt bar ─────────────────────────────────────────────────────── */
-function HomePromptBar({ onSearch }) {
-  const navigate = useNavigate();
-  const readCurrentAnalysisProfile = () => {
-    try {
-      const profileId = localStorage.getItem('quarry_analysis_profile') || 'careful_analysis';
-      const profile = ANALYSIS_PROFILES.find((p) => p.id === profileId) || ANALYSIS_PROFILES[1];
-      return { id: profile.id, model: profile.model };
-    } catch {
-      return { id: 'careful_analysis', model: 'openai/gpt-4o' };
-    }
-  };
-
-  const parsePromptIntent = (rawMessage) => {
-    const text = (rawMessage || '').trim();
-    const searchMatch = text.match(/^\[Search:\s*([\s\S]+)\]$/i);
-    if (searchMatch) return { mode: 'search', text: searchMatch[1].trim() };
-    const thinkMatch = text.match(/^\[Think:\s*([\s\S]+)\]$/i);
-    if (thinkMatch) return { mode: 'think', text: thinkMatch[1].trim() };
-    const canvasMatch = text.match(/^\[Canvas:\s*([\s\S]+)\]$/i);
-    if (canvasMatch) return { mode: 'canvas', text: canvasMatch[1].trim() };
-    return { mode: 'search', text };
-  };
-
-  const handleSend = (message, files = []) => {
-    const parsed = parsePromptIntent(message);
-    const cleaned = parsed.text || '';
-    const fallback = files.length > 0 ? `analyze image context: ${files[0]?.name || 'attachment'}` : '';
-    const text = (cleaned || fallback).trim();
-    if (!text) return;
-
-    const profile = readCurrentAnalysisProfile();
-    const nextParams = new URLSearchParams({
-      q: text,
-      model: profile.model,
-      ap: profile.id,
-    });
-
-    if (parsed.mode === 'think') {
-      nextParams.set('d', 'true');
-      navigate(`/explore?${nextParams.toString()}`);
-      return;
-    }
-
-    if (parsed.mode === 'canvas') {
-      sessionStorage.setItem('quarry_write_session', JSON.stringify({
-        query: text,
-        content: `# ${text}\n\n`,
-        mode: 'canvas_prompt',
-      }));
-      navigate('/notes');
-      return;
-    }
-
-    if (onSearch) {
-      onSearch(text, { deep: false, model: profile.model, profileId: profile.id });
-    } else {
-      navigate(`/explore?${nextParams.toString()}`);
-    }
-  };
-
-  return (
-    <div style={{ width: '100%' }}>
-      <BorderGlow
-        className="w-full"
-        edgeSensitivity={27}
-        glowColor="40 80 80"
-        backgroundColor="#120F17"
-        borderRadius={28}
-        glowRadius={40}
-        glowIntensity={1.0}
-        coneSpread={25}
-        animated={false}
-        colors={['#c084fc', '#f472b6', '#38bdf8']}
-      >
-        <div style={{ padding: '8px 10px', width: '100%', boxSizing: 'border-box' }}>
-          <PromptInputBox
-            onSend={handleSend}
-            placeholder="Ask to drill into a signal or start a new investigation…"
-            className="!rounded-[26px] !border-0 !bg-transparent !shadow-none"
-          />
+      {/* ── Watchlist ── */}
+      <div style={{ width: '100%', maxWidth: 960 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+          <TrendingUp size={11} color={T.accent} strokeWidth={2.4} />
+          <span style={monoLabel}>Watchlist</span>
         </div>
-      </BorderGlow>
+        <WatchlistGrid dark={dark} columns={{ xs: 'repeat(3, 1fr)', lg: 'repeat(6, 1fr)' }} />
+      </div>
+
+      <style>{`
+        @keyframes trendingPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.75)} }
+        @keyframes spin { from{transform:rotate(0)} to{transform:rotate(360deg)} }
+      `}</style>
     </div>
-  );
-}
-
-/* ── Logged-in homepage ──────────────────────────────────────────────────── */
-function LoggedInHome({ user }) {
-  const navigate = useNavigate();
-  const [showDailyTopics, setShowDailyTopics] = useState(false);
-  const [showNotesModal, setShowNotesModal] = useState(false);
-  const { notes, createNote, fetchSuggestions } = useNotes();
-
-  const handleCreateNote = useCallback(async () => {
-    return createNote({
-      title: 'Untitled note',
-      body: '',
-      topic: user?.profile?.focus_area || user?.profile?.beat || user?.profile?.topics_of_focus?.[0] || 'General',
-    });
-  }, [createNote, user]);
-
-  const handleSearch = useCallback((text, opts = {}) => {
-    const params = new URLSearchParams();
-    params.set('q', text);
-    if (opts.model) params.set('model', opts.model);
-    if (opts.profileId) params.set('ap', opts.profileId);
-    if (opts.deep) params.set('d', 'true');
-    navigate(`/explore?${params.toString()}`);
-  }, [navigate]);
-
-  return (
-    <>
-      {showDailyTopics && (
-        <DailyTopicsModal onClose={() => setShowDailyTopics(false)} />
-      )}
-      <NotesModal
-        open={showNotesModal}
-        onClose={() => setShowNotesModal(false)}
-        notes={notes}
-        workspaceLabel={user?.profile?.focus_area || user?.profile?.beat || user?.profile?.topics_of_focus?.[0] || ''}
-        onCreateNote={handleCreateNote}
-        onAskSuggestions={fetchSuggestions}
-      />
-
-      {/* Intelligence grid */}
-      <IntelligenceGrid
-        onOpenDailyTopics={() => setShowDailyTopics(true)}
-        onOpenNotes={() => setShowNotesModal(true)}
-        onCreateNote={handleCreateNote}
-        notes={notes}
-        profile={user?.profile || {}}
-        userId={user?.id || user?.email || 'anon'}
-        onSearch={handleSearch}
-        userName={user?.name || user?.email || ''}
-      />
-    </>
   );
 }
 

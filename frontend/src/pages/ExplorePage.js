@@ -25,6 +25,9 @@ import OnboardingModal from '../components/OnboardingModal';
 import { useAuth } from '../contexts/AuthContext';
 import DeepPanel from '../components/DeepPanel';
 import { HoverPeek } from '../components/ui/link-preview';
+import WatchlistGrid from '../components/WatchlistGrid';
+import HomeSearchBar from '../components/HomeSearchBar';
+import { useTrendingNews } from '../hooks/useTrendingNews';
 
 // ── Saved searches ────────────────────────────────────────────────────────────
 function getSaved() {
@@ -1007,40 +1010,6 @@ function ClaimLandscapeModal({ graphData, claims, onInsertClaim, onClose }) {
 }
 
 
-// ── Trending chips ────────────────────────────────────────────────────────────
-
-const FALLBACK_SUGGESTIONS = [
-  { title: 'Latest breakthroughs in quantum computing' },
-  { title: 'How does RAG work in AI systems?' },
-  { title: 'Best open source LLMs in 2026' },
-  { title: 'Explain transformer attention mechanisms' },
-  { title: 'FastAPI vs Flask for production APIs' },
-  { title: 'Top AI coding assistants compared' },
-];
-
-function useTrendingChips() {
-  const [articles, setArticles] = useState(FALLBACK_SUGGESTIONS);
-  const [trending, setTrending] = useState(false);
-  const [spinning, setSpinning] = useState(false);
-
-  const fetchTrending = useCallback(async (force = false) => {
-    setSpinning(true);
-    try {
-      const url = force
-        ? `${API}/explore/trending-news?max=6&force=true`
-        : `${API}/explore/trending-news?max=6`;
-      const res  = await fetch(url);
-      if (!res.ok) throw new Error('trending error');
-      const data = await res.json();
-      const arts = (data.articles || []).filter(a => a.title).slice(0, 6);
-      if (arts.length >= 3) { setArticles(arts); setTrending(true); }
-    } catch { /* silent fallback */ }
-    finally { setSpinning(false); }
-  }, []);
-
-  useEffect(() => { fetchTrending(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  return { articles, trending, spinning, refetch: () => fetchTrending(true) };
-}
 
 // ── Bento row helpers ─────────────────────────────────────────────────────────
 
@@ -2353,221 +2322,7 @@ function TopBar({ query, setQuery, onSubmit, deepMode, onToggleDeep, onReset, na
   );
 }
 
-// ── Watchlist grid ────────────────────────────────────────────────────────────
 
-function WatchlistGrid({ dark }) {
-  const [stocks, setStocks] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch(`${API}/explore/stocks?symbols=` + encodeURIComponent('^DJI,^GSPC,^IXIC,AAPL,NVDA,MSFT'))
-      .then(r => r.json())
-      .then(d => { setStocks(d.stocks || []); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
-
-  if (loading) {
-    return (
-      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.75, height: '100%', gridAutoRows: '1fr' }}>
-        {[...Array(6)].map((_, i) => (
-          <Skeleton key={i} variant="rounded" sx={{ borderRadius: '10px', bgcolor: dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }} />
-        ))}
-      </Box>
-    );
-  }
-
-  return (
-    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.75, height: '100%', gridAutoRows: '1fr' }}>
-      {stocks.slice(0, 6).map((s, i) => {
-        const up = s.changePct >= 0;
-        const clr = up ? '#22c55e' : '#ef4444';
-        const isIndex = s.rawTicker?.startsWith('^');
-        const pts = s.sparkline || [];
-        let sparkPath = '';
-        if (pts.length > 1) {
-          const min = Math.min(...pts), max = Math.max(...pts);
-          const range = max - min || 1;
-          sparkPath = pts.map((v, j) => {
-            const x = ((j / (pts.length - 1)) * 54).toFixed(1);
-            const y = (18 - ((v - min) / range) * 18).toFixed(1);
-            return `${j === 0 ? 'M' : 'L'}${x},${y}`;
-          }).join(' ');
-        }
-        return (
-          <Box
-            key={i}
-            sx={{
-              p: '9px 11px',
-              borderRadius: '10px',
-              border: dark ? '1px solid rgba(255,255,255,0.09)' : '1px solid rgba(175,150,105,0.26)',
-              borderTop: dark ? '1px solid rgba(255,255,255,0.14)' : '1px solid rgba(255,255,248,0.88)',
-              background: dark ? 'rgba(255,255,255,0.04)' : 'rgba(255,252,244,0.75)',
-              backdropFilter: 'blur(16px)',
-              WebkitBackdropFilter: 'blur(16px)',
-              boxShadow: dark
-                ? '0 3px 12px rgba(0,0,0,0.30), 0 1px 0 rgba(255,255,255,0.04) inset'
-                : '0 3px 12px rgba(140,110,60,0.07), 0 1px 0 rgba(255,254,228,0.80) inset',
-              cursor: 'pointer',
-              transition: 'all 0.14s ease',
-              '&:hover': {
-                transform: 'translateY(-1px)',
-                boxShadow: dark
-                  ? '0 6px 18px rgba(0,0,0,0.40)'
-                  : '0 6px 18px rgba(140,110,60,0.12)',
-              },
-            }}
-          >
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.75 }}>
-              <Box>
-                <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.60rem', fontWeight: 700, color: 'var(--fg-primary)', letterSpacing: '0.06em', lineHeight: 1 }}>
-                  {s.symbol}
-                </Typography>
-                <Typography sx={{ fontFamily: 'var(--font-family)', fontSize: '0.54rem', fontWeight: 300, color: 'var(--fg-dim)', mt: 0.25, lineHeight: 1 }}>
-                  {(s.name?.length > 12 ? s.name.slice(0, 12) + '…' : s.name) || s.symbol}
-                </Typography>
-              </Box>
-              {sparkPath && (
-                <svg width={54} height={18} style={{ display: 'block', opacity: 0.75 }}>
-                  <path d={sparkPath} fill="none" stroke={clr} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              )}
-            </Box>
-            <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.5 }}>
-              <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', fontWeight: 600, color: 'var(--fg-primary)', lineHeight: 1 }}>
-                {isIndex ? '' : '$'}{s.price?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </Typography>
-              <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.60rem', fontWeight: 500, color: clr, lineHeight: 1 }}>
-                {up ? '+' : ''}{s.changePct?.toFixed(2)}%
-              </Typography>
-            </Box>
-          </Box>
-        );
-      })}
-    </Box>
-  );
-}
-
-// ── Home search bar ───────────────────────────────────────────────────────────
-
-function HomeSearchBar({ query, setQuery, onSubmit, deepMode, onToggleDeep }) {
-  const [suggestions, setSuggestions] = useState([]);
-  const [showSugg, setShowSugg] = useState(false);
-  const debounceRef = useRef(null);
-  const wrapperRef = useRef(null);
-
-  const handleKey = e => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); setShowSugg(false); onSubmit(); }
-    if (e.key === 'Escape') setShowSugg(false);
-  };
-
-  const fetchSuggestions = (val) => {
-    clearTimeout(debounceRef.current);
-    if (!val.trim() || val.length < 2) { setSuggestions([]); setShowSugg(false); return; }
-    debounceRef.current = setTimeout(async () => {
-      try {
-        const r = await fetch(`${API}/explore/suggest?q=${encodeURIComponent(val)}`);
-        const data = await r.json();
-        const suggs = (data.suggestions || []).filter(s => s.toLowerCase() !== val.toLowerCase());
-        setSuggestions(suggs.slice(0, 6));
-        setShowSugg(suggs.length > 0);
-      } catch { setSuggestions([]); setShowSugg(false); }
-    }, 280);
-  };
-
-  useEffect(() => {
-    if (!showSugg) return;
-    const handler = e => { if (wrapperRef.current && !wrapperRef.current.contains(e.target)) setShowSugg(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [showSugg]);
-
-  return (
-    <Box ref={wrapperRef} sx={{ width: '100%', maxWidth: 660, position: 'relative' }}>
-      <Box
-        component="form"
-        onSubmit={e => { e.preventDefault(); setShowSugg(false); onSubmit(); }}
-        sx={{
-          width: '100%',
-          display: 'flex', alignItems: 'center', gap: 1.25,
-          borderRadius: '12px', px: 2.25, py: 1.35,
-          background: 'var(--gbtn-bg)',
-          backdropFilter: 'blur(28px) saturate(180%) brightness(1.06)',
-          WebkitBackdropFilter: 'blur(28px) saturate(180%) brightness(1.06)',
-          borderTop: '1px solid var(--gbtn-border-t)',
-          borderLeft: '1px solid var(--gbtn-border-l)',
-          borderRight: '1px solid rgba(140,110,60,0.22)',
-          borderBottom: '1px solid rgba(140,110,60,0.28)',
-          boxShadow: '0 3px 14px rgba(140,110,60,0.13), 0 1px 4px rgba(0,0,0,0.06), 0 2px 0 rgba(255,254,218,0.72) inset',
-          transition: 'box-shadow 0.2s',
-          '&:focus-within': { boxShadow: '0 6px 28px rgba(140,110,60,0.16), 0 2px 0 rgba(255,254,218,0.80) inset, 0 0 0 3px var(--accent-dim)' },
-        }}
-      >
-        <Search size={17} style={{ color: 'var(--fg-dim)', flexShrink: 0 }} strokeWidth={2} />
-        <input
-          value={query}
-          onChange={e => { setQuery(e.target.value); fetchSuggestions(e.target.value); }}
-          onKeyDown={handleKey}
-          onFocus={() => { if (suggestions.length) setShowSugg(true); }}
-          placeholder="Search the web…" autoComplete="off"
-          style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: '0.95rem', fontFamily: 'var(--font-family)', fontWeight: 400, color: 'var(--fg-primary)', padding: '4px 0' }}
-        />
-        <Box onClick={e => { e.preventDefault(); onToggleDeep?.(); }} sx={{
-          display: 'flex', alignItems: 'center', gap: '3px', px: 1, py: 0.4, borderRadius: '6px', cursor: 'pointer', flexShrink: 0,
-          border: deepMode ? '1px solid rgba(249,115,22,0.5)' : '1px solid var(--glass-border)',
-          bgcolor: deepMode ? 'rgba(249,115,22,0.12)' : 'var(--glass-bg)',
-          boxShadow: deepMode ? 'inset 0 2px 5px rgba(0,0,0,0.13), inset 0 1px 2px rgba(0,0,0,0.08)' : 'none',
-          color: deepMode ? '#F97316' : 'var(--fg-secondary)',
-          fontFamily: 'var(--font-family)', fontSize: '0.72rem', fontWeight: 400, transition: 'all 0.15s',
-          '&:hover': { borderColor: 'var(--accent)', color: 'var(--accent)' },
-        }}>
-          <Zap size={11} fill={deepMode ? 'var(--accent)' : 'none'} color={deepMode ? 'var(--accent)' : 'currentColor'} />
-          Deep
-        </Box>
-        {query && (
-          <Box component="button" type="submit" sx={{ border: 'none', bgcolor: 'var(--accent)', color: '#FFF', fontFamily: 'var(--font-family)', fontSize: '0.8rem', fontWeight: 500, px: 1.75, py: 0.6, borderRadius: '8px', cursor: 'pointer', flexShrink: 0, transition: 'opacity 0.12s', '&:hover': { opacity: 0.88 } }}>
-            Search
-          </Box>
-        )}
-      </Box>
-
-      {/* Suggestions dropdown */}
-      {showSugg && suggestions.length > 0 && (
-        <Box sx={{
-          position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
-          background: 'rgba(250,246,238,0.97)',
-          backdropFilter: 'blur(24px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(24px) saturate(180%)',
-          borderRadius: '12px',
-          borderTop: '1px solid rgba(255,255,235,0.90)',
-          borderLeft: '1px solid rgba(255,252,225,0.70)',
-          borderRight: '1px solid rgba(185,165,128,0.18)',
-          borderBottom: '1px solid rgba(178,158,120,0.18)',
-          boxShadow: '0 8px 32px rgba(140,110,60,0.12)',
-          overflow: 'hidden', zIndex: 'var(--z-popup)',
-        }}>
-          {suggestions.map((s, i) => (
-            <Box
-              key={i}
-              onMouseDown={e => { e.preventDefault(); setQuery(s); setShowSugg(false); onSubmit(); }}
-              sx={{
-                display: 'flex', alignItems: 'center', gap: 1,
-                px: 2, py: 1,
-                fontFamily: 'var(--font-family)', fontSize: '0.88rem', fontWeight: 400,
-                color: 'var(--fg-primary)', cursor: 'pointer',
-                borderBottom: i < suggestions.length - 1 ? '1px solid var(--border)' : 'none',
-                transition: 'background 0.12s',
-                '&:hover': { background: 'rgba(249,115,22,0.07)' },
-              }}
-            >
-              <Search size={13} style={{ color: 'var(--fg-dim)', flexShrink: 0 }} />
-              {s}
-            </Box>
-          ))}
-        </Box>
-      )}
-    </Box>
-  );
-}
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
@@ -2618,7 +2373,7 @@ export default function ExplorePage() {
   const sourceBriefRef   = useRef(null);
   const gapsDataRef      = useRef([]);
   const quotesDataRef    = useRef([]);
-  const { articles: trendingArticles, trending: isTrending, spinning: trendingSpinning, refetch: refetchTrending } = useTrendingChips();
+  const { articles: trendingArticles, trending: isTrending, spinning: trendingSpinning, refetch: refetchTrending } = useTrendingNews();
   const topOffset = useTopOffset();
   const [dark] = useDarkMode();
   const followUpAbortRef  = useRef(null);
